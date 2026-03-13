@@ -289,7 +289,7 @@ export default function App() {
     supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: "http://localhost:5173/"
+        redirectTo: window.location.origin
       }
     });
   const signInWithEmail = async () => {
