@@ -3,38 +3,38 @@ import { supabase } from "./supabase.js";
 
 // ── Default League Config ─────────────────────────────────────────────────────
 const DEFAULT_CONFIG = {
-  scoringFormat:     "stroke",    // "stroke" | "stableford" | "match" | "scramble"
-  roundsPerCourse:   2,
-  attestRequired:    true,
+  scoringFormat: "stroke",    // "stroke" | "stableford" | "match" | "scramble"
+  roundsPerCourse: 2,
+  attestRequired: true,
   scorecardRequired: false,
-  useHandicap:       true,
-  handicapPct:       100,
-  useSlopeRating:    true,
-  maxHandicap:       null,
-  joinMode:          "open",      // "open" | "approval"
-  maxPlayers:        null,
-  hideScores:        false,
-  seasonStart:       null,
-  seasonEnd:         null,
+  useHandicap: true,
+  handicapPct: 100,
+  useSlopeRating: true,
+  maxHandicap: null,
+  joinMode: "open",      // "open" | "approval"
+  maxPlayers: null,
+  hideScores: false,
+  seasonStart: null,
+  seasonEnd: null,
 };
 
-const FORMAT_LABELS = { stroke:"Stroke Play", stableford:"Stableford", match:"Match Play", scramble:"Scramble" };
+const FORMAT_LABELS = { stroke: "Stroke Play", stableford: "Stableford", match: "Match Play", scramble: "Scramble" };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const calcCourseHcp = (idx, slope, par, rating, cfg) => {
-  const raw = cfg.useSlopeRating ? (idx*(slope/113))+(rating-par) : idx;
+  const raw = cfg.useSlopeRating ? (idx * (slope / 113)) + (rating - par) : idx;
   const capped = cfg.maxHandicap ? Math.min(raw, cfg.maxHandicap) : raw;
-  return Math.round(capped * (cfg.handicapPct/100));
+  return Math.round(capped * (cfg.handicapPct / 100));
 };
 const calcStableford = (gross, hcp, par) => Math.max(0, 2 + (par - (gross - hcp)));
-const toPM  = (v,p) => { const d=v-p; return d===0?"E":d>0?`+${d}`:`${d}`; };
-const pmCls = (v,p) => { const d=v-p; return d<0?"under":d>0?"over":"even"; };
-const ini   = (n="") => n.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
+const toPM = (v, p) => { const d = v - p; return d === 0 ? "E" : d > 0 ? `+${d}` : `${d}`; };
+const pmCls = (v, p) => { const d = v - p; return d < 0 ? "under" : d > 0 ? "over" : "even"; };
+const ini = (n = "") => n.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 const isSeasonActive = (cfg) => {
   if (!cfg.seasonStart && !cfg.seasonEnd) return true;
   const now = new Date();
   if (cfg.seasonStart && new Date(cfg.seasonStart) > now) return false;
-  if (cfg.seasonEnd   && new Date(cfg.seasonEnd)   < now) return false;
+  if (cfg.seasonEnd && new Date(cfg.seasonEnd) < now) return false;
   return true;
 };
 
@@ -194,36 +194,36 @@ select option{background:#161d2e;color:var(--cream)}
 `;
 
 export default function App() {
-  const [session, setSession]       = useState(undefined);
-  const [profile, setProfile]       = useState(null);
-  const [leagues, setLeagues]       = useState([]);
+  const [session, setSession] = useState(undefined);
+  const [profile, setProfile] = useState(null);
+  const [leagues, setLeagues] = useState([]);
   const [myMemberships, setMyMemberships] = useState([]);
-  const [activeLeague, setActiveLeague]   = useState(null);
+  const [activeLeague, setActiveLeague] = useState(null);
   const [activeMembership, setActiveMembership] = useState(null);
-  const [courses, setCourses]       = useState([]);
-  const [rounds, setRounds]         = useState([]);
-  const [members, setMembers]       = useState([]);
-  const [config, setConfig]         = useState(DEFAULT_CONFIG);
-  const [payouts, setPayouts]       = useState({});
+  const [courses, setCourses] = useState([]);
+  const [rounds, setRounds] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const [payouts, setPayouts] = useState({});
   const [pendingJoins, setPendingJoins] = useState([]);
   const [dataLoaded, setDataLoaded] = useState(false);
 
   // ui state
-  const [tab, setTab]             = useState("leaderboard");
+  const [tab, setTab] = useState("leaderboard");
   const [leaderTab, setLeaderTab] = useState("overall");
-  const [adminTab, setAdminTab]   = useState("config");
+  const [adminTab, setAdminTab] = useState("config");
   const [selCourse, setSelCourse] = useState(null);
-  const [form, setForm]           = useState({ courseId:"", score:"", attesterId:"", date: new Date().toISOString().split("T")[0] });
-  const [formMsg, setFormMsg]     = useState({ type:"", text:"" });
-  const [cardFile, setCardFile]   = useState(null);
+  const [form, setForm] = useState({ courseId: "", score: "", attesterId: "", date: new Date().toISOString().split("T")[0] });
+  const [formMsg, setFormMsg] = useState({ type: "", text: "" });
+  const [cardFile, setCardFile] = useState(null);
   const [cardPreview, setCardPreview] = useState(null);
   const [viewCardModal, setViewCardModal] = useState(null);
   const [showCreateLeague, setShowCreateLeague] = useState(false);
-  const [newLeague, setNewLeague] = useState({ name:"", description:"" });
-  const [joinCode, setJoinCode]   = useState("");
-  const [joinMsg, setJoinMsg]     = useState({ text:"", ok:true });
-  const [addMsg, setAddMsg]       = useState("");
-  const [newCourse, setNewCourse] = useState({ name:"", par:"", holes:"18", slope:"", rating:"" });
+  const [newLeague, setNewLeague] = useState({ name: "", description: "" });
+  const [joinCode, setJoinCode] = useState("");
+  const [joinMsg, setJoinMsg] = useState({ text: "", ok: true });
+  const [addMsg, setAddMsg] = useState("");
+  const [newCourse, setNewCourse] = useState({ name: "", par: "", holes: "18", slope: "", rating: "" });
   const [showAddCourse, setShowAddCourse] = useState(false);
   const [payoutEdit, setPayoutEdit] = useState(false);
   const [payoutDraft, setPayoutDraft] = useState(null);
@@ -232,13 +232,13 @@ export default function App() {
   const [profileDraft, setProfileDraft] = useState({});
 
   // auth
-  const [authMode, setAuthMode]         = useState("signin");
-  const [authEmail, setAuthEmail]       = useState("");
+  const [authMode, setAuthMode] = useState("signin");
+  const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
-  const [authName, setAuthName]         = useState("");
-  const [authError, setAuthError]       = useState("");
-  const [authSuccess, setAuthSuccess]   = useState("");
-  const [authLoading, setAuthLoading]   = useState(false);
+  const [authName, setAuthName] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authSuccess, setAuthSuccess] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
 
   // ── Auth listeners ──
   useEffect(() => {
@@ -254,20 +254,45 @@ export default function App() {
   }, [session]);
 
   const loadLeagues = async () => {
-    const { data } = await supabase.from("league_members").select("*, league:leagues(*)").eq("user_id", session.user.id);
-    setMyMemberships(data ?? []);
-    setLeagues((data ?? []).map(m => m.league).filter(Boolean));
+    const { data: memberships, error } = await supabase
+      .from("league_members")
+      .select("league_id")
+      .eq("user_id", session.user.id);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    if (!memberships || memberships.length === 0) {
+      setLeagues([]);
+      return;
+    }
+
+    const leagueIds = memberships.map(m => m.league_id);
+
+    const { data: leagues, error: leaguesError } = await supabase
+      .from("leagues")
+      .select("*")
+      .in("id", leagueIds);
+
+    if (leaguesError) {
+      console.error(leaguesError);
+      return;
+    }
+
+    setLeagues(leagues ?? []);
   };
 
   // ── Auth actions ──
   const signInWithGoogle = () =>
-  supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: "http://localhost:5173/"
-    }
-  });
-  const signInWithEmail  = async () => {
+    supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: "http://localhost:5173/"
+      }
+    });
+  const signInWithEmail = async () => {
     setAuthError(""); setAuthLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
     setAuthLoading(false);
@@ -276,7 +301,7 @@ export default function App() {
   const signUpWithEmail = async () => {
     if (!authName.trim()) { setAuthError("Please enter your name."); return; }
     setAuthError(""); setAuthLoading(true);
-    const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPassword, options:{ data:{ full_name: authName.trim() } } });
+    const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPassword, options: { data: { full_name: authName.trim() } } });
     setAuthLoading(false);
     if (error) { setAuthError(error.message); return; }
     if (data?.user && !data.session) setAuthSuccess("Check your email to confirm your account.");
@@ -284,7 +309,7 @@ export default function App() {
   const sendPasswordReset = async () => {
     if (!authEmail) { setAuthError("Enter your email first."); return; }
     setAuthError(""); setAuthLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(authEmail, { redirectTo: window.location.origin+"?reset=true" });
+    const { error } = await supabase.auth.resetPasswordForEmail(authEmail, { redirectTo: window.location.origin + "?reset=true" });
     setAuthLoading(false);
     if (error) setAuthError(error.message); else setAuthSuccess("Password reset email sent!");
   };
@@ -293,12 +318,12 @@ export default function App() {
   // ── Load league ──
   const loadLeagueData = useCallback(async (league) => {
     setDataLoaded(false);
-    const [{ data: c },{ data: r },{ data: m },{ data: s },{ data: pj }] = await Promise.all([
+    const [{ data: c }, { data: r }, { data: m }, { data: s }, { data: pj }] = await Promise.all([
       supabase.from("courses").select("*").eq("league_id", league.id).order("name"),
-      supabase.from("rounds").select("*").eq("league_id", league.id).order("created_at",{ascending:false}),
+      supabase.from("rounds").select("*").eq("league_id", league.id).order("created_at", { ascending: false }),
       supabase.from("league_members").select("*, profile:profiles(*)").eq("league_id", league.id),
       supabase.from("league_settings").select("*").eq("league_id", league.id).single(),
-      supabase.from("league_join_requests").select("*, profile:profiles(*)").eq("league_id", league.id).eq("status","pending"),
+      supabase.from("league_join_requests").select("*, profile:profiles(*)").eq("league_id", league.id).eq("status", "pending"),
     ]);
     setCourses(c ?? []); setRounds(r ?? []); setMembers(m ?? []);
     const cfg = { ...DEFAULT_CONFIG, ...(s?.config ?? {}) };
@@ -319,45 +344,45 @@ export default function App() {
     const { data: league } = await supabase.from("leagues").insert({ name: newLeague.name.trim(), description: newLeague.description, owner_id: session.user.id }).select().single();
     if (!league) return;
     await Promise.all([
-      supabase.from("league_members").insert({ league_id: league.id, user_id: session.user.id, role:"admin" }),
-      supabase.from("league_settings").insert({ league_id: league.id, config: DEFAULT_CONFIG, payouts:{} }),
+      supabase.from("league_members").insert({ league_id: league.id, user_id: session.user.id, role: "admin" }),
+      supabase.from("league_settings").insert({ league_id: league.id, config: DEFAULT_CONFIG, payouts: {} }),
     ]);
-    setNewLeague({ name:"", description:"" }); setShowCreateLeague(false);
+    setNewLeague({ name: "", description: "" }); setShowCreateLeague(false);
     await loadLeagues(); selectLeague(league);
   };
 
   const joinLeague = async () => {
     if (!joinCode.trim()) return;
     const { data: league } = await supabase.from("leagues").select("*").eq("invite_code", joinCode.trim().toLowerCase()).single();
-    if (!league) { setJoinMsg({ text:"Invalid invite code.", ok:false }); return; }
-    if (myMemberships.find(m => m.league_id === league.id)) { setJoinMsg({ text:"You're already in this league.", ok:false }); return; }
+    if (!league) { setJoinMsg({ text: "Invalid invite code.", ok: false }); return; }
+    if (myMemberships.find(m => m.league_id === league.id)) { setJoinMsg({ text: "You're already in this league.", ok: false }); return; }
     const { data: s } = await supabase.from("league_settings").select("config").eq("league_id", league.id).single();
     const cfg = { ...DEFAULT_CONFIG, ...(s?.config ?? {}) };
     if (cfg.joinMode === "approval") {
       await supabase.from("league_join_requests").insert({ league_id: league.id, user_id: session.user.id });
-      setJoinMsg({ text:"Request sent! Waiting for commissioner approval.", ok:true }); setJoinCode("");
+      setJoinMsg({ text: "Request sent! Waiting for commissioner approval.", ok: true }); setJoinCode("");
     } else {
-      await supabase.from("league_members").insert({ league_id: league.id, user_id: session.user.id, role:"player" });
-      setJoinCode(""); setJoinMsg({ text:"Joined!", ok:true }); await loadLeagues();
+      await supabase.from("league_members").insert({ league_id: league.id, user_id: session.user.id, role: "player" });
+      setJoinCode(""); setJoinMsg({ text: "Joined!", ok: true }); await loadLeagues();
     }
-    setTimeout(() => setJoinMsg({ text:"", ok:true }), 4000);
+    setTimeout(() => setJoinMsg({ text: "", ok: true }), 4000);
   };
 
   // ── Join requests ──
   const approveJoin = async (req) => {
-    await supabase.from("league_members").insert({ league_id: req.league_id, user_id: req.user_id, role:"player" });
-    await supabase.from("league_join_requests").update({ status:"approved" }).eq("id", req.id);
+    await supabase.from("league_members").insert({ league_id: req.league_id, user_id: req.user_id, role: "player" });
+    await supabase.from("league_join_requests").update({ status: "approved" }).eq("id", req.id);
     setPendingJoins(prev => prev.filter(r => r.id !== req.id));
-    setMembers(prev => [...prev, { user_id: req.user_id, role:"player", profile: req.profile }]);
+    setMembers(prev => [...prev, { user_id: req.user_id, role: "player", profile: req.profile }]);
   };
   const denyJoin = async (req) => {
-    await supabase.from("league_join_requests").update({ status:"denied" }).eq("id", req.id);
+    await supabase.from("league_join_requests").update({ status: "denied" }).eq("id", req.id);
     setPendingJoins(prev => prev.filter(r => r.id !== req.id));
   };
 
   // ── Config ──
   const saveConfig = async (newCfg) => {
-    await supabase.from("league_settings").upsert({ league_id: activeLeague.id, config: newCfg, payouts }, { onConflict:"league_id" });
+    await supabase.from("league_settings").upsert({ league_id: activeLeague.id, config: newCfg, payouts }, { onConflict: "league_id" });
     setConfig(newCfg); setConfigDraft(null);
   };
 
@@ -378,10 +403,10 @@ export default function App() {
   const submitRound = async () => {
     if (!canSubmit()) return;
     const course = courses.find(c => c.id === Number(form.courseId));
-    const hcp    = config.useHandicap ? calcCourseHcp(profile.handicap, course.slope, course.par, course.rating, config) : 0;
-    const gross  = Number(form.score);
-    const net    = gross - hcp;
-    const pts    = config.scoringFormat === "stableford" ? calcStableford(gross, hcp, course.par) : null;
+    const hcp = config.useHandicap ? calcCourseHcp(profile.handicap, course.slope, course.par, course.rating, config) : 0;
+    const gross = Number(form.score);
+    const net = gross - hcp;
+    const pts = config.scoringFormat === "stableford" ? calcStableford(gross, hcp, course.par) : null;
     const attester = config.attestRequired ? members.find(m => m.user_id === form.attesterId) : null;
 
     const { data: inserted, error } = await supabase.from("rounds").insert({
@@ -394,11 +419,11 @@ export default function App() {
       attest_status: config.attestRequired ? "pending" : "approved",
     }).select().single();
 
-    if (error || !inserted) { setFormMsg({ type:"d", text:"Error saving round." }); return; }
+    if (error || !inserted) { setFormMsg({ type: "d", text: "Error saving round." }); return; }
 
     if (cardFile) {
       const ext = cardFile.name.split(".").pop();
-      await supabase.storage.from("scorecards").upload(`scorecards/${inserted.id}.${ext}`, cardFile, { upsert:true });
+      await supabase.storage.from("scorecards").upload(`scorecards/${inserted.id}.${ext}`, cardFile, { upsert: true });
       const { data: urlData } = supabase.storage.from("scorecards").getPublicUrl(`scorecards/${inserted.id}.${ext}`);
       await supabase.from("rounds").update({ scorecard_url: urlData.publicUrl }).eq("id", inserted.id);
       inserted.scorecard_url = urlData.publicUrl;
@@ -409,154 +434,154 @@ export default function App() {
         await supabase.functions.invoke("attest-score-email", {
           body: { attesterEmail: attester.profile.email, attesterName: attester.profile.name, playerName: profile.name, courseName: course.name, gross, net, par: course.par, date: form.date, leagueName: activeLeague.name, token: inserted.attest_token, appUrl: window.location.origin }
         });
-      } catch(e) { console.warn("Email non-fatal:", e); }
+      } catch (e) { console.warn("Email non-fatal:", e); }
     }
 
     setRounds(prev => [inserted, ...prev]);
-    setForm(f => ({ ...f, score:"", courseId:"", attesterId:"" }));
+    setForm(f => ({ ...f, score: "", courseId: "", attesterId: "" }));
     setCardFile(null); setCardPreview(null);
-    setFormMsg({ type:"s", text: config.attestRequired ? `Submitted! Attestation email sent to ${attester.profile.name}.` : "Round submitted and approved!" });
-    setTimeout(() => setFormMsg({ type:"", text:"" }), 5000);
+    setFormMsg({ type: "s", text: config.attestRequired ? `Submitted! Attestation email sent to ${attester.profile.name}.` : "Round submitted and approved!" });
+    setTimeout(() => setFormMsg({ type: "", text: "" }), 5000);
   };
 
   // ── Admin ──
   const addCourse = async () => {
-    if (!newCourse.name||!newCourse.par||!newCourse.slope||!newCourse.rating) return;
-    const { data } = await supabase.from("courses").insert({ league_id: activeLeague.id, ...newCourse, par:Number(newCourse.par), holes:Number(newCourse.holes), slope:Number(newCourse.slope), rating:Number(newCourse.rating) }).select().single();
-    if (data) { setCourses(prev=>[...prev,data]); setNewCourse({ name:"",par:"",holes:"18",slope:"",rating:"" }); setShowAddCourse(false); setAddMsg("Course added!"); setTimeout(()=>setAddMsg(""),3e3); }
+    if (!newCourse.name || !newCourse.par || !newCourse.slope || !newCourse.rating) return;
+    const { data } = await supabase.from("courses").insert({ league_id: activeLeague.id, ...newCourse, par: Number(newCourse.par), holes: Number(newCourse.holes), slope: Number(newCourse.slope), rating: Number(newCourse.rating) }).select().single();
+    if (data) { setCourses(prev => [...prev, data]); setNewCourse({ name: "", par: "", holes: "18", slope: "", rating: "" }); setShowAddCourse(false); setAddMsg("Course added!"); setTimeout(() => setAddMsg(""), 3e3); }
   };
-  const deleteCourse  = async (id) => { await supabase.from("courses").delete().eq("id",id); setCourses(p=>p.filter(c=>c.id!==id)); };
-  const removeMember  = async (uid) => { if(uid===session.user.id)return; await supabase.from("league_members").delete().eq("league_id",activeLeague.id).eq("user_id",uid); setMembers(p=>p.filter(m=>m.user_id!==uid)); };
-  const toggleRole    = async (uid, cur) => { const r=cur==="admin"?"player":"admin"; await supabase.from("league_members").update({role:r}).eq("league_id",activeLeague.id).eq("user_id",uid); setMembers(p=>p.map(m=>m.user_id===uid?{...m,role:r}:m)); };
-  const deleteRound   = async (id) => { await supabase.from("rounds").delete().eq("id",id); setRounds(p=>p.filter(r=>r.id!==id)); };
-  const clearAllRounds= async () => { if(!window.confirm("Clear ALL rounds?"))return; await supabase.from("rounds").delete().eq("league_id",activeLeague.id); setRounds([]); };
-  const savePayouts   = async (p) => { await supabase.from("league_settings").upsert({ league_id:activeLeague.id, payouts:p, config },{ onConflict:"league_id" }); setPayouts(p); setPayoutEdit(false); };
+  const deleteCourse = async (id) => { await supabase.from("courses").delete().eq("id", id); setCourses(p => p.filter(c => c.id !== id)); };
+  const removeMember = async (uid) => { if (uid === session.user.id) return; await supabase.from("league_members").delete().eq("league_id", activeLeague.id).eq("user_id", uid); setMembers(p => p.filter(m => m.user_id !== uid)); };
+  const toggleRole = async (uid, cur) => { const r = cur === "admin" ? "player" : "admin"; await supabase.from("league_members").update({ role: r }).eq("league_id", activeLeague.id).eq("user_id", uid); setMembers(p => p.map(m => m.user_id === uid ? { ...m, role: r } : m)); };
+  const deleteRound = async (id) => { await supabase.from("rounds").delete().eq("id", id); setRounds(p => p.filter(r => r.id !== id)); };
+  const clearAllRounds = async () => { if (!window.confirm("Clear ALL rounds?")) return; await supabase.from("rounds").delete().eq("league_id", activeLeague.id); setRounds([]); };
+  const savePayouts = async (p) => { await supabase.from("league_settings").upsert({ league_id: activeLeague.id, payouts: p, config }, { onConflict: "league_id" }); setPayouts(p); setPayoutEdit(false); };
 
   // ── Profile ──
   const saveProfile = async () => {
-    await supabase.from("profiles").update({ name:profileDraft.name, handicap:Number(profileDraft.handicap), ghin:profileDraft.ghin }).eq("id",session.user.id);
-    setProfile(p=>({...p,...profileDraft,handicap:Number(profileDraft.handicap)}));
+    await supabase.from("profiles").update({ name: profileDraft.name, handicap: Number(profileDraft.handicap), ghin: profileDraft.ghin }).eq("id", session.user.id);
+    setProfile(p => ({ ...p, ...profileDraft, handicap: Number(profileDraft.handicap) }));
     setEditProfileModal(false);
   };
 
   // ── Scorecard ──
   const handleCardFile = (file) => {
-    if (!file||!file.type.startsWith("image/")) return;
-    if (file.size>10*1024*1024) { alert("Max 10 MB"); return; }
+    if (!file || !file.type.startsWith("image/")) return;
+    if (file.size > 10 * 1024 * 1024) { alert("Max 10 MB"); return; }
     setCardFile(file); setCardPreview(URL.createObjectURL(file));
   };
   const uploadScorecardToRound = async (rid, file) => {
     const ext = file.name.split(".").pop();
-    await supabase.storage.from("scorecards").upload(`scorecards/${rid}.${ext}`, file, { upsert:true });
+    await supabase.storage.from("scorecards").upload(`scorecards/${rid}.${ext}`, file, { upsert: true });
     const { data: u } = supabase.storage.from("scorecards").getPublicUrl(`scorecards/${rid}.${ext}`);
-    await supabase.from("rounds").update({ scorecard_url: u.publicUrl }).eq("id",rid);
-    setRounds(p=>p.map(r=>r.id===rid?{...r,scorecard_url:u.publicUrl}:r));
+    await supabase.from("rounds").update({ scorecard_url: u.publicUrl }).eq("id", rid);
+    setRounds(p => p.map(r => r.id === rid ? { ...r, scorecard_url: u.publicUrl } : r));
   };
   const deleteScorecard = async (round) => {
     const path = round.scorecard_url?.split("/scorecards/")[1];
     if (path) await supabase.storage.from("scorecards").remove([`scorecards/${path}`]);
-    await supabase.from("rounds").update({scorecard_url:null}).eq("id",round.id);
-    setRounds(p=>p.map(r=>r.id===round.id?{...r,scorecard_url:null}:r));
+    await supabase.from("rounds").update({ scorecard_url: null }).eq("id", round.id);
+    setRounds(p => p.map(r => r.id === round.id ? { ...r, scorecard_url: null } : r));
   };
 
   // ── Leaderboard calculations ──
-  const players = members.map(m => ({ ...m.profile, role:m.role }));
-  const scored  = config.attestRequired ? rounds.filter(r=>r.attest_status==="approved") : rounds;
+  const players = members.map(m => ({ ...m.profile, role: m.role }));
+  const scored = config.attestRequired ? rounds.filter(r => r.attest_status === "approved") : rounds;
   const myHasSubmitted = scored.some(r => r.player_id === session?.user.id);
   const visible = (config.hideScores && !myHasSubmitted)
-    ? scored.filter(r=>r.player_id===session?.user.id)
+    ? scored.filter(r => r.player_id === session?.user.id)
     : scored;
 
   const overallLB = useMemo(() => players.map(p => {
-    const pr = visible.filter(r=>r.player_id===p.id);
+    const pr = visible.filter(r => r.player_id === p.id);
     if (!pr.length) return null;
-    if (config.scoringFormat==="stableford") {
-      const total = pr.reduce((s,r)=>s+(r.stableford_pts??0),0);
-      return { ...p, pr, primary:total, label:`${total} pts`, totalRounds:pr.length };
+    if (config.scoringFormat === "stableford") {
+      const total = pr.reduce((s, r) => s + (r.stableford_pts ?? 0), 0);
+      return { ...p, pr, primary: total, label: `${total} pts`, totalRounds: pr.length };
     }
-    const avg = pr.reduce((s,r)=>s+r.net,0)/pr.length;
-    return { ...p, pr, primary:avg, label:avg.toFixed(1), totalRounds:pr.length };
-  }).filter(Boolean).sort((a,b)=>config.scoringFormat==="stableford"?b.primary-a.primary:a.primary-b.primary),
-  [players, visible, config]);
+    const avg = pr.reduce((s, r) => s + r.net, 0) / pr.length;
+    return { ...p, pr, primary: avg, label: avg.toFixed(1), totalRounds: pr.length };
+  }).filter(Boolean).sort((a, b) => config.scoringFormat === "stableford" ? b.primary - a.primary : a.primary - b.primary),
+    [players, visible, config]);
 
   const grossLB = useMemo(() => players.map(p => {
-    const pr = visible.filter(r=>r.player_id===p.id);
+    const pr = visible.filter(r => r.player_id === p.id);
     if (!pr.length) return null;
-    return { ...p, pr, avg: pr.reduce((s,r)=>s+r.gross,0)/pr.length, totalRounds:pr.length };
-  }).filter(Boolean).sort((a,b)=>a.avg-b.avg), [players, visible]);
+    return { ...p, pr, avg: pr.reduce((s, r) => s + r.gross, 0) / pr.length, totalRounds: pr.length };
+  }).filter(Boolean).sort((a, b) => a.avg - b.avg), [players, visible]);
 
   const courseLB = useMemo(() => {
     if (!selCourse) return [];
-    const c = courses.find(c=>c.id===selCourse);
+    const c = courses.find(c => c.id === selCourse);
     return players.map(p => {
-      const cr = visible.filter(r=>r.player_id===p.id&&r.course_id===selCourse);
+      const cr = visible.filter(r => r.player_id === p.id && r.course_id === selCourse);
       if (!cr.length) return null;
-      const best = Math.min(...cr.map(r=>r.net));
-      return { ...p, cr, best, avg:(cr.reduce((s,r)=>s+r.net,0)/cr.length).toFixed(1), par:c?.par };
-    }).filter(Boolean).sort((a,b)=>a.best-b.best);
+      const best = Math.min(...cr.map(r => r.net));
+      return { ...p, cr, best, avg: (cr.reduce((s, r) => s + r.net, 0) / cr.length).toFixed(1), par: c?.par };
+    }).filter(Boolean).sort((a, b) => a.best - b.best);
   }, [players, visible, selCourse, courses]);
 
   const bestNetLB = useMemo(() => players.map(p => {
-    const pr = visible.filter(r=>r.player_id===p.id);
+    const pr = visible.filter(r => r.player_id === p.id);
     if (!pr.length) return null;
-    return { ...p, best: pr.reduce((b,r)=>r.net<b.net?r:b) };
-  }).filter(Boolean).sort((a,b)=>a.best.net-b.best.net), [players, visible]);
+    return { ...p, best: pr.reduce((b, r) => r.net < b.net ? r : b) };
+  }).filter(Boolean).sort((a, b) => a.best.net - b.best.net), [players, visible]);
 
   const bestGrossLB = useMemo(() => players.map(p => {
-    const pr = visible.filter(r=>r.player_id===p.id);
+    const pr = visible.filter(r => r.player_id === p.id);
     if (!pr.length) return null;
-    return { ...p, best: pr.reduce((b,r)=>r.gross<b.gross?r:b) };
-  }).filter(Boolean).sort((a,b)=>a.best.gross-b.best.gross), [players, visible]);
+    return { ...p, best: pr.reduce((b, r) => r.gross < b.gross ? r : b) };
+  }).filter(Boolean).sort((a, b) => a.best.gross - b.best.gross), [players, visible]);
 
   const completionData = useMemo(() => {
     const total = courses.length * config.roundsPerCourse;
     return players.map(p => ({
       ...p,
       cs: courses.map(c => {
-        const played = scored.filter(r=>r.player_id===p.id&&r.course_id===c.id).length;
-        return { ...c, played, done: played>=config.roundsPerCourse };
+        const played = scored.filter(r => r.player_id === p.id && r.course_id === c.id).length;
+        return { ...c, played, done: played >= config.roundsPerCourse };
       }),
-      done: scored.filter(r=>r.player_id===p.id).length,
-      total, pct: total ? Math.round(scored.filter(r=>r.player_id===p.id).length/total*100) : 0
+      done: scored.filter(r => r.player_id === p.id).length,
+      total, pct: total ? Math.round(scored.filter(r => r.player_id === p.id).length / total * 100) : 0
     }));
   }, [players, scored, courses, config]);
 
-  const pendingForMe  = rounds.filter(r=>r.attester_id===session?.user.id&&r.attest_status==="pending");
+  const pendingForMe = rounds.filter(r => r.attester_id === session?.user.id && r.attest_status === "pending");
   const approvedCount = scored.length;
-  const totalRequired = players.filter(p=>p.role==="player").length * courses.length * config.roundsPerCourse;
-  const leaguePct     = totalRequired ? Math.round(approvedCount/totalRequired*100) : 0;
-  const isAdmin       = activeMembership?.role==="admin" || activeLeague?.owner_id===session?.user.id;
+  const totalRequired = players.filter(p => p.role === "player").length * courses.length * config.roundsPerCourse;
+  const leaguePct = totalRequired ? Math.round(approvedCount / totalRequired * 100) : 0;
+  const isAdmin = activeMembership?.role === "admin" || activeLeague?.owner_id === session?.user.id;
 
   // ── Small render helpers ──
-  const rankEl = (i) => <td className={`rc ${i===0?"r1":i===1?"r2":i===2?"r3":""}`}>{i<3?["🥇","🥈","🥉"][i]:i+1}</td>;
-  const netEl  = (net,par) => config.useHandicap
-    ? <span className={`sb ${pmCls(net,par)}`}>{net} <span style={{fontSize:".72rem",opacity:.7}}>({toPM(net,par)})</span></span>
+  const rankEl = (i) => <td className={`rc ${i === 0 ? "r1" : i === 1 ? "r2" : i === 2 ? "r3" : ""}`}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</td>;
+  const netEl = (net, par) => config.useHandicap
+    ? <span className={`sb ${pmCls(net, par)}`}>{net} <span style={{ fontSize: ".72rem", opacity: .7 }}>({toPM(net, par)})</span></span>
     : <span className="sb">{net}</span>;
   const attestBadge = (status) => !config.attestRequired
     ? <span className="ab auto">Auto ✓</span>
-    : <span className={`ab ${status}`}>{status==="approved"?"✓ Approved":status==="rejected"?"✗ Rejected":"⏳ Pending"}</span>;
+    : <span className={`ab ${status}`}>{status === "approved" ? "✓ Approved" : status === "rejected" ? "✗ Rejected" : "⏳ Pending"}</span>;
 
   const Toggle = ({ checked, onChange }) => (
     <label className="toggle">
-      <input type="checkbox" checked={checked} onChange={e=>onChange(e.target.checked)}/>
-      <span className="toggle-slider"/>
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
+      <span className="toggle-slider" />
     </label>
   );
 
   const SeasonBar = () => {
     if (!config.seasonStart && !config.seasonEnd) return null;
-    const now=new Date(), s=config.seasonStart?new Date(config.seasonStart):null, e=config.seasonEnd?new Date(config.seasonEnd):null;
-    if (s && s>now) return <div className="season-bar upcoming">⏳ Season opens {s.toLocaleDateString()}</div>;
-    if (e && e<now) return <div className="season-bar inactive">🏁 Season ended {e.toLocaleDateString()} — submissions closed</div>;
-    return <div className="season-bar active">🟢 Season active{e?` · ends ${e.toLocaleDateString()}`:""}</div>;
+    const now = new Date(), s = config.seasonStart ? new Date(config.seasonStart) : null, e = config.seasonEnd ? new Date(config.seasonEnd) : null;
+    if (s && s > now) return <div className="season-bar upcoming">⏳ Season opens {s.toLocaleDateString()}</div>;
+    if (e && e < now) return <div className="season-bar inactive">🏁 Season ended {e.toLocaleDateString()} — submissions closed</div>;
+    return <div className="season-bar active">🟢 Season active{e ? ` · ends ${e.toLocaleDateString()}` : ""}</div>;
   };
 
   const GoogleIcon = () => (
     <svg width="20" height="20" viewBox="0 0 24 24">
-      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
-      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
     </svg>
   );
 
@@ -564,12 +589,12 @@ export default function App() {
   if (session === undefined) return (
     <>
       <style>{CSS}</style>
-      <div className="auth-bg"><div className="gp"/>
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:"4rem",marginBottom:8}}>⛳</div>
-          <div style={{color:"var(--gold)",fontFamily:"var(--font-d)",letterSpacing:"3px",fontSize:"1.1rem"}}>GREEK SIDE BUNKER</div>
-          <div style={{display:"flex",justifyContent:"center",gap:6,marginTop:20}}>
-            {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"var(--gold)",animation:`pulse 1.2s ease-in-out ${i*.2}s infinite`,opacity:.4}}/>)}
+      <div className="auth-bg"><div className="gp" />
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: "4rem", marginBottom: 8 }}>⛳</div>
+          <div style={{ color: "var(--gold)", fontFamily: "var(--font-d)", letterSpacing: "3px", fontSize: "1.1rem" }}>GREEK SIDE BUNKER</div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 20 }}>
+            {[0, 1, 2].map(i => <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--gold)", animation: `pulse 1.2s ease-in-out ${i * .2}s infinite`, opacity: .4 }} />)}
           </div>
         </div>
       </div>
@@ -578,35 +603,35 @@ export default function App() {
 
   // ── SIGN IN ──
   if (!session) {
-    const hk = (e) => { if(e.key==="Enter") authMode==="signup"?signUpWithEmail():authMode==="forgot"?sendPasswordReset():signInWithEmail(); };
+    const hk = (e) => { if (e.key === "Enter") authMode === "signup" ? signUpWithEmail() : authMode === "forgot" ? sendPasswordReset() : signInWithEmail(); };
     return (
       <>
         <style>{CSS}</style>
-        <div className="auth-bg"><div className="gp"/>
+        <div className="auth-bg"><div className="gp" />
           <div className="auth-box au">
-            <div style={{textAlign:"center",marginBottom:22}}>
-              <div style={{fontSize:"3rem",marginBottom:6}}>⛳</div>
+            <div style={{ textAlign: "center", marginBottom: 22 }}>
+              <div style={{ fontSize: "3rem", marginBottom: 6 }}>⛳</div>
               <div className="auth-title">GREEK SIDE BUNKER</div>
               <div className="auth-sub">Golf League · Season Tracker</div>
-              <div className="auth-divider"/>
+              <div className="auth-divider" />
             </div>
-            {authError   && <div className="auth-error">{authError}</div>}
+            {authError && <div className="auth-error">{authError}</div>}
             {authSuccess && <div className="auth-success">{authSuccess}</div>}
-            {authMode !== "forgot" && <button className="btn-google" onClick={signInWithGoogle}><GoogleIcon/> Continue with Google</button>}
+            {authMode !== "forgot" && <button className="btn-google" onClick={signInWithGoogle}><GoogleIcon /> Continue with Google</button>}
             {authMode !== "forgot" && <div className="or-divider"><span>or</span></div>}
-            <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              {authMode==="signup" && <div className="fg"><label>Your Name</label><input type="text" placeholder="Jane Smith" value={authName} onChange={e=>{setAuthName(e.target.value);setAuthError("");}} onKeyDown={hk} autoComplete="name"/></div>}
-              <div className="fg"><label>Email</label><input type="email" placeholder="you@example.com" value={authEmail} onChange={e=>{setAuthEmail(e.target.value);setAuthError("");setAuthSuccess("");}} onKeyDown={hk} autoComplete="email"/></div>
-              {authMode!=="forgot" && <div className="fg"><label>Password {authMode==="signup"&&<span style={{color:"var(--cream-dim)",fontFamily:"var(--font-b)",textTransform:"none",letterSpacing:0}}>(min 6 chars)</span>}</label><input type="password" placeholder={authMode==="signup"?"Create a password":"Enter your password"} value={authPassword} onChange={e=>{setAuthPassword(e.target.value);setAuthError("");}} onKeyDown={hk} autoComplete={authMode==="signup"?"new-password":"current-password"}/></div>}
-              {authMode==="signin" && <button className="forgot-pw" onClick={()=>{setAuthMode("forgot");setAuthError("");setAuthSuccess("");}}>Forgot password?</button>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {authMode === "signup" && <div className="fg"><label>Your Name</label><input type="text" placeholder="Jane Smith" value={authName} onChange={e => { setAuthName(e.target.value); setAuthError(""); }} onKeyDown={hk} autoComplete="name" /></div>}
+              <div className="fg"><label>Email</label><input type="email" placeholder="you@example.com" value={authEmail} onChange={e => { setAuthEmail(e.target.value); setAuthError(""); setAuthSuccess(""); }} onKeyDown={hk} autoComplete="email" /></div>
+              {authMode !== "forgot" && <div className="fg"><label>Password {authMode === "signup" && <span style={{ color: "var(--cream-dim)", fontFamily: "var(--font-b)", textTransform: "none", letterSpacing: 0 }}>(min 6 chars)</span>}</label><input type="password" placeholder={authMode === "signup" ? "Create a password" : "Enter your password"} value={authPassword} onChange={e => { setAuthPassword(e.target.value); setAuthError(""); }} onKeyDown={hk} autoComplete={authMode === "signup" ? "new-password" : "current-password"} /></div>}
+              {authMode === "signin" && <button className="forgot-pw" onClick={() => { setAuthMode("forgot"); setAuthError(""); setAuthSuccess(""); }}>Forgot password?</button>}
             </div>
-            <button className="btn btn-gold" style={{width:"100%",padding:"13px",marginTop:18}} onClick={authMode==="signup"?signUpWithEmail:authMode==="forgot"?sendPasswordReset:signInWithEmail} disabled={authLoading}>
-              {authLoading?"Please wait…":authMode==="signup"?"Create Account":authMode==="forgot"?"Send Reset Email":"Sign In"}
+            <button className="btn btn-gold" style={{ width: "100%", padding: "13px", marginTop: 18 }} onClick={authMode === "signup" ? signUpWithEmail : authMode === "forgot" ? sendPasswordReset : signInWithEmail} disabled={authLoading}>
+              {authLoading ? "Please wait…" : authMode === "signup" ? "Create Account" : authMode === "forgot" ? "Send Reset Email" : "Sign In"}
             </button>
             <div className="auth-toggle">
-              {authMode==="forgot"  ? <span>Remembered it? <button onClick={()=>{setAuthMode("signin");setAuthError("");setAuthSuccess("");}}>Back to sign in</button></span>
-              : authMode==="signin" ? <span>New here? <button onClick={()=>{setAuthMode("signup");setAuthError("");setAuthSuccess("");}}>Create an account</button></span>
-              : <span>Already have one? <button onClick={()=>{setAuthMode("signin");setAuthError("");setAuthSuccess("");}}>Sign in</button></span>}
+              {authMode === "forgot" ? <span>Remembered it? <button onClick={() => { setAuthMode("signin"); setAuthError(""); setAuthSuccess(""); }}>Back to sign in</button></span>
+                : authMode === "signin" ? <span>New here? <button onClick={() => { setAuthMode("signup"); setAuthError(""); setAuthSuccess(""); }}>Create an account</button></span>
+                  : <span>Already have one? <button onClick={() => { setAuthMode("signin"); setAuthError(""); setAuthSuccess(""); }}>Sign in</button></span>}
             </div>
           </div>
         </div>
@@ -619,64 +644,64 @@ export default function App() {
     <>
       <style>{CSS}</style>
       {editProfileModal && (
-        <div className="modal-bg" onClick={()=>setEditProfileModal(false)}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-bg" onClick={() => setEditProfileModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-title">Edit Profile</div>
-            <div className="fgrid" style={{marginBottom:16}}>
-              <div className="fg" style={{gridColumn:"1/-1"}}><label>Display Name</label><input type="text" value={profileDraft.name??""} onChange={e=>setProfileDraft(d=>({...d,name:e.target.value}))}/></div>
-              <div className="fg"><label>Handicap Index</label><input type="number" step=".1" min={0} max={54} value={profileDraft.handicap??""} onChange={e=>setProfileDraft(d=>({...d,handicap:e.target.value}))}/></div>
-              <div className="fg"><label>GHIN # (optional)</label><input type="text" value={profileDraft.ghin??""} onChange={e=>setProfileDraft(d=>({...d,ghin:e.target.value}))}/></div>
+            <div className="fgrid" style={{ marginBottom: 16 }}>
+              <div className="fg" style={{ gridColumn: "1/-1" }}><label>Display Name</label><input type="text" value={profileDraft.name ?? ""} onChange={e => setProfileDraft(d => ({ ...d, name: e.target.value }))} /></div>
+              <div className="fg"><label>Handicap Index</label><input type="number" step=".1" min={0} max={54} value={profileDraft.handicap ?? ""} onChange={e => setProfileDraft(d => ({ ...d, handicap: e.target.value }))} /></div>
+              <div className="fg"><label>GHIN # (optional)</label><input type="text" value={profileDraft.ghin ?? ""} onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))} /></div>
             </div>
-            <div style={{display:"flex",gap:10}}>
+            <div style={{ display: "flex", gap: 10 }}>
               <button className="btn btn-gold" onClick={saveProfile}>Save</button>
-              <button className="btn btn-ghost" onClick={()=>setEditProfileModal(false)}>Cancel</button>
+              <button className="btn btn-ghost" onClick={() => setEditProfileModal(false)}>Cancel</button>
             </div>
           </div>
         </div>
       )}
-      <div style={{background:"var(--navy)",minHeight:"100vh"}}>
+      <div style={{ background: "var(--navy)", minHeight: "100vh" }}>
         <div className="league-picker au">
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:28,flexWrap:"wrap",gap:10}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:"2rem"}}>⛳</span>
-              <div className="auth-title" style={{fontSize:"1.3rem"}}>GREEK SIDE BUNKER</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, flexWrap: "wrap", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: "2rem" }}>⛳</span>
+              <div className="auth-title" style={{ fontSize: "1.3rem" }}>GREEK SIDE BUNKER</div>
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:9}}>
-              <div className="avatar">{profile?.avatar_url?<img src={profile.avatar_url} alt=""/>:ini(profile?.name)}</div>
-              <span style={{fontSize:".88rem",color:"var(--cream)"}}>{profile?.name}</span>
-              <button className="btn btn-ghost btn-sm" onClick={()=>{setProfileDraft({name:profile?.name,handicap:profile?.handicap,ghin:profile?.ghin});setEditProfileModal(true);}}>Edit Profile</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <div className="avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : ini(profile?.name)}</div>
+              <span style={{ fontSize: ".88rem", color: "var(--cream)" }}>{profile?.name}</span>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin }); setEditProfileModal(true); }}>Edit Profile</button>
               <button className="btn btn-ghost btn-sm" onClick={signOut}>Sign Out</button>
             </div>
           </div>
 
-          <div style={{marginBottom:22}}>
-            <div className="card-hdr" style={{marginBottom:12}}>Your Leagues</div>
-            {leagues.length===0&&<div className="empty">No leagues yet — create one or join with a code below.</div>}
+          <div style={{ marginBottom: 22 }}>
+            <div className="card-hdr" style={{ marginBottom: 12 }}>Your Leagues</div>
+            {leagues.length === 0 && <div className="empty">No leagues yet — create one or join with a code below.</div>}
             {leagues.map(l => {
-              const m = myMemberships.find(x=>x.league_id===l.id);
+              const m = myMemberships.find(x => x.league_id === l.id);
               return (
-                <div key={l.id} className="league-card" onClick={()=>selectLeague(l)}>
-                  <div><div className="league-name">{l.name}</div>{l.description&&<div className="league-meta">{l.description}</div>}</div>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                    <span className="fmt-pip">{FORMAT_LABELS[l.scoring_format??"stroke"]}</span>
-                    <span className={`lrole ${m?.role??"player"}`}>{m?.role??"player"}</span>
+                <div key={l.id} className="league-card" onClick={() => selectLeague(l)}>
+                  <div><div className="league-name">{l.name}</div>{l.description && <div className="league-meta">{l.description}</div>}</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    <span className="fmt-pip">{FORMAT_LABELS[l.scoring_format ?? "stroke"]}</span>
+                    <span className={`lrole ${m?.role ?? "player"}`}>{m?.role ?? "player"}</span>
                   </div>
                 </div>
               );
             })}
           </div>
 
-          <div className="card" style={{marginBottom:12}}>
+          <div className="card" style={{ marginBottom: 12 }}>
             <div className="card-hdr">Create a League</div>
-            {!showCreateLeague?<button className="btn btn-gold" onClick={()=>setShowCreateLeague(true)}>+ New League</button>:(
+            {!showCreateLeague ? <button className="btn btn-gold" onClick={() => setShowCreateLeague(true)}>+ New League</button> : (
               <div>
-                <div className="fgrid" style={{marginBottom:14}}>
-                  <div className="fg" style={{gridColumn:"1/-1"}}><label>League Name</label><input type="text" placeholder="The Ryder Cup Crew" value={newLeague.name} onChange={e=>setNewLeague(l=>({...l,name:e.target.value}))}/></div>
-                  <div className="fg" style={{gridColumn:"1/-1"}}><label>Description (optional)</label><input type="text" placeholder="Summer 2025 season" value={newLeague.description} onChange={e=>setNewLeague(l=>({...l,description:e.target.value}))}/></div>
+                <div className="fgrid" style={{ marginBottom: 14 }}>
+                  <div className="fg" style={{ gridColumn: "1/-1" }}><label>League Name</label><input type="text" placeholder="The Ryder Cup Crew" value={newLeague.name} onChange={e => setNewLeague(l => ({ ...l, name: e.target.value }))} /></div>
+                  <div className="fg" style={{ gridColumn: "1/-1" }}><label>Description (optional)</label><input type="text" placeholder="Summer 2025 season" value={newLeague.description} onChange={e => setNewLeague(l => ({ ...l, description: e.target.value }))} /></div>
                 </div>
-                <div style={{display:"flex",gap:10}}>
+                <div style={{ display: "flex", gap: 10 }}>
                   <button className="btn btn-gold" onClick={createLeague} disabled={!newLeague.name.trim()}>Create</button>
-                  <button className="btn btn-ghost" onClick={()=>setShowCreateLeague(false)}>Cancel</button>
+                  <button className="btn btn-ghost" onClick={() => setShowCreateLeague(false)}>Cancel</button>
                 </div>
               </div>
             )}
@@ -684,11 +709,11 @@ export default function App() {
 
           <div className="card">
             <div className="card-hdr">Join with Invite Code</div>
-            <div style={{display:"flex",gap:10}}>
-              <input type="text" placeholder="8-character code" value={joinCode} onChange={e=>setJoinCode(e.target.value)} style={{flex:1}} onKeyDown={e=>e.key==="Enter"&&joinLeague()}/>
+            <div style={{ display: "flex", gap: 10 }}>
+              <input type="text" placeholder="8-character code" value={joinCode} onChange={e => setJoinCode(e.target.value)} style={{ flex: 1 }} onKeyDown={e => e.key === "Enter" && joinLeague()} />
               <button className="btn btn-ghost" onClick={joinLeague}>Join</button>
             </div>
-            {joinMsg.text&&<p className="note" style={{color:joinMsg.ok?"var(--green)":"#f09090",marginTop:8}}>{joinMsg.text}</p>}
+            {joinMsg.text && <p className="note" style={{ color: joinMsg.ok ? "var(--green)" : "#f09090", marginTop: 8 }}>{joinMsg.text}</p>}
           </div>
         </div>
       </div>
@@ -701,17 +726,17 @@ export default function App() {
       <style>{CSS}</style>
 
       {/* Scorecard modal */}
-      {viewCardModal&&(
-        <div className="modal-bg" onClick={()=>setViewCardModal(null)}>
-          <div className="modal" style={{maxWidth:700}} onClick={e=>e.stopPropagation()}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-              <div className="modal-title" style={{marginBottom:0}}>📋 Scorecard</div>
-              <div style={{display:"flex",gap:8}}>
+      {viewCardModal && (
+        <div className="modal-bg" onClick={() => setViewCardModal(null)}>
+          <div className="modal" style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div className="modal-title" style={{ marginBottom: 0 }}>📋 Scorecard</div>
+              <div style={{ display: "flex", gap: 8 }}>
                 <a href={viewCardModal.url} target="_blank" rel="noreferrer"><button className="btn btn-ghost btn-sm">Full Size ↗</button></a>
-                <button className="btn btn-ghost btn-sm" onClick={()=>setViewCardModal(null)}>Close</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setViewCardModal(null)}>Close</button>
               </div>
             </div>
-            <img src={viewCardModal.url} alt="Scorecard" style={{maxWidth:"100%",borderRadius:8,border:"1px solid var(--gold-border)",display:"block",margin:"0 auto"}}/>
+            <img src={viewCardModal.url} alt="Scorecard" style={{ maxWidth: "100%", borderRadius: 8, border: "1px solid var(--gold-border)", display: "block", margin: "0 auto" }} />
           </div>
         </div>
       )}
@@ -719,166 +744,166 @@ export default function App() {
       <div className="app au">
         {/* Topbar */}
         <div className="topbar">
-          <div className="brand" onClick={()=>{setActiveLeague(null);setDataLoaded(false);}}>
-            <span style={{fontSize:"1.7rem"}}>⛳</span>
+          <div className="brand" onClick={() => { setActiveLeague(null); setDataLoaded(false); }}>
+            <span style={{ fontSize: "1.7rem" }}>⛳</span>
             <div><div className="brand-name">GREEK SIDE BUNKER</div><span className="brand-league">{activeLeague.name}</span></div>
           </div>
           <div className="topbar-right">
-            {isAdmin&&<span className="badge-admin">Commissioner</span>}
+            {isAdmin && <span className="badge-admin">Commissioner</span>}
             <span className="fmt-pip">{FORMAT_LABELS[config.scoringFormat]}</span>
-            {config.attestRequired&&pendingForMe.length>0&&<button className="btn btn-ghost btn-sm" style={{color:"var(--gold-light)"}} onClick={()=>setTab("score")}>⏳ {pendingForMe.length} to attest</button>}
-            {isAdmin&&pendingJoins.length>0&&<button className="btn btn-ghost btn-sm" style={{color:"var(--purple)"}} onClick={()=>{setTab("admin");setAdminTab("members");}}>🙋 {pendingJoins.length} join request{pendingJoins.length>1?"s":""}</button>}
+            {config.attestRequired && pendingForMe.length > 0 && <button className="btn btn-ghost btn-sm" style={{ color: "var(--gold-light)" }} onClick={() => setTab("score")}>⏳ {pendingForMe.length} to attest</button>}
+            {isAdmin && pendingJoins.length > 0 && <button className="btn btn-ghost btn-sm" style={{ color: "var(--purple)" }} onClick={() => { setTab("admin"); setAdminTab("members"); }}>🙋 {pendingJoins.length} join request{pendingJoins.length > 1 ? "s" : ""}</button>}
             <div className="user-chip">
-              <div className="avatar">{profile?.avatar_url?<img src={profile.avatar_url} alt=""/>:ini(profile?.name)}</div>
+              <div className="avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : ini(profile?.name)}</div>
               <div>
-                <div style={{fontSize:".88rem",color:"var(--cream)"}}>{profile?.name}</div>
-                {config.useHandicap&&<div style={{fontSize:".7rem",color:"var(--cream-dim)"}}>Hcp {profile?.handicap??0}</div>}
+                <div style={{ fontSize: ".88rem", color: "var(--cream)" }}>{profile?.name}</div>
+                {config.useHandicap && <div style={{ fontSize: ".7rem", color: "var(--cream-dim)" }}>Hcp {profile?.handicap ?? 0}</div>}
               </div>
             </div>
             <button className="btn btn-ghost btn-sm" onClick={signOut}>Sign Out</button>
           </div>
         </div>
 
-        <SeasonBar/>
+        <SeasonBar />
 
         {/* Banner */}
-        {dataLoaded&&(
+        {dataLoaded && (
           <div className="banner">
             <div className="bstat"><div className="bstat-n">{players.length}</div><div className="bstat-l">Players</div></div>
             <div className="bstat"><div className="bstat-n">{courses.length}</div><div className="bstat-l">Courses</div></div>
             <div className="bstat"><div className="bstat-n">{approvedCount}</div><div className="bstat-l">Rounds</div></div>
-            <div className="bstat" style={{padding:"12px 16px"}}>
+            <div className="bstat" style={{ padding: "12px 16px" }}>
               <div className="bstat-n">{leaguePct}%</div><div className="bstat-l">Complete</div>
-              <div className="pw" style={{marginTop:5}}><div className="pf" style={{width:`${leaguePct}%`}}/></div>
+              <div className="pw" style={{ marginTop: 5 }}><div className="pf" style={{ width: `${leaguePct}%` }} /></div>
             </div>
           </div>
         )}
 
         {/* Nav */}
         <div className="nav">
-          {[["leaderboard","🏆 Leaderboard"],["score","✏️ Post Score"],...(isAdmin?[["admin","⚙ Admin"]]:[])]
-            .map(([k,l])=><button key={k} className={`nav-tab${tab===k?" active":""}${k==="admin"?" admin-tab":""}`} onClick={()=>setTab(k)}>{l}</button>)}
+          {[["leaderboard", "🏆 Leaderboard"], ["score", "✏️ Post Score"], ...(isAdmin ? [["admin", "⚙ Admin"]] : [])]
+            .map(([k, l]) => <button key={k} className={`nav-tab${tab === k ? " active" : ""}${k === "admin" ? " admin-tab" : ""}`} onClick={() => setTab(k)}>{l}</button>)}
         </div>
 
-        {!dataLoaded&&<div className="empty">Loading…</div>}
+        {!dataLoaded && <div className="empty">Loading…</div>}
 
         {/* ── LEADERBOARD ── */}
-        {tab==="leaderboard"&&dataLoaded&&<>
+        {tab === "leaderboard" && dataLoaded && <>
           <div className="stabs">
-            {[["overall",config.scoringFormat==="stableford"?"⭐ Stableford":"🏆 Net Standings"],
-              ["gross","🏌️ Gross"],
-              ...(config.scoringFormat!=="match"&&config.scoringFormat!=="scramble"?[["course","📍 By Course"]]:[] ),
-              ["best","⭐ Best Rounds"],["completion","📋 Completion"],["payouts","💰 Payouts"]]
-              .map(([k,l])=><button key={k} className={`stab${leaderTab===k?" active":""}`} onClick={()=>setLeaderTab(k)}>{l}</button>)}
+            {[["overall", config.scoringFormat === "stableford" ? "⭐ Stableford" : "🏆 Net Standings"],
+            ["gross", "🏌️ Gross"],
+            ...(config.scoringFormat !== "match" && config.scoringFormat !== "scramble" ? [["course", "📍 By Course"]] : []),
+            ["best", "⭐ Best Rounds"], ["completion", "📋 Completion"], ["payouts", "💰 Payouts"]]
+              .map(([k, l]) => <button key={k} className={`stab${leaderTab === k ? " active" : ""}`} onClick={() => setLeaderTab(k)}>{l}</button>)}
           </div>
 
-          {leaderTab==="overall"&&<div className="card">
+          {leaderTab === "overall" && <div className="card">
             <div className="card-hdr">
-              {config.scoringFormat==="stableford"?"⭐ Stableford Standings":config.scoringFormat==="match"?"🆚 Match Play":"🏆 Net Standings"}
-              {!config.useHandicap&&<span style={{fontSize:".72rem",color:"var(--cream-dim)",marginLeft:10,fontFamily:"var(--font-b)",fontWeight:400,textTransform:"none",letterSpacing:0}}>(gross only)</span>}
+              {config.scoringFormat === "stableford" ? "⭐ Stableford Standings" : config.scoringFormat === "match" ? "🆚 Match Play" : "🏆 Net Standings"}
+              {!config.useHandicap && <span style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginLeft: 10, fontFamily: "var(--font-b)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(gross only)</span>}
             </div>
-            {config.hideScores&&!myHasSubmitted&&<div className="alert-w" style={{marginBottom:14}}>📵 Scores are hidden until you post your own round.</div>}
-            {overallLB.length===0?<div className="empty">No {config.attestRequired?"approved ":""}rounds yet.</div>:(
+            {config.hideScores && !myHasSubmitted && <div className="alert-w" style={{ marginBottom: 14 }}>📵 Scores are hidden until you post your own round.</div>}
+            {overallLB.length === 0 ? <div className="empty">No {config.attestRequired ? "approved " : ""}rounds yet.</div> : (
               <div className="tw"><table>
-                <thead><tr><th>#</th><th>Player</th>{config.useHandicap&&<th>Hcp</th>}<th>Rounds</th><th>{config.scoringFormat==="stableford"?"Total Pts":"Avg Net"}</th></tr></thead>
-                <tbody>{overallLB.map((p,i)=><tr key={p.id}>{rankEl(i)}<td><span className="pname">{p.name}</span></td>{config.useHandicap&&<td style={{color:"var(--cream-dim)"}}>{p.handicap}</td>}<td>{p.totalRounds}</td><td><span className="sb" style={{color:"var(--gold-light)"}}>{p.label}</span></td></tr>)}</tbody>
+                <thead><tr><th>#</th><th>Player</th>{config.useHandicap && <th>Hcp</th>}<th>Rounds</th><th>{config.scoringFormat === "stableford" ? "Total Pts" : "Avg Net"}</th></tr></thead>
+                <tbody>{overallLB.map((p, i) => <tr key={p.id}>{rankEl(i)}<td><span className="pname">{p.name}</span></td>{config.useHandicap && <td style={{ color: "var(--cream-dim)" }}>{p.handicap}</td>}<td>{p.totalRounds}</td><td><span className="sb" style={{ color: "var(--gold-light)" }}>{p.label}</span></td></tr>)}</tbody>
               </table></div>
             )}
           </div>}
 
-          {leaderTab==="gross"&&<div className="card">
+          {leaderTab === "gross" && <div className="card">
             <div className="card-hdr">🏌️ Gross Standings</div>
-            {grossLB.length===0?<div className="empty">No rounds yet.</div>:(
+            {grossLB.length === 0 ? <div className="empty">No rounds yet.</div> : (
               <div className="tw"><table>
                 <thead><tr><th>#</th><th>Player</th><th>Rounds</th><th>Avg Gross</th><th>Best</th></tr></thead>
-                <tbody>{grossLB.map((p,i)=><tr key={p.id}>{rankEl(i)}<td><span className="pname">{p.name}</span></td><td>{p.totalRounds}</td><td><span className="sb" style={{color:"var(--gold-light)"}}>{p.avg.toFixed(1)}</span></td><td style={{color:"var(--cream-dim)"}}>{Math.min(...p.pr.map(r=>r.gross))}</td></tr>)}</tbody>
+                <tbody>{grossLB.map((p, i) => <tr key={p.id}>{rankEl(i)}<td><span className="pname">{p.name}</span></td><td>{p.totalRounds}</td><td><span className="sb" style={{ color: "var(--gold-light)" }}>{p.avg.toFixed(1)}</span></td><td style={{ color: "var(--cream-dim)" }}>{Math.min(...p.pr.map(r => r.gross))}</td></tr>)}</tbody>
               </table></div>
             )}
           </div>}
 
-          {leaderTab==="course"&&<div className="card">
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
-              <span style={{color:"var(--gold)",fontFamily:"var(--font-d)",fontSize:".62rem",letterSpacing:"2px",textTransform:"uppercase"}}>Course</span>
-              <select value={selCourse||""} onChange={e=>setSelCourse(Number(e.target.value))} style={{width:"auto",minWidth:200}}>
-                {courses.map(c=><option key={c.id} value={c.id}>{c.name} · Par {c.par}</option>)}
+          {leaderTab === "course" && <div className="card">
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+              <span style={{ color: "var(--gold)", fontFamily: "var(--font-d)", fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase" }}>Course</span>
+              <select value={selCourse || ""} onChange={e => setSelCourse(Number(e.target.value))} style={{ width: "auto", minWidth: 200 }}>
+                {courses.map(c => <option key={c.id} value={c.id}>{c.name} · Par {c.par}</option>)}
               </select>
             </div>
-            <div className="card-hdr">📍 {courses.find(c=>c.id===selCourse)?.name}</div>
-            {courseLB.length===0?<div className="empty">No rounds at this course yet.</div>:(
+            <div className="card-hdr">📍 {courses.find(c => c.id === selCourse)?.name}</div>
+            {courseLB.length === 0 ? <div className="empty">No rounds at this course yet.</div> : (
               <div className="tw"><table>
                 <thead><tr><th>#</th><th>Player</th><th>Rounds</th><th>Best Net</th><th>Avg Net</th></tr></thead>
-                <tbody>{courseLB.map((p,i)=><tr key={p.id}>{rankEl(i)}<td><span className="pname">{p.name}</span></td><td>{p.cr.length}/{config.roundsPerCourse}</td><td>{netEl(p.best,p.par)}</td><td style={{color:"var(--cream-dim)"}}>{p.avg}</td></tr>)}</tbody>
+                <tbody>{courseLB.map((p, i) => <tr key={p.id}>{rankEl(i)}<td><span className="pname">{p.name}</span></td><td>{p.cr.length}/{config.roundsPerCourse}</td><td>{netEl(p.best, p.par)}</td><td style={{ color: "var(--cream-dim)" }}>{p.avg}</td></tr>)}</tbody>
               </table></div>
             )}
           </div>}
 
-          {leaderTab==="best"&&<div className="card">
+          {leaderTab === "best" && <div className="card">
             <div className="card-hdr">⭐ Best Single Round</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}} className="bg2">
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }} className="bg2">
               <div>
-                <div style={{fontSize:".62rem",letterSpacing:"2px",color:"var(--gold)",fontFamily:"var(--font-d)",textTransform:"uppercase",marginBottom:8}}>Best Net</div>
-                {bestNetLB.length===0?<div className="empty" style={{padding:"16px 0"}}>—</div>:(
+                <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "var(--gold)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 8 }}>Best Net</div>
+                {bestNetLB.length === 0 ? <div className="empty" style={{ padding: "16px 0" }}>—</div> : (
                   <div className="tw"><table>
                     <thead><tr><th>#</th><th>Player</th><th>Course</th><th>Net</th></tr></thead>
-                    <tbody>{bestNetLB.map((p,i)=><tr key={p.id}>{rankEl(i)}<td><span className="pname" style={{fontSize:".84rem"}}>{p.name}</span></td><td style={{fontSize:".74rem",color:"var(--cream-dim)"}}>{p.best.course_name}</td><td>{netEl(p.best.net,p.best.par)}</td></tr>)}</tbody>
+                    <tbody>{bestNetLB.map((p, i) => <tr key={p.id}>{rankEl(i)}<td><span className="pname" style={{ fontSize: ".84rem" }}>{p.name}</span></td><td style={{ fontSize: ".74rem", color: "var(--cream-dim)" }}>{p.best.course_name}</td><td>{netEl(p.best.net, p.best.par)}</td></tr>)}</tbody>
                   </table></div>
                 )}
               </div>
               <div>
-                <div style={{fontSize:".62rem",letterSpacing:"2px",color:"var(--blue)",fontFamily:"var(--font-d)",textTransform:"uppercase",marginBottom:8}}>Best Gross</div>
-                {bestGrossLB.length===0?<div className="empty" style={{padding:"16px 0"}}>—</div>:(
+                <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "var(--blue)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 8 }}>Best Gross</div>
+                {bestGrossLB.length === 0 ? <div className="empty" style={{ padding: "16px 0" }}>—</div> : (
                   <div className="tw"><table>
                     <thead><tr><th>#</th><th>Player</th><th>Course</th><th>Gross</th></tr></thead>
-                    <tbody>{bestGrossLB.map((p,i)=><tr key={p.id}>{rankEl(i)}<td><span className="pname" style={{fontSize:".84rem"}}>{p.name}</span></td><td style={{fontSize:".74rem",color:"var(--cream-dim)"}}>{p.best.course_name}</td><td><span className="sb" style={{color:"var(--blue)"}}>{p.best.gross}</span></td></tr>)}</tbody>
+                    <tbody>{bestGrossLB.map((p, i) => <tr key={p.id}>{rankEl(i)}<td><span className="pname" style={{ fontSize: ".84rem" }}>{p.name}</span></td><td style={{ fontSize: ".74rem", color: "var(--cream-dim)" }}>{p.best.course_name}</td><td><span className="sb" style={{ color: "var(--blue)" }}>{p.best.gross}</span></td></tr>)}</tbody>
                   </table></div>
                 )}
               </div>
             </div>
           </div>}
 
-          {leaderTab==="completion"&&<div className="card">
+          {leaderTab === "completion" && <div className="card">
             <div className="card-hdr">📋 Completion Tracker</div>
-            <p className="note" style={{marginBottom:14}}>{config.roundsPerCourse} {config.attestRequired?"approved ":""}round{config.roundsPerCourse>1?"s":""} per course · {courses.length*config.roundsPerCourse} total required.</p>
-            {completionData.map(p=>(
-              <div key={p.id} style={{marginBottom:18}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div className="avatar">{p.avatar_url?<img src={p.avatar_url} alt=""/>:ini(p.name)}</div>
+            <p className="note" style={{ marginBottom: 14 }}>{config.roundsPerCourse} {config.attestRequired ? "approved " : ""}round{config.roundsPerCourse > 1 ? "s" : ""} per course · {courses.length * config.roundsPerCourse} total required.</p>
+            {completionData.map(p => (
+              <div key={p.id} style={{ marginBottom: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div className="avatar">{p.avatar_url ? <img src={p.avatar_url} alt="" /> : ini(p.name)}</div>
                     <span className="pname">{p.name}</span>
                   </div>
-                  <span style={{fontSize:".78rem",color:p.pct===100?"var(--green)":"var(--cream-dim)"}}>{p.done}/{p.total}{p.pct===100?" ✓":""}</span>
+                  <span style={{ fontSize: ".78rem", color: p.pct === 100 ? "var(--green)" : "var(--cream-dim)" }}>{p.done}/{p.total}{p.pct === 100 ? " ✓" : ""}</span>
                 </div>
-                <div className="pw" style={{marginBottom:5}}><div className="pf" style={{width:`${p.pct}%`}}/></div>
-                <div>{p.cs.map(c=><span key={c.id} className={`dpill ${c.done?"done":c.played>0?"part":"none"}`}>{c.done?"✓":`${c.played}/${config.roundsPerCourse}`} {c.name}</span>)}</div>
+                <div className="pw" style={{ marginBottom: 5 }}><div className="pf" style={{ width: `${p.pct}%` }} /></div>
+                <div>{p.cs.map(c => <span key={c.id} className={`dpill ${c.done ? "done" : c.played > 0 ? "part" : "none"}`}>{c.done ? "✓" : `${c.played}/${config.roundsPerCourse}`} {c.name}</span>)}</div>
               </div>
             ))}
           </div>}
 
-          {leaderTab==="payouts"&&<div className="card">
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
-              <div className="card-hdr" style={{marginBottom:0}}>💰 Payouts</div>
-              {isAdmin&&!payoutEdit&&<button className="btn btn-ghost btn-sm" onClick={()=>{setPayoutDraft({...payouts});setPayoutEdit(true);}}>Edit</button>}
+          {leaderTab === "payouts" && <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+              <div className="card-hdr" style={{ marginBottom: 0 }}>💰 Payouts</div>
+              {isAdmin && !payoutEdit && <button className="btn btn-ghost btn-sm" onClick={() => { setPayoutDraft({ ...payouts }); setPayoutEdit(true); }}>Edit</button>}
             </div>
-            {payoutEdit?(
+            {payoutEdit ? (
               <div>
-                <div className="fgrid" style={{marginBottom:14}}>
-                  {[["overallNet","🏆 Overall Net"],["overallGross","🏌️ Overall Gross"],["courseNet","📍 Per-Course Net"],["courseGross","📍 Per-Course Gross"],["bestNet","⭐ Best Net Round"],["bestGross","⭐ Best Gross Round"]].map(([k,l])=>(
-                    <div className="fg" key={k}><label>{l}</label><input type="text" placeholder="e.g. $50" value={payoutDraft?.[k]??""} onChange={e=>setPayoutDraft(d=>({...d,[k]:e.target.value}))}/></div>
+                <div className="fgrid" style={{ marginBottom: 14 }}>
+                  {[["overallNet", "🏆 Overall Net"], ["overallGross", "🏌️ Overall Gross"], ["courseNet", "📍 Per-Course Net"], ["courseGross", "📍 Per-Course Gross"], ["bestNet", "⭐ Best Net Round"], ["bestGross", "⭐ Best Gross Round"]].map(([k, l]) => (
+                    <div className="fg" key={k}><label>{l}</label><input type="text" placeholder="e.g. $50" value={payoutDraft?.[k] ?? ""} onChange={e => setPayoutDraft(d => ({ ...d, [k]: e.target.value }))} /></div>
                   ))}
                 </div>
-                <div style={{display:"flex",gap:10}}>
-                  <button className="btn btn-gold" onClick={()=>savePayouts(payoutDraft)}>Save</button>
-                  <button className="btn btn-ghost" onClick={()=>setPayoutEdit(false)}>Cancel</button>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button className="btn btn-gold" onClick={() => savePayouts(payoutDraft)}>Save</button>
+                  <button className="btn btn-ghost" onClick={() => setPayoutEdit(false)}>Cancel</button>
                 </div>
               </div>
-            ):(
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}} className="bg2">
-                {[["overallNet","🏆 Overall Net",overallLB[0]?.name],["overallGross","🏌️ Overall Gross",grossLB[0]?.name],["courseNet","📍 Per-Course Net",null],["courseGross","📍 Per-Course Gross",null],["bestNet","⭐ Best Net",bestNetLB[0]?.name],["bestGross","⭐ Best Gross",bestGrossLB[0]?.name]].map(([k,l,leader])=>(
-                  <div key={k} style={{background:"rgba(255,255,255,.03)",border:"1px solid var(--navy-border)",borderRadius:8,padding:"11px 13px"}}>
-                    <div style={{fontSize:".72rem",color:"var(--cream-dim)",marginBottom:3}}>{l}</div>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                      <span style={{fontFamily:"var(--font-d)",fontSize:"1.05rem",color:"var(--gold)"}}>{payouts?.[k]||<span style={{color:"#4b5563",fontSize:".8rem",fontFamily:"var(--font-b)",fontStyle:"italic"}}>Not set</span>}</span>
-                      {leader&&<span style={{fontSize:".75rem",color:"var(--green)"}}>▶ {leader}</span>}
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="bg2">
+                {[["overallNet", "🏆 Overall Net", overallLB[0]?.name], ["overallGross", "🏌️ Overall Gross", grossLB[0]?.name], ["courseNet", "📍 Per-Course Net", null], ["courseGross", "📍 Per-Course Gross", null], ["bestNet", "⭐ Best Net", bestNetLB[0]?.name], ["bestGross", "⭐ Best Gross", bestGrossLB[0]?.name]].map(([k, l, leader]) => (
+                  <div key={k} style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8, padding: "11px 13px" }}>
+                    <div style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginBottom: 3 }}>{l}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontFamily: "var(--font-d)", fontSize: "1.05rem", color: "var(--gold)" }}>{payouts?.[k] || <span style={{ color: "#4b5563", fontSize: ".8rem", fontFamily: "var(--font-b)", fontStyle: "italic" }}>Not set</span>}</span>
+                      {leader && <span style={{ fontSize: ".75rem", color: "var(--green)" }}>▶ {leader}</span>}
                     </div>
                   </div>
                 ))}
@@ -888,28 +913,28 @@ export default function App() {
         </>}
 
         {/* ── POST SCORE ── */}
-        {tab==="score"&&dataLoaded&&<>
-          {config.attestRequired&&pendingForMe.length>0&&(
-            <div className="card" style={{borderColor:"var(--gold-border)"}}>
-              <div className="card-hdr" style={{color:"var(--gold-light)"}}>⏳ Rounds Awaiting Your Attestation</div>
+        {tab === "score" && dataLoaded && <>
+          {config.attestRequired && pendingForMe.length > 0 && (
+            <div className="card" style={{ borderColor: "var(--gold-border)" }}>
+              <div className="card-hdr" style={{ color: "var(--gold-light)" }}>⏳ Rounds Awaiting Your Attestation</div>
               <div className="tw"><table>
                 <thead><tr><th>Player</th><th>Course</th><th>Date</th><th>Gross</th><th>Net</th><th>Card</th><th>Action</th></tr></thead>
-                <tbody>{pendingForMe.map(r=>(
+                <tbody>{pendingForMe.map(r => (
                   <tr key={r.id}>
-                    <td><span className="pname" style={{fontSize:".86rem"}}>{r.player_name}</span></td>
-                    <td style={{fontSize:".8rem",color:"var(--cream-dim)"}}>{r.course_name}</td>
-                    <td style={{fontSize:".76rem",color:"var(--cream-dim)"}}>{r.date}</td>
-                    <td>{r.gross}</td><td>{netEl(r.net,r.par)}</td>
-                    <td>{r.scorecard_url?<button className="sc-btn" onClick={()=>setViewCardModal({url:r.scorecard_url})}>📋 View</button>:<span style={{color:"#4b5563",fontSize:".8rem"}}>None</span>}</td>
-                    <td><div style={{display:"flex",gap:5}}>
-                      <button className="btn btn-gold btn-sm" onClick={async()=>{
-                        await supabase.from("rounds").update({attest_status:"approved",attest_at:new Date().toISOString()}).eq("id",r.id);
-                        setRounds(p=>p.map(x=>x.id===r.id?{...x,attest_status:"approved"}:x));
+                    <td><span className="pname" style={{ fontSize: ".86rem" }}>{r.player_name}</span></td>
+                    <td style={{ fontSize: ".8rem", color: "var(--cream-dim)" }}>{r.course_name}</td>
+                    <td style={{ fontSize: ".76rem", color: "var(--cream-dim)" }}>{r.date}</td>
+                    <td>{r.gross}</td><td>{netEl(r.net, r.par)}</td>
+                    <td>{r.scorecard_url ? <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}>📋 View</button> : <span style={{ color: "#4b5563", fontSize: ".8rem" }}>None</span>}</td>
+                    <td><div style={{ display: "flex", gap: 5 }}>
+                      <button className="btn btn-gold btn-sm" onClick={async () => {
+                        await supabase.from("rounds").update({ attest_status: "approved", attest_at: new Date().toISOString() }).eq("id", r.id);
+                        setRounds(p => p.map(x => x.id === r.id ? { ...x, attest_status: "approved" } : x));
                       }}>✓ Approve</button>
-                      <button className="btn btn-danger" onClick={async()=>{
-                        const note=window.prompt("Reason for rejection (optional):")||"";
-                        await supabase.from("rounds").update({attest_status:"rejected",attest_note:note,attest_at:new Date().toISOString()}).eq("id",r.id);
-                        setRounds(p=>p.map(x=>x.id===r.id?{...x,attest_status:"rejected",attest_note:note}:x));
+                      <button className="btn btn-danger" onClick={async () => {
+                        const note = window.prompt("Reason for rejection (optional):") || "";
+                        await supabase.from("rounds").update({ attest_status: "rejected", attest_note: note, attest_at: new Date().toISOString() }).eq("id", r.id);
+                        setRounds(p => p.map(x => x.id === r.id ? { ...x, attest_status: "rejected", attest_note: note } : x));
                       }}>✗ Reject</button>
                     </div></td>
                   </tr>
@@ -918,106 +943,106 @@ export default function App() {
             </div>
           )}
 
-          {!isOpen&&<div className="alert-d" style={{marginBottom:16}}>⛔ Season is not currently active — score submission is closed.</div>}
+          {!isOpen && <div className="alert-d" style={{ marginBottom: 16 }}>⛔ Season is not currently active — score submission is closed.</div>}
 
-          <div className="card" style={{opacity:isOpen?1:.65,pointerEvents:isOpen?"auto":"none"}}>
+          <div className="card" style={{ opacity: isOpen ? 1 : .65, pointerEvents: isOpen ? "auto" : "none" }}>
             <div className="card-hdr">✏️ Post Your Round
-              {config.scoringFormat!=="stroke"&&<span style={{fontSize:".74rem",color:"var(--purple)",marginLeft:10,fontFamily:"var(--font-b)",fontWeight:400,textTransform:"none",letterSpacing:0}}>{FORMAT_LABELS[config.scoringFormat]}</span>}
+              {config.scoringFormat !== "stroke" && <span style={{ fontSize: ".74rem", color: "var(--purple)", marginLeft: 10, fontFamily: "var(--font-b)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>{FORMAT_LABELS[config.scoringFormat]}</span>}
             </div>
             <div className="fgrid">
               <div className="fg"><label>Course</label>
                 <select value={form.courseId} onChange={setF("courseId")}>
                   <option value="">Select course…</option>
-                  {courses.map(c=>{
-                    const played=myApprovedOnCourse(c.id).length;
-                    const full=played>=config.roundsPerCourse;
-                    return <option key={c.id} value={c.id} disabled={full}>{c.name} · Par {c.par}{full?" ✓":played>0?` (${played}/${config.roundsPerCourse})`:""}</option>;
+                  {courses.map(c => {
+                    const played = myApprovedOnCourse(c.id).length;
+                    const full = played >= config.roundsPerCourse;
+                    return <option key={c.id} value={c.id} disabled={full}>{c.name} · Par {c.par}{full ? " ✓" : played > 0 ? ` (${played}/${config.roundsPerCourse})` : ""}</option>;
                   })}
                 </select>
               </div>
-              {config.attestRequired&&(
+              {config.attestRequired && (
                 <div className="fg"><label>Attested By</label>
                   <select value={form.attesterId} onChange={setF("attesterId")}>
                     <option value="">Select playing partner…</option>
-                    {members.filter(m=>m.user_id!==session.user.id).map(m=><option key={m.user_id} value={m.user_id}>{m.profile.name}</option>)}
+                    {members.filter(m => m.user_id !== session.user.id).map(m => <option key={m.user_id} value={m.user_id}>{m.profile.name}</option>)}
                   </select>
                 </div>
               )}
               <div className="fg">
                 <label>Gross Score</label>
-                <input type="number" min={50} max={200} placeholder="e.g. 88" value={form.score} onChange={setF("score")}/>
+                <input type="number" min={50} max={200} placeholder="e.g. 88" value={form.score} onChange={setF("score")} />
               </div>
-              <div className="fg"><label>Date Played</label><input type="date" value={form.date} onChange={setF("date")}/></div>
-              <div className="fg" style={{gridColumn:"1/-1"}}>
-                <label>Scorecard Photo {config.scorecardRequired?<span style={{color:"var(--red)"}}>*</span>:<span style={{color:"var(--cream-dim)",textTransform:"none",letterSpacing:0,fontFamily:"var(--font-b)"}}>(optional)</span>}</label>
-                {!cardPreview?(
+              <div className="fg"><label>Date Played</label><input type="date" value={form.date} onChange={setF("date")} /></div>
+              <div className="fg" style={{ gridColumn: "1/-1" }}>
+                <label>Scorecard Photo {config.scorecardRequired ? <span style={{ color: "var(--red)" }}>*</span> : <span style={{ color: "var(--cream-dim)", textTransform: "none", letterSpacing: 0, fontFamily: "var(--font-b)" }}>(optional)</span>}</label>
+                {!cardPreview ? (
                   <div className="upload-zone"
-                    onClick={()=>document.getElementById("sc-upload").click()}
-                    onDragOver={e=>{e.preventDefault();}}
-                    onDrop={e=>{e.preventDefault();handleCardFile(e.dataTransfer.files[0]);}}>
-                    <div style={{fontSize:"1.4rem",marginBottom:4}}>📷</div>
-                    <div style={{fontSize:".85rem",color:"var(--cream-dim)"}}>Drop photo here or <strong style={{color:"var(--gold)"}}>browse</strong> · JPG PNG HEIC · max 10 MB</div>
-                    <input id="sc-upload" type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleCardFile(e.target.files[0])}/>
+                    onClick={() => document.getElementById("sc-upload").click()}
+                    onDragOver={e => { e.preventDefault(); }}
+                    onDrop={e => { e.preventDefault(); handleCardFile(e.dataTransfer.files[0]); }}>
+                    <div style={{ fontSize: "1.4rem", marginBottom: 4 }}>📷</div>
+                    <div style={{ fontSize: ".85rem", color: "var(--cream-dim)" }}>Drop photo here or <strong style={{ color: "var(--gold)" }}>browse</strong> · JPG PNG HEIC · max 10 MB</div>
+                    <input id="sc-upload" type="file" accept="image/*" style={{ display: "none" }} onChange={e => handleCardFile(e.target.files[0])} />
                   </div>
-                ):(
-                  <div className="sc-thumb"><img src={cardPreview} alt="preview"/><button className="sc-del" onClick={()=>{setCardFile(null);setCardPreview(null);}}>✕</button></div>
+                ) : (
+                  <div className="sc-thumb"><img src={cardPreview} alt="preview" /><button className="sc-del" onClick={() => { setCardFile(null); setCardPreview(null); }}>✕</button></div>
                 )}
               </div>
             </div>
 
             {/* Net / Stableford preview */}
-            {form.courseId&&form.score&&config.useHandicap&&(()=>{
-              const c=courses.find(c=>c.id===Number(form.courseId)); if(!c) return null;
-              const hcp=calcCourseHcp(profile.handicap,c.slope,c.par,c.rating,config);
-              const gross=Number(form.score); const net=gross-hcp;
-              const pts=config.scoringFormat==="stableford"?calcStableford(gross,hcp,c.par):null;
-              return <div style={{marginTop:12,padding:"10px 14px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",borderRadius:8,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-                <span style={{fontSize:".6rem",letterSpacing:"2px",textTransform:"uppercase",color:"var(--gold)",fontFamily:"var(--font-d)"}}>Preview</span>
-                {pts!==null
-                  ?<><span className="sb" style={{color:"var(--purple)",fontSize:"1.3rem"}}>{pts} pts</span><span style={{color:"var(--cream-dim)",fontSize:".82rem"}}>Stableford</span></>
-                  :<><span className={`sb ${pmCls(net,c.par)}`} style={{fontSize:"1.3rem"}}>{net}</span><span style={{color:"var(--gold-light)"}}>{toPM(net,c.par)}</span></>
+            {form.courseId && form.score && config.useHandicap && (() => {
+              const c = courses.find(c => c.id === Number(form.courseId)); if (!c) return null;
+              const hcp = calcCourseHcp(profile.handicap, c.slope, c.par, c.rating, config);
+              const gross = Number(form.score); const net = gross - hcp;
+              const pts = config.scoringFormat === "stableford" ? calcStableford(gross, hcp, c.par) : null;
+              return <div style={{ marginTop: 12, padding: "10px 14px", background: "var(--gold-dim)", border: "1px solid var(--gold-border)", borderRadius: 8, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                <span style={{ fontSize: ".6rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)" }}>Preview</span>
+                {pts !== null
+                  ? <><span className="sb" style={{ color: "var(--purple)", fontSize: "1.3rem" }}>{pts} pts</span><span style={{ color: "var(--cream-dim)", fontSize: ".82rem" }}>Stableford</span></>
+                  : <><span className={`sb ${pmCls(net, c.par)}`} style={{ fontSize: "1.3rem" }}>{net}</span><span style={{ color: "var(--gold-light)" }}>{toPM(net, c.par)}</span></>
                 }
-                <span style={{fontSize:".76rem",color:"var(--cream-dim)",marginLeft:"auto"}}>Gross {gross} − Hcp {hcp}{config.handicapPct!==100?` (${config.handicapPct}%)`:""}</span>
+                <span style={{ fontSize: ".76rem", color: "var(--cream-dim)", marginLeft: "auto" }}>Gross {gross} − Hcp {hcp}{config.handicapPct !== 100 ? ` (${config.handicapPct}%)` : ""}</span>
               </div>;
             })()}
 
-            <div style={{marginTop:16,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+            <div style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <button className="btn btn-gold" onClick={submitRound} disabled={!canSubmit()}>Submit Round</button>
-              {formMsg.text&&<div className={`alert-${formMsg.type}`}>{formMsg.text}</div>}
+              {formMsg.text && <div className={`alert-${formMsg.type}`}>{formMsg.text}</div>}
             </div>
-            <p className="note" style={{marginTop:8}}>
-              {config.attestRequired?"An email will be sent to your playing partner to attest this round.":"Rounds are automatically approved (no attestation required)."}
-              {config.scorecardRequired&&" Scorecard photo required."}
+            <p className="note" style={{ marginTop: 8 }}>
+              {config.attestRequired ? "An email will be sent to your playing partner to attest this round." : "Rounds are automatically approved (no attestation required)."}
+              {config.scorecardRequired && " Scorecard photo required."}
             </p>
           </div>
 
           {/* My rounds */}
-          {rounds.filter(r=>r.player_id===session.user.id).length>0&&(
+          {rounds.filter(r => r.player_id === session.user.id).length > 0 && (
             <div className="card">
               <div className="card-hdr">My Rounds</div>
               <div className="tw"><table>
                 <thead><tr>
                   <th>Course</th><th>Gross</th>
-                  {config.useHandicap&&<th>Net</th>}
-                  {config.scoringFormat==="stableford"&&<th>Pts</th>}
+                  {config.useHandicap && <th>Net</th>}
+                  {config.scoringFormat === "stableford" && <th>Pts</th>}
                   <th>Date</th><th>Status</th><th>Scorecard</th>
                 </tr></thead>
-                <tbody>{rounds.filter(r=>r.player_id===session.user.id).map(r=>(
+                <tbody>{rounds.filter(r => r.player_id === session.user.id).map(r => (
                   <tr key={r.id}>
-                    <td style={{fontSize:".84rem",color:"var(--cream-dim)"}}>{r.course_name}</td>
+                    <td style={{ fontSize: ".84rem", color: "var(--cream-dim)" }}>{r.course_name}</td>
                     <td>{r.gross}</td>
-                    {config.useHandicap&&<td>{netEl(r.net,r.par)}</td>}
-                    {config.scoringFormat==="stableford"&&<td><span style={{color:"var(--purple)",fontFamily:"var(--font-d)"}}>{r.stableford_pts??"-"}</span></td>}
-                    <td style={{fontSize:".76rem",color:"var(--cream-dim)"}}>{r.date}</td>
-                    <td>{attestBadge(r.attest_status)}{r.attest_note&&<div style={{fontSize:".7rem",color:"#f09090",marginTop:2}}>{r.attest_note}</div>}</td>
-                    <td>{r.scorecard_url?(
-                      <div style={{display:"flex",gap:5}}>
-                        <button className="sc-btn" onClick={()=>setViewCardModal({url:r.scorecard_url})}>📋</button>
-                        <button className="sc-btn" style={{borderColor:"rgba(224,92,92,.3)",background:"rgba(224,92,92,.1)",color:"#f09090"}} onClick={()=>{if(window.confirm("Delete scorecard?"))deleteScorecard(r);}}>✕</button>
+                    {config.useHandicap && <td>{netEl(r.net, r.par)}</td>}
+                    {config.scoringFormat === "stableford" && <td><span style={{ color: "var(--purple)", fontFamily: "var(--font-d)" }}>{r.stableford_pts ?? "-"}</span></td>}
+                    <td style={{ fontSize: ".76rem", color: "var(--cream-dim)" }}>{r.date}</td>
+                    <td>{attestBadge(r.attest_status)}{r.attest_note && <div style={{ fontSize: ".7rem", color: "#f09090", marginTop: 2 }}>{r.attest_note}</div>}</td>
+                    <td>{r.scorecard_url ? (
+                      <div style={{ display: "flex", gap: 5 }}>
+                        <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}>📋</button>
+                        <button className="sc-btn" style={{ borderColor: "rgba(224,92,92,.3)", background: "rgba(224,92,92,.1)", color: "#f09090" }} onClick={() => { if (window.confirm("Delete scorecard?")) deleteScorecard(r); }}>✕</button>
                       </div>
-                    ):(
-                      <label className="sc-btn" style={{background:"rgba(255,255,255,.04)",borderColor:"rgba(255,255,255,.1)",color:"var(--cream-dim)",cursor:"pointer"}}>
-                        📷 Add<input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{if(e.target.files[0])await uploadScorecardToRound(r.id,e.target.files[0]);}}/>
+                    ) : (
+                      <label className="sc-btn" style={{ background: "rgba(255,255,255,.04)", borderColor: "rgba(255,255,255,.1)", color: "var(--cream-dim)", cursor: "pointer" }}>
+                        📷 Add<input type="file" accept="image/*" style={{ display: "none" }} onChange={async e => { if (e.target.files[0]) await uploadScorecardToRound(r.id, e.target.files[0]); }} />
                       </label>
                     )}</td>
                   </tr>
@@ -1028,32 +1053,32 @@ export default function App() {
         </>}
 
         {/* ── ADMIN ── */}
-        {tab==="admin"&&isAdmin&&dataLoaded&&<>
+        {tab === "admin" && isAdmin && dataLoaded && <>
           <div className="stabs">
-            {[["config","⚙ Config"],["members",`Members${pendingJoins.length>0?` (${pendingJoins.length})`:""}`],["courses","Courses"],["rounds","All Rounds"],["league","League Info"]]
-              .map(([k,l])=><button key={k} className={`stab${adminTab===k?" active":""}`} onClick={()=>setAdminTab(k)}>{l}</button>)}
+            {[["config", "⚙ Config"], ["members", `Members${pendingJoins.length > 0 ? ` (${pendingJoins.length})` : ""}`], ["courses", "Courses"], ["rounds", "All Rounds"], ["league", "League Info"]]
+              .map(([k, l]) => <button key={k} className={`stab${adminTab === k ? " active" : ""}`} onClick={() => setAdminTab(k)}>{l}</button>)}
           </div>
-          {addMsg&&<div className="alert-s" style={{marginBottom:12}}>{addMsg}</div>}
+          {addMsg && <div className="alert-s" style={{ marginBottom: 12 }}>{addMsg}</div>}
 
           {/* CONFIG */}
-          {adminTab==="config"&&(()=>{
-            const d=configDraft??config;
-            const set=(k,v)=>setConfigDraft(prev=>({...(prev??config),[k]:v}));
-            const dirty=configDraft!==null;
+          {adminTab === "config" && (() => {
+            const d = configDraft ?? config;
+            const set = (k, v) => setConfigDraft(prev => ({ ...(prev ?? config), [k]: v }));
+            const dirty = configDraft !== null;
             return <div className="card">
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10}}>
-                <div className="card-hdr" style={{marginBottom:0}}>⚙ League Configuration</div>
-                <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  {dirty&&<><button className="btn btn-gold" onClick={()=>saveConfig(configDraft)}>Save Changes</button><button className="btn btn-ghost" onClick={()=>setConfigDraft(null)}>Cancel</button></>}
-                  {!dirty&&<span style={{fontSize:".76rem",color:"var(--green)",fontFamily:"var(--font-d)",letterSpacing:"1px"}}>✓ Saved</span>}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+                <div className="card-hdr" style={{ marginBottom: 0 }}>⚙ League Configuration</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  {dirty && <><button className="btn btn-gold" onClick={() => saveConfig(configDraft)}>Save Changes</button><button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button></>}
+                  {!dirty && <span style={{ fontSize: ".76rem", color: "var(--green)", fontFamily: "var(--font-d)", letterSpacing: "1px" }}>✓ Saved</span>}
                 </div>
               </div>
 
               <div className="cfg-section">
                 <div className="cfg-section-title">Scoring Format</div>
                 <div className="format-grid">
-                  {[["stroke","Stroke Play","Classic lowest-score-wins"],["stableford","Stableford","Points per hole, most wins"],["match","Match Play","Head-to-head holes"],["scramble","Scramble","Team best-ball"]].map(([val,name,hint])=>(
-                    <button key={val} className={`format-btn ${d.scoringFormat===val?"sel":""}`} onClick={()=>set("scoringFormat",val)}>
+                  {[["stroke", "Stroke Play", "Classic lowest-score-wins"], ["stableford", "Stableford", "Points per hole, most wins"], ["match", "Match Play", "Head-to-head holes"], ["scramble", "Scramble", "Team best-ball"]].map(([val, name, hint]) => (
+                    <button key={val} className={`format-btn ${d.scoringFormat === val ? "sel" : ""}`} onClick={() => set("scoringFormat", val)}>
                       <span className="format-name">{name}</span><span className="format-hint">{hint}</span>
                     </button>
                   ))}
@@ -1064,17 +1089,17 @@ export default function App() {
                 <div className="cfg-section-title">Round Rules</div>
                 <div className="cfg-row">
                   <div><div className="cfg-label">Required rounds per course</div><div className="cfg-desc">How many rounds each player must post at each course</div></div>
-                  <select value={d.roundsPerCourse} onChange={e=>set("roundsPerCourse",Number(e.target.value))} style={{width:80}}>
-                    {[1,2,3,4,5].map(n=><option key={n} value={n}>{n}</option>)}
+                  <select value={d.roundsPerCourse} onChange={e => set("roundsPerCourse", Number(e.target.value))} style={{ width: 80 }}>
+                    {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </div>
                 <div className="cfg-row">
                   <div><div className="cfg-label">Require attestation</div><div className="cfg-desc">Playing partner must approve each round by email</div></div>
-                  <Toggle checked={d.attestRequired} onChange={v=>set("attestRequired",v)}/>
+                  <Toggle checked={d.attestRequired} onChange={v => set("attestRequired", v)} />
                 </div>
                 <div className="cfg-row">
                   <div><div className="cfg-label">Require scorecard photo</div><div className="cfg-desc">Players must upload a photo with every submission</div></div>
-                  <Toggle checked={d.scorecardRequired} onChange={v=>set("scorecardRequired",v)}/>
+                  <Toggle checked={d.scorecardRequired} onChange={v => set("scorecardRequired", v)} />
                 </div>
               </div>
 
@@ -1082,23 +1107,23 @@ export default function App() {
                 <div className="cfg-section-title">Handicap & Scoring</div>
                 <div className="cfg-row">
                   <div><div className="cfg-label">Use handicaps (net scoring)</div><div className="cfg-desc">Off = gross scores only, no handicap applied</div></div>
-                  <Toggle checked={d.useHandicap} onChange={v=>set("useHandicap",v)}/>
+                  <Toggle checked={d.useHandicap} onChange={v => set("useHandicap", v)} />
                 </div>
-                {d.useHandicap&&<>
+                {d.useHandicap && <>
                   <div className="cfg-row">
                     <div><div className="cfg-label">Handicap percentage used</div><div className="cfg-desc">e.g. 85 means players use 85% of their handicap index</div></div>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <input type="number" min={50} max={100} value={d.handicapPct} onChange={e=>set("handicapPct",Number(e.target.value))} style={{width:70}}/>
-                      <span style={{color:"var(--cream-dim)"}}>%</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <input type="number" min={50} max={100} value={d.handicapPct} onChange={e => set("handicapPct", Number(e.target.value))} style={{ width: 70 }} />
+                      <span style={{ color: "var(--cream-dim)" }}>%</span>
                     </div>
                   </div>
                   <div className="cfg-row">
                     <div><div className="cfg-label">Use USGA slope/rating formula</div><div className="cfg-desc">Off = flat subtract (handicap index used directly)</div></div>
-                    <Toggle checked={d.useSlopeRating} onChange={v=>set("useSlopeRating",v)}/>
+                    <Toggle checked={d.useSlopeRating} onChange={v => set("useSlopeRating", v)} />
                   </div>
                   <div className="cfg-row">
                     <div><div className="cfg-label">Max handicap cap</div><div className="cfg-desc">Limits how high a handicap can be (leave blank for none)</div></div>
-                    <input type="number" min={0} max={54} placeholder="None" value={d.maxHandicap??""} onChange={e=>set("maxHandicap",e.target.value?Number(e.target.value):null)} style={{width:80}}/>
+                    <input type="number" min={0} max={54} placeholder="None" value={d.maxHandicap ?? ""} onChange={e => set("maxHandicap", e.target.value ? Number(e.target.value) : null)} style={{ width: 80 }} />
                   </div>
                 </>}
               </div>
@@ -1107,115 +1132,115 @@ export default function App() {
                 <div className="cfg-section-title">Membership</div>
                 <div className="cfg-row">
                   <div><div className="cfg-label">Join mode</div><div className="cfg-desc">Open = anyone with the code joins instantly · Approval = you review each request</div></div>
-                  <select value={d.joinMode} onChange={e=>set("joinMode",e.target.value)} style={{width:160}}>
+                  <select value={d.joinMode} onChange={e => set("joinMode", e.target.value)} style={{ width: 160 }}>
                     <option value="open">Open (invite code)</option>
                     <option value="approval">Approval required</option>
                   </select>
                 </div>
                 <div className="cfg-row">
                   <div><div className="cfg-label">Max players</div><div className="cfg-desc">Leave blank for unlimited</div></div>
-                  <input type="number" min={2} placeholder="Unlimited" value={d.maxPlayers??""} onChange={e=>set("maxPlayers",e.target.value?Number(e.target.value):null)} style={{width:100}}/>
+                  <input type="number" min={2} placeholder="Unlimited" value={d.maxPlayers ?? ""} onChange={e => set("maxPlayers", e.target.value ? Number(e.target.value) : null)} style={{ width: 100 }} />
                 </div>
                 <div className="cfg-row">
                   <div><div className="cfg-label">Hide scores until submitted</div><div className="cfg-desc">Players can't see others' scores until they've posted their own</div></div>
-                  <Toggle checked={d.hideScores} onChange={v=>set("hideScores",v)}/>
+                  <Toggle checked={d.hideScores} onChange={v => set("hideScores", v)} />
                 </div>
               </div>
 
               <div className="cfg-section">
                 <div className="cfg-section-title">Season Window</div>
-                <p className="note" style={{marginBottom:12}}>Submissions are only accepted within this date range. Leave blank for no restriction.</p>
+                <p className="note" style={{ marginBottom: 12 }}>Submissions are only accepted within this date range. Leave blank for no restriction.</p>
                 <div className="fgrid">
-                  <div className="fg"><label>Season Start</label><input type="date" value={d.seasonStart??""} onChange={e=>set("seasonStart",e.target.value||null)}/></div>
-                  <div className="fg"><label>Season End</label><input type="date" value={d.seasonEnd??""} onChange={e=>set("seasonEnd",e.target.value||null)}/></div>
+                  <div className="fg"><label>Season Start</label><input type="date" value={d.seasonStart ?? ""} onChange={e => set("seasonStart", e.target.value || null)} /></div>
+                  <div className="fg"><label>Season End</label><input type="date" value={d.seasonEnd ?? ""} onChange={e => set("seasonEnd", e.target.value || null)} /></div>
                 </div>
               </div>
 
-              {dirty&&<div style={{display:"flex",gap:10,marginTop:4}}>
-                <button className="btn btn-gold" onClick={()=>saveConfig(configDraft)}>Save Changes</button>
-                <button className="btn btn-ghost" onClick={()=>setConfigDraft(null)}>Cancel</button>
+              {dirty && <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                <button className="btn btn-gold" onClick={() => saveConfig(configDraft)}>Save Changes</button>
+                <button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button>
               </div>}
             </div>;
           })()}
 
           {/* MEMBERS */}
-          {adminTab==="members"&&<div className="card">
+          {adminTab === "members" && <div className="card">
             <div className="card-hdr">👤 League Members</div>
-            {pendingJoins.length>0&&<>
-              <div style={{fontSize:".7rem",color:"var(--purple)",fontFamily:"var(--font-d)",letterSpacing:"2px",textTransform:"uppercase",marginBottom:8}}>Pending Join Requests</div>
-              {pendingJoins.map(req=>(
-                <div key={req.id} className="pchip" style={{borderColor:"rgba(155,127,232,.3)"}}>
-                  <div className="avatar lg">{req.profile?.avatar_url?<img src={req.profile.avatar_url} alt=""/>:ini(req.profile?.name)}</div>
+            {pendingJoins.length > 0 && <>
+              <div style={{ fontSize: ".7rem", color: "var(--purple)", fontFamily: "var(--font-d)", letterSpacing: "2px", textTransform: "uppercase", marginBottom: 8 }}>Pending Join Requests</div>
+              {pendingJoins.map(req => (
+                <div key={req.id} className="pchip" style={{ borderColor: "rgba(155,127,232,.3)" }}>
+                  <div className="avatar lg">{req.profile?.avatar_url ? <img src={req.profile.avatar_url} alt="" /> : ini(req.profile?.name)}</div>
                   <div className="pchip-info"><div className="pchip-name">{req.profile?.name}</div><div className="pchip-meta">{req.profile?.email}</div></div>
                   <div className="pchip-actions">
-                    <button className="btn btn-gold btn-sm" onClick={()=>approveJoin(req)}>Approve</button>
-                    <button className="btn btn-danger" onClick={()=>denyJoin(req)}>Deny</button>
+                    <button className="btn btn-gold btn-sm" onClick={() => approveJoin(req)}>Approve</button>
+                    <button className="btn btn-danger" onClick={() => denyJoin(req)}>Deny</button>
                   </div>
                 </div>
               ))}
-              <div style={{borderTop:"1px solid var(--navy-border)",margin:"12px 0"}}/>
+              <div style={{ borderTop: "1px solid var(--navy-border)", margin: "12px 0" }} />
             </>}
-            {members.map(m=>(
+            {members.map(m => (
               <div key={m.user_id} className="pchip">
-                <div className="avatar lg">{m.profile.avatar_url?<img src={m.profile.avatar_url} alt=""/>:ini(m.profile.name)}</div>
+                <div className="avatar lg">{m.profile.avatar_url ? <img src={m.profile.avatar_url} alt="" /> : ini(m.profile.name)}</div>
                 <div className="pchip-info">
                   <div className="pchip-name">{m.profile.name}</div>
-                  <div className="pchip-meta">{m.profile.email} · Hcp {m.profile.handicap} · {rounds.filter(r=>r.player_id===m.user_id).length} rounds</div>
+                  <div className="pchip-meta">{m.profile.email} · Hcp {m.profile.handicap} · {rounds.filter(r => r.player_id === m.user_id).length} rounds</div>
                 </div>
                 <div className="pchip-actions">
                   <span className={`lrole ${m.role}`}>{m.role}</span>
-                  {m.user_id!==session.user.id&&<button className="btn btn-ghost btn-sm" onClick={()=>toggleRole(m.user_id,m.role)}>{m.role==="admin"?"→ Player":"→ Commissioner"}</button>}
-                  {m.user_id!==session.user.id&&<button className="btn btn-danger" onClick={()=>removeMember(m.user_id)}>Remove</button>}
+                  {m.user_id !== session.user.id && <button className="btn btn-ghost btn-sm" onClick={() => toggleRole(m.user_id, m.role)}>{m.role === "admin" ? "→ Player" : "→ Commissioner"}</button>}
+                  {m.user_id !== session.user.id && <button className="btn btn-danger" onClick={() => removeMember(m.user_id)}>Remove</button>}
                 </div>
               </div>
             ))}
           </div>}
 
           {/* COURSES */}
-          {adminTab==="courses"&&<div className="card">
+          {adminTab === "courses" && <div className="card">
             <div className="card-hdr">⛳ Courses</div>
-            {courses.map(c=>(
+            {courses.map(c => (
               <div key={c.id} className="pchip">
-                <div style={{flex:1}}><div className="pchip-name">{c.name}</div><div className="pchip-meta">Par {c.par} · {c.holes} holes · Slope {c.slope} · Rating {c.rating}</div></div>
-                <button className="btn btn-danger" onClick={()=>deleteCourse(c.id)}>Remove</button>
+                <div style={{ flex: 1 }}><div className="pchip-name">{c.name}</div><div className="pchip-meta">Par {c.par} · {c.holes} holes · Slope {c.slope} · Rating {c.rating}</div></div>
+                <button className="btn btn-danger" onClick={() => deleteCourse(c.id)}>Remove</button>
               </div>
             ))}
-            {!showAddCourse?<button className="btn btn-ghost" style={{marginTop:8}} onClick={()=>setShowAddCourse(true)}>+ Add Course</button>:(
-              <div style={{marginTop:14}}>
-                <div className="fgrid" style={{marginBottom:12}}>
-                  <div className="fg" style={{gridColumn:"1/-1"}}><label>Course Name</label><input type="text" value={newCourse.name} onChange={e=>setNewCourse(c=>({...c,name:e.target.value}))}/></div>
-                  <div className="fg"><label>Par</label><input type="number" placeholder="72" value={newCourse.par} onChange={e=>setNewCourse(c=>({...c,par:e.target.value}))}/></div>
-                  <div className="fg"><label>Holes</label><select value={newCourse.holes} onChange={e=>setNewCourse(c=>({...c,holes:e.target.value}))}><option>18</option><option>9</option></select></div>
-                  <div className="fg"><label>Slope</label><input type="number" placeholder="113" value={newCourse.slope} onChange={e=>setNewCourse(c=>({...c,slope:e.target.value}))}/></div>
-                  <div className="fg"><label>Rating</label><input type="number" step=".1" placeholder="72.0" value={newCourse.rating} onChange={e=>setNewCourse(c=>({...c,rating:e.target.value}))}/></div>
+            {!showAddCourse ? <button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={() => setShowAddCourse(true)}>+ Add Course</button> : (
+              <div style={{ marginTop: 14 }}>
+                <div className="fgrid" style={{ marginBottom: 12 }}>
+                  <div className="fg" style={{ gridColumn: "1/-1" }}><label>Course Name</label><input type="text" value={newCourse.name} onChange={e => setNewCourse(c => ({ ...c, name: e.target.value }))} /></div>
+                  <div className="fg"><label>Par</label><input type="number" placeholder="72" value={newCourse.par} onChange={e => setNewCourse(c => ({ ...c, par: e.target.value }))} /></div>
+                  <div className="fg"><label>Holes</label><select value={newCourse.holes} onChange={e => setNewCourse(c => ({ ...c, holes: e.target.value }))}><option>18</option><option>9</option></select></div>
+                  <div className="fg"><label>Slope</label><input type="number" placeholder="113" value={newCourse.slope} onChange={e => setNewCourse(c => ({ ...c, slope: e.target.value }))} /></div>
+                  <div className="fg"><label>Rating</label><input type="number" step=".1" placeholder="72.0" value={newCourse.rating} onChange={e => setNewCourse(c => ({ ...c, rating: e.target.value }))} /></div>
                 </div>
-                <div style={{display:"flex",gap:10}}>
-                  <button className="btn btn-gold" onClick={addCourse} disabled={!newCourse.name||!newCourse.par||!newCourse.slope||!newCourse.rating}>Add</button>
-                  <button className="btn btn-ghost" onClick={()=>setShowAddCourse(false)}>Cancel</button>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button className="btn btn-gold" onClick={addCourse} disabled={!newCourse.name || !newCourse.par || !newCourse.slope || !newCourse.rating}>Add</button>
+                  <button className="btn btn-ghost" onClick={() => setShowAddCourse(false)}>Cancel</button>
                 </div>
               </div>
             )}
           </div>}
 
           {/* ALL ROUNDS */}
-          {adminTab==="rounds"&&<div className="card">
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
-              <div className="card-hdr" style={{marginBottom:0}}>📋 All Rounds</div>
+          {adminTab === "rounds" && <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+              <div className="card-hdr" style={{ marginBottom: 0 }}>📋 All Rounds</div>
               <button className="btn btn-danger" onClick={clearAllRounds}>Clear All</button>
             </div>
-            {rounds.length===0?<div className="empty">No rounds yet.</div>:(
+            {rounds.length === 0 ? <div className="empty">No rounds yet.</div> : (
               <div className="tw"><table>
-                <thead><tr><th>Player</th><th>Course</th><th>Gross</th><th>Net</th>{config.scoringFormat==="stableford"&&<th>Pts</th>}<th>Status</th><th>Date</th><th>Card</th><th></th></tr></thead>
-                <tbody>{rounds.map(r=>(
+                <thead><tr><th>Player</th><th>Course</th><th>Gross</th><th>Net</th>{config.scoringFormat === "stableford" && <th>Pts</th>}<th>Status</th><th>Date</th><th>Card</th><th></th></tr></thead>
+                <tbody>{rounds.map(r => (
                   <tr key={r.id}>
-                    <td><span className="pname" style={{fontSize:".84rem"}}>{r.player_name}</span></td>
-                    <td style={{fontSize:".8rem",color:"var(--cream-dim)"}}>{r.course_name}</td>
-                    <td>{r.gross}</td><td>{netEl(r.net,r.par)}</td>
-                    {config.scoringFormat==="stableford"&&<td style={{color:"var(--purple)"}}>{r.stableford_pts??"-"}</td>}
+                    <td><span className="pname" style={{ fontSize: ".84rem" }}>{r.player_name}</span></td>
+                    <td style={{ fontSize: ".8rem", color: "var(--cream-dim)" }}>{r.course_name}</td>
+                    <td>{r.gross}</td><td>{netEl(r.net, r.par)}</td>
+                    {config.scoringFormat === "stableford" && <td style={{ color: "var(--purple)" }}>{r.stableford_pts ?? "-"}</td>}
                     <td>{attestBadge(r.attest_status)}</td>
-                    <td style={{fontSize:".76rem",color:"var(--cream-dim)"}}>{r.date}</td>
-                    <td>{r.scorecard_url?<button className="sc-btn" onClick={()=>setViewCardModal({url:r.scorecard_url})}>📋</button>:<span style={{color:"#4b5563"}}>—</span>}</td>
-                    <td><button className="btn btn-danger btn-sm" onClick={()=>deleteRound(r.id)}>✕</button></td>
+                    <td style={{ fontSize: ".76rem", color: "var(--cream-dim)" }}>{r.date}</td>
+                    <td>{r.scorecard_url ? <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}>📋</button> : <span style={{ color: "#4b5563" }}>—</span>}</td>
+                    <td><button className="btn btn-danger btn-sm" onClick={() => deleteRound(r.id)}>✕</button></td>
                   </tr>
                 ))}</tbody>
               </table></div>
@@ -1223,26 +1248,26 @@ export default function App() {
           </div>}
 
           {/* LEAGUE INFO */}
-          {adminTab==="league"&&<div className="card">
+          {adminTab === "league" && <div className="card">
             <div className="card-hdr">League Info</div>
-            <div style={{marginBottom:20}}>
-              <div style={{fontSize:".7rem",letterSpacing:"2px",color:"var(--gold)",fontFamily:"var(--font-d)",textTransform:"uppercase",marginBottom:8}}>Invite Code</div>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: ".7rem", letterSpacing: "2px", color: "var(--gold)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 8 }}>Invite Code</div>
               <div className="invite-box">
                 <div>
                   <div className="invite-code">{activeLeague.invite_code}</div>
-                  <div style={{fontSize:".78rem",color:"var(--cream-dim)",fontStyle:"italic",marginTop:3}}>Join mode: <strong>{config.joinMode==="approval"?"Approval required":"Open"}</strong></div>
+                  <div style={{ fontSize: ".78rem", color: "var(--cream-dim)", fontStyle: "italic", marginTop: 3 }}>Join mode: <strong>{config.joinMode === "approval" ? "Approval required" : "Open"}</strong></div>
                 </div>
-                <button className="btn btn-ghost btn-sm" onClick={()=>navigator.clipboard.writeText(activeLeague.invite_code)}>Copy</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => navigator.clipboard.writeText(activeLeague.invite_code)}>Copy</button>
               </div>
             </div>
-            <div style={{fontSize:".88rem",color:"var(--cream-dim)",lineHeight:2}}>
-              <div>Name: <span style={{color:"var(--white)"}}>{activeLeague.name}</span></div>
-              {activeLeague.description&&<div>Description: <span style={{color:"var(--white)"}}>{activeLeague.description}</span></div>}
-              <div>Scoring format: <span style={{color:"var(--purple)"}}>{FORMAT_LABELS[config.scoringFormat]}</span></div>
-              <div>Members: <span style={{color:"var(--white)"}}>{members.length}{config.maxPlayers?` / ${config.maxPlayers} max`:""}</span></div>
-              <div>Handicap: <span style={{color:"var(--white)"}}>{config.useHandicap?`${config.handicapPct}%${config.useSlopeRating?" (USGA slope/rating)":" (flat)"}${config.maxHandicap?` · max ${config.maxHandicap}`:""}` : "Gross only"}</span></div>
-              <div>Attestation: <span style={{color:"var(--white)"}}>{config.attestRequired?"Required":"Off"}</span></div>
-              <div>Created: <span style={{color:"var(--white)"}}>{new Date(activeLeague.created_at).toLocaleDateString()}</span></div>
+            <div style={{ fontSize: ".88rem", color: "var(--cream-dim)", lineHeight: 2 }}>
+              <div>Name: <span style={{ color: "var(--white)" }}>{activeLeague.name}</span></div>
+              {activeLeague.description && <div>Description: <span style={{ color: "var(--white)" }}>{activeLeague.description}</span></div>}
+              <div>Scoring format: <span style={{ color: "var(--purple)" }}>{FORMAT_LABELS[config.scoringFormat]}</span></div>
+              <div>Members: <span style={{ color: "var(--white)" }}>{members.length}{config.maxPlayers ? ` / ${config.maxPlayers} max` : ""}</span></div>
+              <div>Handicap: <span style={{ color: "var(--white)" }}>{config.useHandicap ? `${config.handicapPct}%${config.useSlopeRating ? " (USGA slope/rating)" : " (flat)"}${config.maxHandicap ? ` · max ${config.maxHandicap}` : ""}` : "Gross only"}</span></div>
+              <div>Attestation: <span style={{ color: "var(--white)" }}>{config.attestRequired ? "Required" : "Off"}</span></div>
+              <div>Created: <span style={{ color: "var(--white)" }}>{new Date(activeLeague.created_at).toLocaleDateString()}</span></div>
             </div>
           </div>}
         </>}
