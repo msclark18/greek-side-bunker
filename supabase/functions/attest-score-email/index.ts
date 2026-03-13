@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
 <div class="wrap">
   <div class="header">
     <div class="omega">Ω</div>
-    <h1>THE GREEK SHEET</h1>
+    <h1>THE GREEK SIDE BUNKER</h1>
     <p>${leagueName ?? "Golf League"}</p>
   </div>
   <div class="body">
@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
     <p style="font-size:.85rem;color:#888">Clicking Approve or Reject will take you to a confirmation page. Only approved rounds count on the leaderboard.</p>
   </div>
   <div class="footer">
-    <a href="${baseUrl}" class="app-link">Open The Greek Sheet</a> &nbsp;·&nbsp; You're receiving this because you were listed as a playing partner.
+    <a href="${baseUrl}" class="app-link">Open The GREEK SIDE BUNKER</a> &nbsp;·&nbsp; You're receiving this because you were listed as a playing partner.
   </div>
 </div>
 </body>

@@ -19,7 +19,7 @@ const html = (title: string, body: string) => `<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${title} · The Greek Sheet</title>
+  <title>${title} · The Greek Side Bunker</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=EB+Garamond:ital,wght@0,400;1,400&display=swap');
     body{margin:0;background:#0a0e1a;color:#f0ead8;font-family:'EB Garamond',Georgia,serif;display:flex;align-items:center;justify-content:center;min-height:100vh;}
@@ -33,7 +33,7 @@ const html = (title: string, body: string) => `<!DOCTYPE html>
 </head>
 <body><div class="box">
   <div class="omega">Ω</div>
-  <h1>THE GREEK SHEET</h1>
+  <h1>THE GREEK SIDE BUNKER</h1>
   <div class="icon">${title === "Score Approved" ? "✅" : title === "Score Rejected" ? "❌" : "⚠️"}</div>
   <h1>${title}</h1>
   <p>${body}</p>

@@ -1,167 +1,466 @@
-# 🏌️ The Greek Sheet v2 — Deploy Guide
-# Google Auth + Multi-League + Email Attestation
-# Free stack: Supabase + Vercel + Resend
-# Total time: ~25 minutes
+# 🏌️ Greek Side Bunker — Deploy Guide
 
-═══════════════════════════════════════════════
-STEP 1 — Supabase (database + auth)
-═══════════════════════════════════════════════
+Google Auth + Multi-League + Email Attestation  
+Stack: **Supabase + Vercel + Resend**  
+Estimated setup time: **~25 minutes**
 
-1. Go to https://supabase.com → New Project
-   Name: greek-sheet-v2 · Pick your region · Save your DB password
+---
 
-2. SQL Editor → New Query → paste supabase-schema.sql → Run
-   You should see "Success."
+# STEP 1 — Supabase (Database + Auth)
 
-3. Enable Email Auth (for players without Google):
-   - Authentication → Providers → Email → make sure it's ON
-   - Optional: Toggle OFF "Confirm email" if you want players
-     to sign in immediately without verifying their inbox
-     (fine for a small trusted league, less secure generally)
+1. Go to https://supabase.com → **New Project**
 
-4. Enable Google Auth (optional — players can use email instead):
-   - Authentication → Providers → Google → Enable
-   - You'll need a Google OAuth Client ID + Secret.
-     Go to: https://console.cloud.google.com
-     → New Project → APIs & Services → Credentials
-     → Create Credentials → OAuth 2.0 Client ID
-     → Application type: Web application
-     → Authorized redirect URIs: add
-       https://your-project-id.supabase.co/auth/v1/callback
-     → Copy Client ID and Client Secret back into Supabase
+Project name:
 
-4. Get your API keys:
-   Settings → API → copy Project URL + anon public key
+```
+greek-side-bunker
+```
 
+Choose a region and save your database password.
 
-═══════════════════════════════════════════════
-STEP 2 — Resend (email sending, free)
-═══════════════════════════════════════════════
+---
 
-1. Go to https://resend.com → Sign up (free: 100 emails/day)
+### Run the database schema
 
-2. Add your domain (or use their test domain for dev):
-   Domains → Add Domain → follow DNS instructions
-   (If you don't have a domain yet, you can use
-    onboarding@resend.dev as FROM_EMAIL for testing)
+Go to:
 
-3. API Keys → Create API Key → copy it
+```
+SQL Editor → New Query
+```
 
+Paste the contents of:
 
-═══════════════════════════════════════════════
-STEP 3 — Deploy Edge Functions
-═══════════════════════════════════════════════
+```
+supabase-schema.sql
+```
 
-Install the Supabase CLI if you haven't:
-   npm install -g supabase
+Click **Run**.
 
-Log in and link your project:
-   supabase login
-   supabase link --project-ref your-project-id
+You should see:
 
-Deploy both functions:
-   supabase functions deploy attest-score
-   supabase functions deploy attest-score-email
+```
+Success
+```
 
-Set the required secrets:
-   supabase secrets set RESEND_API_KEY=re_your_key_here
-   supabase secrets set APP_URL=https://your-app.vercel.app
-   supabase secrets set FROM_EMAIL=noreply@yourdomain.com
+---
 
-   (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are
-    automatically available inside Edge Functions — no need
-    to set those manually.)
+### Enable Email Auth
 
+Go to:
 
-═══════════════════════════════════════════════
-STEP 4 — Push to GitHub
-═══════════════════════════════════════════════
+```
+Authentication → Providers → Email
+```
 
-1. Create a new repo at https://github.com → New repository
-   Name: greek-sheet-v2 · Private recommended
+Turn **ON**
 
-2. In your terminal from the project folder:
-   git init
-   git add .
-   git commit -m "Greek Sheet v2"
-   git branch -M main
-   git remote add origin https://github.com/YOUR_USERNAME/greek-sheet-v2.git
-   git push -u origin main
+Optional (recommended for small leagues):
 
+Disable:
 
-═══════════════════════════════════════════════
-STEP 5 — Vercel (hosting)
-═══════════════════════════════════════════════
+```
+Confirm email
+```
 
-1. https://vercel.com → Add New Project → import your repo
+This allows players to log in immediately without verifying email.
 
-2. Add Environment Variables:
-   VITE_SUPABASE_URL        → your Supabase project URL
-   VITE_SUPABASE_ANON_KEY   → your anon public key
+---
 
-3. Click Deploy → get your live URL
-   e.g. https://greek-sheet-v2.vercel.app
+### Enable Google Auth
 
-4. Go back to Supabase → Authentication → URL Configuration:
-   Site URL:             https://greek-sheet-v2.vercel.app
-   Redirect URLs: add    https://greek-sheet-v2.vercel.app/**
+Go to:
 
-5. Go back to Google Cloud Console → your OAuth client:
-   Add to Authorized redirect URIs:
-     https://your-project-id.supabase.co/auth/v1/callback
-   (should already be there from Step 1, just double-check)
+```
+Authentication → Providers → Google
+```
 
-6. Re-run:
-   supabase secrets set APP_URL=https://greek-sheet-v2.vercel.app
-   (Now that you have your real Vercel URL)
+Enable it.
 
+You will need a Google OAuth client.
 
-═══════════════════════════════════════════════
-STEP 6 — First use
-═══════════════════════════════════════════════
+Go to:
 
-1. Open your live URL → Sign in with Google
-2. Click "+ New League" → give it a name
-3. Go to ⚙ Admin → League Settings to get your invite code
-4. Share the invite code with your players — they sign in
-   with Google and enter the code to join
-5. Admin → Courses to add your real courses
-6. Set payouts under Leaderboard → 💰 Payouts
+https://console.cloud.google.com
 
+Create:
 
-═══════════════════════════════════════════════
-HOW ATTESTATION WORKS
-═══════════════════════════════════════════════
+```
+APIs & Services → Credentials
+Create Credentials → OAuth Client ID
+Application type: Web Application
+```
 
-1. Player submits a round, selects their playing partner
-2. App calls the attest-score-email Edge Function
-3. Partner receives an email with Approve / Reject buttons
-4. Clicking either button hits the attest-score Edge Function
-5. Round status updates to "approved" or "rejected"
-6. Only approved rounds appear on the leaderboard
-7. Partners can also approve/reject directly in the app
-   under Post Score → "Rounds Awaiting Your Attestation"
+Add this redirect URI:
 
+```
+https://YOUR_PROJECT_ID.supabase.co/auth/v1/callback
+```
 
-═══════════════════════════════════════════════
-FREE TIER LIMITS
-═══════════════════════════════════════════════
+Copy:
 
-Supabase Free:   500 MB DB · 1 GB file storage · 50k users
-Vercel Free:     100 GB bandwidth · unlimited deploys
-Resend Free:     100 emails/day · 3,000/month
+```
+Client ID
+Client Secret
+```
 
-All more than enough for a golf league.
+Paste them back into **Supabase Google Auth settings**.
 
+---
 
-═══════════════════════════════════════════════
-FUTURE UPDATES
-═══════════════════════════════════════════════
+### Get API Keys
+
+Go to:
+
+```
+Supabase → Settings → API
+```
+
+Copy:
+
+```
+Project URL
+anon public key
+```
+
+You will use these in **Vercel**.
+
+---
+
+# STEP 2 — Resend (Email Sending)
+
+Go to:
+
+https://resend.com
+
+Create a free account.
+
+Free tier includes:
+
+```
+100 emails/day
+```
+
+---
+
+### Add a domain
+
+Go to:
+
+```
+Domains → Add Domain
+```
+
+Follow DNS instructions.
+
+If you don't have a domain yet, you can use:
+
+```
+onboarding@resend.dev
+```
+
+for testing.
+
+---
+
+### Create API Key
+
+Go to:
+
+```
+API Keys → Create API Key
+```
+
+Copy the key.
+
+---
+
+# STEP 3 — Deploy Edge Functions
+
+Install the Supabase CLI:
+
+```bash
+npm install -g supabase
+```
+
+---
+
+### Login
+
+```bash
+supabase login
+```
+
+---
+
+### Link your project
+
+```bash
+supabase link --project-ref YOUR_PROJECT_ID
+```
+
+---
+
+### Deploy Edge Functions
+
+```bash
+supabase functions deploy attest-score
+supabase functions deploy attest-score-email
+```
+
+---
+
+### Set Edge Function secrets
+
+```bash
+supabase secrets set RESEND_API_KEY=re_your_key_here
+supabase secrets set APP_URL=https://your-app.vercel.app
+supabase secrets set FROM_EMAIL=noreply@yourdomain.com
+```
+
+Note:
+
+```
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+```
+
+are automatically available inside Edge Functions.
+
+---
+
+# STEP 4 — Push to GitHub
+
+Create a repo:
+
+https://github.com → **New Repository**
+
+Name:
+
+```
+greek-side-bunker
+```
+
+---
+
+From your project folder:
+
+```bash
+git init
+git add .
+git commit -m "Greek Side Bunker initial deploy"
+git branch -M main
+git remote add origin https://github.com/YOUR_USERNAME/greek-side-bunker.git
+git push -u origin main
+```
+
+---
+
+# STEP 5 — Vercel (Hosting)
+
+Go to:
+
+https://vercel.com
+
+Click:
+
+```
+Add New Project
+```
+
+Import your GitHub repo.
+
+---
+
+### Add Environment Variables
+
+```
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
+
+Values come from:
+
+```
+Supabase → Settings → API
+```
+
+---
+
+### Deploy
+
+Click **Deploy**
+
+Your app will be live at something like:
+
+```
+https://greek-side-bunker.vercel.app
+```
+
+---
+
+### Configure Supabase Auth URLs
+
+Go to:
+
+```
+Supabase → Authentication → URL Configuration
+```
+
+Set:
+
+```
+Site URL
+https://greek-side-bunker.vercel.app
+```
+
+Add redirect URL:
+
+```
+https://greek-side-bunker.vercel.app/**
+```
+
+---
+
+### Update Edge Function APP_URL
+
+Run again:
+
+```bash
+supabase secrets set APP_URL=https://greek-side-bunker.vercel.app
+```
+
+---
+
+# STEP 6 — First Use
+
+Open your app:
+
+```
+https://greek-side-bunker.vercel.app
+```
+
+---
+
+### Setup flow
+
+1. Sign in with Google  
+2. Click **New League**  
+3. Name your league  
+4. Go to **Admin → League Settings**  
+5. Copy the **Invite Code**  
+6. Send it to your players
+
+Players join with:
+
+```
+Login → Enter Invite Code → Join League
+```
+
+---
+
+### Add Courses
+
+Go to:
+
+```
+Admin → Courses
+```
+
+Add your golf courses.
+
+---
+
+### Configure Payouts
+
+Go to:
+
+```
+Leaderboard → Payouts
+```
+
+---
+
+# How Score Attestation Works
+
+1. Player submits a round  
+2. Selects playing partner as **attester**  
+3. Edge function sends email to partner  
+4. Partner clicks **Approve / Reject**  
+5. Round status updates  
+6. Only **approved rounds count toward leaderboard**
+
+Players can also approve inside the app:
+
+```
+Post Score → Rounds Awaiting Attestation
+```
+
+---
+
+# Free Tier Limits
+
+Supabase
+
+```
+500MB database
+1GB file storage
+50k users
+```
+
+Vercel
+
+```
+100GB bandwidth
+Unlimited deploys
+```
+
+Resend
+
+```
+100 emails/day
+3000/month
+```
+
+More than enough for a golf league.
+
+---
+
+# Updating the App
 
 Any code change:
-   git add . && git commit -m "update" && git push
-   → Vercel redeploys automatically in ~30 seconds
 
-Any function change:
-   supabase functions deploy attest-score
-   supabase functions deploy attest-score-email
+```bash
+git add .
+git commit -m "update"
+git push
+```
+
+Vercel redeploys automatically in ~30 seconds.
+
+---
+
+### Updating Edge Functions
+
+```bash
+supabase functions deploy attest-score
+supabase functions deploy attest-score-email
+```
+
+---
+
+# Project Structure (Recommended)
+
+```
+greek-side-bunker
+│
+├── src
+├── supabase
+│   └── functions
+│       ├── attest-score
+│       └── attest-score-email
+│
+├── supabase-schema.sql
+├── .env
+├── .gitignore
+└── package.json
+```
