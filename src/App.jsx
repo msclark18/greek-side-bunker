@@ -294,26 +294,60 @@ textarea{resize:vertical;min-height:60px}
 .paid-badge.unpaid{background:rgba(224,92,92,.1);border:1px solid rgba(224,92,92,.25);color:#f09090}
 
 /* ── PLAYOFF BRACKET ── */
-.bracket-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:8px}
-.bracket{display:flex;gap:0;align-items:stretch;min-width:max-content}
-.bracket-round{display:flex;flex-direction:column;justify-content:space-around;min-width:190px;padding:0 12px;position:relative}
-.bracket-round:not(:last-child)::after{content:'';position:absolute;right:0;top:10%;height:80%;border-right:1px dashed rgba(212,168,67,.2)}
-.bracket-round-label{font-family:var(--font-d);font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--gold);text-align:center;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--navy-border)}
-.bracket-match{background:var(--navy-card);border:1px solid var(--navy-border);border-radius:8px;overflow:hidden;margin:8px 0;transition:border-color .2s}
-.bracket-match:hover{border-color:var(--gold-border)}
-.bracket-slot{padding:9px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;transition:background .15s;font-size:.86rem;min-height:38px}
-.bracket-slot:first-child{border-bottom:1px solid var(--navy-border)}
-.bracket-slot:hover:not(.empty){background:rgba(212,168,67,.06)}
-.bracket-slot.winner{background:rgba(76,175,125,.12);color:#6ee7a0;font-weight:600}
-.bracket-slot.loser{opacity:.4}
-.bracket-slot.empty{color:#4b5563;font-style:italic;cursor:default;font-size:.8rem}
-.bracket-slot .seed{font-family:var(--font-d);font-size:.58rem;color:var(--gold);min-width:14px;text-align:center}
-.bracket-slot .slot-name{flex:1}
-.bracket-slot .win-mark{font-size:.72rem;color:#6ee7a0;margin-left:auto}
-.qualifier-chip{display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(255,255,255,.03);border:1px solid var(--navy-border);border-radius:8px;margin-bottom:6px}
-.qualifier-seed{font-family:var(--font-d);font-size:.72rem;color:var(--gold);min-width:22px}
-.qualifier-name{flex:1;font-weight:600;color:var(--white);font-size:.9rem}
-.qualifier-stat{font-size:.76rem;color:var(--cream-dim)}
+@keyframes champGlow{0%,100%{box-shadow:0 0 20px rgba(212,168,67,.4),0 0 60px rgba(212,168,67,.1)}50%{box-shadow:0 0 40px rgba(212,168,67,.7),0 0 80px rgba(212,168,67,.2)}}
+@keyframes winPulse{0%{transform:scale(1)}50%{transform:scale(1.02)}100%{transform:scale(1)}}
+.bracket-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:8px 4px 24px}
+.bracket-wrap::-webkit-scrollbar{height:4px}
+.bracket-wrap::-webkit-scrollbar-thumb{background:rgba(212,168,67,.3);border-radius:2px}
+.bracket{display:flex;gap:0;align-items:center;min-width:max-content;padding:8px 0}
+.bracket-round{display:flex;flex-direction:column;justify-content:space-around;position:relative;padding:0 0 0 32px}
+.bracket-round:first-child{padding-left:0}
+.bracket-round-header{font-family:var(--font-d);font-size:.58rem;letter-spacing:3px;text-transform:uppercase;color:var(--gold);text-align:center;margin-bottom:16px;opacity:.7}
+.bracket-col{display:flex;flex-direction:column;justify-content:space-around;flex:1;gap:0}
+
+/* Match card */
+.bk-match{position:relative;margin:10px 0;width:200px}
+.bk-match-inner{background:linear-gradient(145deg,rgba(22,29,46,1),rgba(14,18,30,1));border:1px solid rgba(255,255,255,.08);border-radius:10px;overflow:hidden;transition:all .25s;cursor:default;box-shadow:0 4px 20px rgba(0,0,0,.3)}
+.bk-match-inner:hover{border-color:rgba(212,168,67,.35);box-shadow:0 8px 30px rgba(0,0,0,.5),0 0 0 1px rgba(212,168,67,.1)}
+.bk-match-inner.has-winner{border-color:rgba(212,168,67,.2)}
+
+/* Slot */
+.bk-slot{display:flex;align-items:center;gap:8px;padding:11px 13px;min-height:44px;transition:all .2s;position:relative;overflow:hidden}
+.bk-slot::before{content:'';position:absolute;inset:0;opacity:0;transition:opacity .2s;background:linear-gradient(90deg,rgba(212,168,67,.08),transparent)}
+.bk-slot:hover::before{opacity:1}
+.bk-slot-divider{height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);margin:0 8px}
+.bk-slot.clickable{cursor:pointer}
+.bk-slot.s-winner{background:linear-gradient(90deg,rgba(76,175,125,.12),transparent);border-left:2px solid #4caf7d;animation:winPulse 2s ease-in-out infinite}
+.bk-slot.s-winner::before{display:none}
+.bk-slot.s-loser{opacity:.32}
+.bk-slot.s-empty{cursor:default}
+.bk-slot.s-empty::before{display:none}
+.bk-seed{font-family:var(--font-d);font-size:.54rem;color:var(--gold);opacity:.6;min-width:14px;text-align:center;line-height:1}
+.bk-name{flex:1;font-size:.88rem;color:var(--cream);font-family:var(--font-b);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bk-slot.s-winner .bk-name{color:#6ee7a0;font-weight:600}
+.bk-slot.s-empty .bk-name{color:#3a4460;font-style:italic;font-size:.78rem}
+.bk-win-icon{font-size:.72rem;flex-shrink:0;color:#6ee7a0}
+
+/* Connector lines */
+.bk-connector{position:absolute;right:-32px;top:50%;width:32px;pointer-events:none}
+.bk-connector-line{stroke:rgba(212,168,67,.2);stroke-width:1;fill:none}
+
+/* Round label */
+.bk-round-label{font-family:var(--font-d);font-size:.56rem;letter-spacing:3px;text-transform:uppercase;color:var(--gold);text-align:center;margin-bottom:14px;padding:4px 12px;background:rgba(212,168,67,.06);border:1px solid rgba(212,168,67,.12);border-radius:20px;display:inline-block;align-self:center;opacity:.8}
+.bk-round-wrap{display:flex;flex-direction:column;align-items:center}
+
+/* Champion card */
+.bk-champion{display:flex;flex-direction:column;align-items:center;justify-content:center;padding-left:40px;min-width:160px}
+.bk-champ-card{background:linear-gradient(145deg,rgba(212,168,67,.15),rgba(212,168,67,.05));border:1px solid var(--gold-border);border-radius:14px;padding:20px 24px;text-align:center;animation:champGlow 3s ease-in-out infinite;position:relative;overflow:hidden}
+.bk-champ-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(212,168,67,.12),transparent 70%);pointer-events:none}
+.bk-champ-trophy{font-size:2.4rem;margin-bottom:8px;display:block;filter:drop-shadow(0 0 12px rgba(212,168,67,.5))}
+.bk-champ-label{font-family:var(--font-d);font-size:.52rem;letter-spacing:3px;text-transform:uppercase;color:var(--gold);opacity:.7;margin-bottom:6px}
+.bk-champ-name{font-family:var(--font-d);font-size:1rem;color:var(--gold-light);letter-spacing:1px;font-weight:600}
+
+/* Third place */
+.bk-third{margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,.06)}
+.bk-third-label{font-family:var(--font-d);font-size:.56rem;letter-spacing:2px;text-transform:uppercase;color:var(--cream-dim);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.bk-third-label::before,.bk-third-label::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.06)}
 
 .attest-card{background:var(--navy-card);border:1px solid var(--gold-border);border-radius:var(--r);padding:18px;margin-bottom:14px}
 .attest-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -1297,8 +1331,12 @@ export default function App() {
             // Use saved bracket or auto-generate first round
             const displayBracket = bracket.length > 0 ? bracket : (seedList.length >= 2 ? initMatchups() : []);
 
-            const saveBracket = async (newBracket) => {
-              const newCfg = { ...config, playoffBracket: newBracket };
+            const saveBracket = async (newBracket, newThirdPlace) => {
+              const newCfg = {
+                ...config,
+                playoffBracket: newBracket,
+                thirdPlaceMatch: newThirdPlace !== undefined ? newThirdPlace : (config.thirdPlaceMatch ?? null),
+              };
               await supabase.from("league_settings").upsert({ league_id: activeLeague.id, config: newCfg, payouts }, { onConflict: "league_id" });
               setConfig(newCfg);
             };
@@ -1323,27 +1361,26 @@ export default function App() {
                 if (updated.length <= roundIdx + 1) updated.push(nextRound);
                 else updated[roundIdx + 1] = nextRound;
 
-                // After semifinals: also create third place match from the two losers
                 if (isSemiFinal) {
                   const loser1 = roundMatchups[0].winner === roundMatchups[0].p1 ? roundMatchups[0].p2 : roundMatchups[0].p1;
                   const loser2 = roundMatchups[1].winner === roundMatchups[1].p1 ? roundMatchups[1].p2 : roundMatchups[1].p1;
-                  // Store third place match in a special field on the bracket array
-                  updated.thirdPlaceMatch = { p1: loser1, p2: loser2, winner: null };
+                  saveBracket(updated, { p1: loser1, p2: loser2, winner: null });
+                } else {
+                  saveBracket(updated);
                 }
+              } else {
+                saveBracket(updated);
               }
-              saveBracket(updated);
             };
 
             const setThirdPlaceWinner = (winner) => {
-              const updated = [...displayBracket];
-              updated.thirdPlaceMatch = { ...displayBracket.thirdPlaceMatch, winner };
-              saveBracket(updated);
+              saveBracket(config.playoffBracket ?? [], { ...thirdPlaceMatch, winner });
             };
 
-            const resetBracket = () => { if (window.confirm("Reset the entire bracket?")) saveBracket([]); };
+            const resetBracket = () => { if (window.confirm("Reset the entire bracket?")) saveBracket([], null); };
 
-            // Third place match lives on the bracket array as a special property
-            const thirdPlaceMatch = displayBracket.thirdPlaceMatch ?? null;
+            // Third place match stored in config directly (not on bracket array — survives JSON serialization)
+            const thirdPlaceMatch = config.thirdPlaceMatch ?? null;
 
             return <>
               <div className="card">
@@ -1405,55 +1442,89 @@ export default function App() {
                 }
               </div>
 
-              {seedList.length >= 2 && <div className="card">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
-                  <div className="card-hdr" style={{ marginBottom: 0 }}>🏆 Bracket</div>
+              {seedList.length >= 2 && <div className="card" style={{ background: "linear-gradient(180deg,rgba(10,14,26,1),rgba(16,20,34,1))", border: "1px solid rgba(212,168,67,.12)", overflow: "hidden", position: "relative" }}>
+                {/* Background texture */}
+                <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(ellipse 80% 50% at 50% 0%,rgba(212,168,67,.05),transparent)", pointerEvents: "none" }} />
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 8, position: "relative" }}>
+                  <div>
+                    <div className="card-hdr" style={{ marginBottom: 2 }}>🏆 Tournament Bracket</div>
+                    <div style={{ fontSize: ".72rem", color: "var(--cream-dim)" }}>{FORMAT_LABELS[fmt] ?? fmt} · {n}-player single elimination</div>
+                  </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     {isAdmin && <button className="btn btn-danger btn-sm" onClick={resetBracket}>Reset</button>}
                     {isAdmin && bracket.length === 0 && <button className="btn btn-gold btn-sm" onClick={() => saveBracket(initMatchups())}>Generate Bracket</button>}
                   </div>
                 </div>
 
-                {isAdmin && displayBracket.length > 0 && <div className="alert-w" style={{ marginBottom: 14, fontSize: ".8rem" }}>Click a player's name in a matchup to mark them as the winner and advance the bracket.</div>}
+                {isAdmin && displayBracket.length > 0 && (
+                  <div className="alert-w" style={{ marginBottom: 18, fontSize: ".78rem" }}>
+                    Click a player's name to advance them as the winner.
+                  </div>
+                )}
 
-                <div className="bracket-wrap">
+                <div className="bracket-wrap" style={{ position: "relative" }}>
                   <div className="bracket">
-                    {displayBracket.map((round, roundIdx) => (
-                      <div key={roundIdx} className="bracket-round">
-                        <div className="bracket-round-label">{round.label ?? `Round ${round.round}`}</div>
-                        {round.matchups.map((match, matchIdx) => (
-                          <div key={matchIdx} className="bracket-match">
-                            {[{ name: match.p1, slot: "p1" }, { name: match.p2, slot: "p2" }].map(({ name, slot }) => {
-                              const isWinner = match.winner === name;
-                              const isLoser = match.winner && match.winner !== name;
+                    {displayBracket.map((round, roundIdx) => {
+                      const matchCount = round.matchups.length;
+                      const totalHeight = matchCount * 108;
+                      return (
+                        <div key={roundIdx} className="bk-round-wrap" style={{ paddingLeft: roundIdx === 0 ? 0 : 32 }}>
+                          <div className="bk-round-label">{round.label ?? `Round ${round.round}`}</div>
+                          <div style={{ position: "relative", display: "flex", flexDirection: "column", justifyContent: "space-around", height: Math.max(totalHeight, 108) }}>
+                            {round.matchups.map((match, matchIdx) => {
+                              const slots = [{ name: match.p1, slot: "p1" }, { name: match.p2, slot: "p2" }];
+                              const isLastRound = roundIdx === displayBracket.length - 1;
                               return (
-                                <div
-                                  key={slot}
-                                  className={`bracket-slot${isWinner ? " winner" : ""}${isLoser ? " loser" : ""}${!name ? " empty" : ""}`}
-                                  onClick={() => isAdmin && name && !match.winner && setWinner(roundIdx, matchIdx, name)}
-                                >
-                                  <span className="seed">{name ? (seedList.findIndex(p => p.name === name) + 1 || "?") : ""}</span>
-                                  <span className="slot-name">{name ?? "TBD"}</span>
-                                  {isWinner && <span className="win-mark">✓</span>}
+                                <div key={matchIdx} className="bk-match" style={{ position: "relative" }}>
+                                  <div className={`bk-match-inner${match.winner ? " has-winner" : ""}`}>
+                                    {slots.map(({ name, slot }, si) => {
+                                      const isWinner = match.winner === name;
+                                      const isLoser = match.winner && !isWinner;
+                                      const isEmpty = !name;
+                                      return (
+                                        <div key={slot}>
+                                          <div
+                                            className={`bk-slot${isWinner ? " s-winner" : ""}${isLoser ? " s-loser" : ""}${isEmpty ? " s-empty" : ""}${isAdmin && name && !match.winner ? " clickable" : ""}`}
+                                            onClick={() => isAdmin && name && !match.winner && setWinner(roundIdx, matchIdx, name)}
+                                          >
+                                            <span className="bk-seed">{name ? (seedList.findIndex(p => p.name === name) + 1 || "") : ""}</span>
+                                            <span className="bk-name">{name ?? "TBD"}</span>
+                                            {isWinner && <span className="bk-win-icon">✓</span>}
+                                          </div>
+                                          {si === 0 && <div className="bk-slot-divider" />}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {/* SVG connector to next round */}
+                                  {!isLastRound && (
+                                    <svg
+                                      style={{ position: "absolute", right: -32, top: "50%", transform: "translateY(-50%)", overflow: "visible", pointerEvents: "none" }}
+                                      width="32" height="2"
+                                    >
+                                      <line x1="0" y1="1" x2="32" y2="1" stroke="rgba(212,168,67,.25)" strokeWidth="1" strokeDasharray="3,3" />
+                                    </svg>
+                                  )}
                                 </div>
                               );
                             })}
                           </div>
-                        ))}
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
 
-                    {/* Champion display if final is complete */}
+                    {/* Champion reveal */}
                     {(() => {
                       const finalRnd = displayBracket[displayBracket.length - 1];
                       const champ = finalRnd?.matchups?.[0]?.winner;
                       if (!champ) return null;
                       return (
-                        <div className="bracket-round" style={{ justifyContent: "center" }}>
-                          <div className="bracket-round-label">Champion</div>
-                          <div style={{ textAlign: "center", padding: "16px 8px" }}>
-                            <div style={{ fontSize: "2rem", marginBottom: 6 }}>🏆</div>
-                            <div style={{ fontFamily: "var(--font-d)", fontSize: "1rem", color: "var(--gold)", letterSpacing: "1px" }}>{champ}</div>
+                        <div className="bk-champion">
+                          <div className="bk-champ-card">
+                            <span className="bk-champ-trophy">🏆</span>
+                            <div className="bk-champ-label">Champion</div>
+                            <div className="bk-champ-name">{champ}</div>
                           </div>
                         </div>
                       );
@@ -1461,32 +1532,42 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Third place match — shown below main bracket once semis are done */}
+                {/* Third place match */}
                 {thirdPlaceMatch && (
-                  <div style={{ marginTop: 20, borderTop: "1px solid var(--navy-border)", paddingTop: 18 }}>
-                    <div style={{ fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--cream-dim)", fontFamily: "var(--font-d)", marginBottom: 10 }}>🥉 Third Place Match</div>
-                    <div className="bracket-match" style={{ maxWidth: 280 }}>
-                      {[{ name: thirdPlaceMatch.p1, slot: "p1" }, { name: thirdPlaceMatch.p2, slot: "p2" }].map(({ name, slot }) => {
-                        const isWinner = thirdPlaceMatch.winner === name;
-                        const isLoser = thirdPlaceMatch.winner && thirdPlaceMatch.winner !== name;
-                        return (
-                          <div
-                            key={slot}
-                            className={`bracket-slot${isWinner ? " winner" : ""}${isLoser ? " loser" : ""}${!name ? " empty" : ""}`}
-                            onClick={() => isAdmin && name && !thirdPlaceMatch.winner && setThirdPlaceWinner(name)}
-                          >
-                            <span className="seed">{name ? (seedList.findIndex(p => p.name === name) + 1 || "?") : ""}</span>
-                            <span className="slot-name">{name ?? "TBD"}</span>
-                            {isWinner && <span className="win-mark">🥉</span>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {thirdPlaceMatch.winner && (
-                      <div style={{ marginTop: 8, fontSize: ".82rem", color: "var(--cream-dim)" }}>
-                        🥉 Third place: <span style={{ color: "var(--white)", fontWeight: 600 }}>{thirdPlaceMatch.winner}</span>
+                  <div className="bk-third">
+                    <div className="bk-third-label">🥉 Third Place Match</div>
+                    <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+                      <div className="bk-match" style={{ margin: 0 }}>
+                        <div className={`bk-match-inner${thirdPlaceMatch.winner ? " has-winner" : ""}`}>
+                          {[{ name: thirdPlaceMatch.p1, slot: "p1" }, { name: thirdPlaceMatch.p2, slot: "p2" }].map(({ name, slot }, si) => {
+                            const isWinner = thirdPlaceMatch.winner === name;
+                            const isLoser = thirdPlaceMatch.winner && !isWinner;
+                            return (
+                              <div key={slot}>
+                                <div
+                                  className={`bk-slot${isWinner ? " s-winner" : ""}${isLoser ? " s-loser" : ""}${!name ? " s-empty" : ""}${isAdmin && name && !thirdPlaceMatch.winner ? " clickable" : ""}`}
+                                  onClick={() => isAdmin && name && !thirdPlaceMatch.winner && setThirdPlaceWinner(name)}
+                                >
+                                  <span className="bk-seed">{name ? (seedList.findIndex(p => p.name === name) + 1 || "") : ""}</span>
+                                  <span className="bk-name">{name ?? "TBD"}</span>
+                                  {isWinner && <span className="bk-win-icon">🥉</span>}
+                                </div>
+                                {si === 0 && <div className="bk-slot-divider" />}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    )}
+                      {thirdPlaceMatch.winner && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 10, padding: "10px 16px" }}>
+                          <span style={{ fontSize: "1.4rem" }}>🥉</span>
+                          <div>
+                            <div style={{ fontSize: ".58rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--cream-dim)", fontFamily: "var(--font-d)", marginBottom: 2 }}>Third Place</div>
+                            <div style={{ fontFamily: "var(--font-d)", fontSize: ".95rem", color: "var(--white)" }}>{thirdPlaceMatch.winner}</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>}
@@ -1509,7 +1590,7 @@ export default function App() {
             const playoffRunnerUp = finalRound?.matchups?.[0]
               ? (finalRound.matchups[0].winner === finalRound.matchups[0].p1 ? finalRound.matchups[0].p2 : finalRound.matchups[0].p1)
               : null;
-            const thirdPlaceWinner = bracket.thirdPlaceMatch?.winner ?? null;
+            const thirdPlaceWinner = config.thirdPlaceMatch?.winner ?? null;
 
             const leaderMap = {
               champion: playoffChampion,
