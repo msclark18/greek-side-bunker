@@ -7,15 +7,20 @@ const DEFAULT_CONFIG = {
   joinMode: "open", maxPlayers: null, hideScores: false, seasonStart: null, seasonEnd: null,
   googleSheetUrl: null,
   scoresToCount: null,
-  entryFee: null, // $ per player
+  entryFee: null,
   payoutCategories: [
-    { id: "overallNet", label: "🏆 Overall Net", pct: 0 },
-    { id: "overallGross", label: "🏌️ Overall Gross", pct: 0 },
-    { id: "courseNet", label: "📍 Best Course Net", pct: 0 },
-    { id: "courseGross", label: "📍 Best Course Gross", pct: 0 },
-    { id: "bestNet", label: "⭐ Best Net Round", pct: 0 },
-    { id: "bestGross", label: "⭐ Best Gross Round", pct: 0 },
+    { id: "champion",      label: "🥇 Champion (Playoff Winner)",     pct: 50 },
+    { id: "runnerUp",      label: "🥈 Runner-Up",                      pct: 20 },
+    { id: "thirdPlace",    label: "🥉 Third Place",                    pct: 10 },
+    { id: "regularNet",    label: "📊 Regular Season NET Winner",      pct: 10 },
+    { id: "regularGross",  label: "📊 Regular Season GROSS Winner",    pct: 10 },
   ],
+  // Playoff settings
+  playoffEnabled: true,
+  playoffFormat: "match",        // match | stroke | stableford
+  playoffQualifiers: 4,          // how many players qualify (top N by net)
+  playoffSeedingBy: "net",       // net | gross | stableford
+  playoffBracket: [],            // [{round, matchups: [{p1, p2, winner}]}]
 };
 const FORMAT_LABELS = { stroke: "Stroke Play", stableford: "Stableford", match: "Match Play", scramble: "Scramble" };
 
@@ -263,9 +268,6 @@ textarea{resize:vertical;min-height:60px}
 .gs-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(76,175,125,.1);border:1px solid rgba(76,175,125,.25);border-radius:6px;padding:4px 10px;font-size:.76rem;color:#6ee7a0;text-decoration:none;transition:all .2s}
 .gs-badge:hover{background:rgba(76,175,125,.2)}
 
-.paid-badge{display:inline-flex;align-items:center;gap:4px;font-size:.62rem;padding:2px 8px;border-radius:20px;font-family:var(--font-d);letter-spacing:1px;text-transform:uppercase;white-space:nowrap}
-.paid-badge.paid{background:rgba(76,175,125,.15);border:1px solid rgba(76,175,125,.3);color:#6ee7a0}
-.paid-badge.unpaid{background:rgba(224,92,92,.1);border:1px solid rgba(224,92,92,.25);color:#f09090}
 /* ── PAYOUT BUILDER ── */
 .payout-pool{background:linear-gradient(135deg,rgba(212,168,67,.12),rgba(212,168,67,.06));border:1px solid var(--gold-border);border-radius:10px;padding:16px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
 .payout-pool-label{font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:var(--gold);font-family:var(--font-d);margin-bottom:4px}
@@ -282,6 +284,33 @@ textarea{resize:vertical;min-height:60px}
 .pct-total-ok{color:#6ee7a0;font-family:var(--font-d);font-size:.75rem;letter-spacing:1px}
 .pct-total-over{color:#f09090;font-family:var(--font-d);font-size:.75rem;letter-spacing:1px}
 .pct-total-under{color:var(--gold-light);font-family:var(--font-d);font-size:.75rem;letter-spacing:1px}
+
+/* ── PAID BADGE ── */
+.paid-badge{display:inline-flex;align-items:center;gap:4px;font-size:.62rem;padding:2px 8px;border-radius:20px;font-family:var(--font-d);letter-spacing:1px;text-transform:uppercase;white-space:nowrap}
+.paid-badge.paid{background:rgba(76,175,125,.15);border:1px solid rgba(76,175,125,.3);color:#6ee7a0}
+.paid-badge.unpaid{background:rgba(224,92,92,.1);border:1px solid rgba(224,92,92,.25);color:#f09090}
+
+/* ── PLAYOFF BRACKET ── */
+.bracket-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:8px}
+.bracket{display:flex;gap:0;align-items:stretch;min-width:max-content}
+.bracket-round{display:flex;flex-direction:column;justify-content:space-around;min-width:190px;padding:0 12px;position:relative}
+.bracket-round:not(:last-child)::after{content:'';position:absolute;right:0;top:10%;height:80%;border-right:1px dashed rgba(212,168,67,.2)}
+.bracket-round-label{font-family:var(--font-d);font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--gold);text-align:center;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--navy-border)}
+.bracket-match{background:var(--navy-card);border:1px solid var(--navy-border);border-radius:8px;overflow:hidden;margin:8px 0;transition:border-color .2s}
+.bracket-match:hover{border-color:var(--gold-border)}
+.bracket-slot{padding:9px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;transition:background .15s;font-size:.86rem;min-height:38px}
+.bracket-slot:first-child{border-bottom:1px solid var(--navy-border)}
+.bracket-slot:hover:not(.empty){background:rgba(212,168,67,.06)}
+.bracket-slot.winner{background:rgba(76,175,125,.12);color:#6ee7a0;font-weight:600}
+.bracket-slot.loser{opacity:.4}
+.bracket-slot.empty{color:#4b5563;font-style:italic;cursor:default;font-size:.8rem}
+.bracket-slot .seed{font-family:var(--font-d);font-size:.58rem;color:var(--gold);min-width:14px;text-align:center}
+.bracket-slot .slot-name{flex:1}
+.bracket-slot .win-mark{font-size:.72rem;color:#6ee7a0;margin-left:auto}
+.qualifier-chip{display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(255,255,255,.03);border:1px solid var(--navy-border);border-radius:8px;margin-bottom:6px}
+.qualifier-seed{font-family:var(--font-d);font-size:.72rem;color:var(--gold);min-width:22px}
+.qualifier-name{flex:1;font-weight:600;color:var(--white);font-size:.9rem}
+.qualifier-stat{font-size:.76rem;color:var(--cream-dim)}
 
 .attest-card{background:var(--navy-card);border:1px solid var(--gold-border);border-radius:var(--r);padding:18px;margin-bottom:14px}
 .attest-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -1042,6 +1071,7 @@ export default function App() {
                 ...(config.scoringFormat !== "match" && config.scoringFormat !== "scramble" ? [["course", "📍 By Course"]] : []),
                 ["best", "⭐ Best Rounds"],
                 ["completion", "📋 Completion"],
+                ...(config.playoffEnabled !== false ? [["playoffs", "🏆 Playoffs"]] : []),
                 ["payouts", "💰 Payouts"],
               ].map(([k, l]) => (
                 <button key={k} className={`stab${leaderTab === k ? " active" : ""}`} onClick={() => setLeaderTab(k)}>{l}</button>
@@ -1144,24 +1174,201 @@ export default function App() {
             ))}
           </div>}
 
+          {leaderTab === "playoffs" && config.playoffEnabled !== false && (() => {
+            const n = config.playoffQualifiers ?? 4;
+            const seedingBy = config.playoffSeedingBy ?? "net";
+            const fmt = config.playoffFormat ?? "match";
+            const bracket = config.playoffBracket ?? [];
+
+            // Determine qualifiers from regular season standings
+            let seedList = [];
+            if (seedingBy === "gross") seedList = [...grossLB].slice(0, n).map((p, i) => ({ ...p, seedStat: p.avg.toFixed(1), seedLabel: "avg gross" }));
+            else if (seedingBy === "stableford") seedList = [...overallLB].slice(0, n).map((p, i) => ({ ...p, seedStat: p.label, seedLabel: "pts" }));
+            else seedList = [...overallLB].slice(0, n).map((p, i) => ({ ...p, seedStat: p.label, seedLabel: "avg net" }));
+
+            // Build bracket rounds from qualifier count
+            // Standard single-elimination: log2(n) rounds
+            const numRounds = Math.log2(n);
+            const roundLabels = {
+              1: ["Final"],
+              2: ["Semifinals", "Final"],
+              3: ["Quarterfinals", "Semifinals", "Final"],
+              4: ["Round of 16", "Quarterfinals", "Semifinals", "Final"],
+            }[numRounds] ?? Array.from({ length: numRounds }, (_, i) => `Round ${i + 1}`);
+
+            // Build initial bracket matchups from seeds if not set
+            // Seeding: 1v(n), 2v(n-1), etc.
+            const initMatchups = () => {
+              const seeds = seedList.map((p, i) => ({ name: p.name, seed: i + 1 }));
+              const matches = [];
+              for (let i = 0; i < seeds.length / 2; i++) {
+                matches.push({ p1: seeds[i]?.name ?? null, p2: seeds[seeds.length - 1 - i]?.name ?? null, winner: null });
+              }
+              return [{ round: 1, label: roundLabels[0], matchups: matches }];
+            };
+
+            // Use saved bracket or auto-generate first round
+            const displayBracket = bracket.length > 0 ? bracket : (seedList.length >= 2 ? initMatchups() : []);
+
+            const saveBracket = async (newBracket) => {
+              const newCfg = { ...config, playoffBracket: newBracket };
+              await supabase.from("league_settings").upsert({ league_id: activeLeague.id, config: newCfg, payouts }, { onConflict: "league_id" });
+              setConfig(newCfg);
+            };
+
+            const setWinner = (roundIdx, matchIdx, winner) => {
+              const updated = displayBracket.map((r, ri) => ri !== roundIdx ? r : {
+                ...r, matchups: r.matchups.map((m, mi) => mi !== matchIdx ? m : { ...m, winner })
+              });
+              // Advance winners to next round
+              const roundMatchups = updated[roundIdx].matchups;
+              const allDone = roundMatchups.every(m => m.winner);
+              if (allDone && roundIdx < numRounds - 1) {
+                const nextMatchups = [];
+                for (let i = 0; i < roundMatchups.length; i += 2) {
+                  nextMatchups.push({ p1: roundMatchups[i].winner, p2: roundMatchups[i + 1]?.winner ?? null, winner: null });
+                }
+                const nextRound = { round: roundIdx + 2, label: roundLabels[roundIdx + 1], matchups: nextMatchups };
+                if (updated.length <= roundIdx + 1) updated.push(nextRound);
+                else updated[roundIdx + 1] = nextRound;
+              }
+              saveBracket(updated);
+            };
+
+            const resetBracket = () => { if (window.confirm("Reset the entire bracket?")) saveBracket([]); };
+
+            return <>
+              <div className="card">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                  <div className="card-hdr" style={{ marginBottom: 0 }}>🏆 Playoff Qualifiers</div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    <span className="fmt-pip" style={{ background: "rgba(212,168,67,.12)", borderColor: "var(--gold-border)", color: "var(--gold-light)" }}>{FORMAT_LABELS[fmt] ?? fmt}</span>
+                    <span style={{ fontSize: ".72rem", color: "var(--cream-dim)" }}>Top {n} by {seedingBy === "net" ? "net avg" : seedingBy === "gross" ? "gross avg" : "stableford pts"}</span>
+                  </div>
+                </div>
+                {seedList.length === 0
+                  ? <div className="empty">No rounds submitted yet — standings needed to seed the bracket.</div>
+                  : seedList.map((p, i) => (
+                    <div key={p.id} className="qualifier-chip">
+                      <div className="qualifier-seed">#{i + 1}</div>
+                      <div className="qualifier-name">{p.name}</div>
+                      {config.useHandicap && <span className="hcp-badge" style={{ fontSize: ".66rem", marginRight: 4 }}>Hcp {p.handicap ?? "-"}</span>}
+                      <div className="qualifier-stat">{p.seedStat} {p.seedLabel}</div>
+                    </div>
+                  ))
+                }
+              </div>
+
+              {seedList.length >= 2 && <div className="card">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+                  <div className="card-hdr" style={{ marginBottom: 0 }}>🏆 Bracket</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {isAdmin && <button className="btn btn-danger btn-sm" onClick={resetBracket}>Reset</button>}
+                    {isAdmin && bracket.length === 0 && <button className="btn btn-gold btn-sm" onClick={() => saveBracket(initMatchups())}>Generate Bracket</button>}
+                  </div>
+                </div>
+
+                {isAdmin && <div className="alert-w" style={{ marginBottom: 14, fontSize: ".8rem" }}>Click a player's name in a matchup to mark them as the winner and advance the bracket.</div>}
+
+                <div className="bracket-wrap">
+                  <div className="bracket">
+                    {displayBracket.map((round, roundIdx) => (
+                      <div key={roundIdx} className="bracket-round">
+                        <div className="bracket-round-label">{round.label ?? `Round ${round.round}`}</div>
+                        {round.matchups.map((match, matchIdx) => (
+                          <div key={matchIdx} className="bracket-match">
+                            {[{ name: match.p1, slot: "p1" }, { name: match.p2, slot: "p2" }].map(({ name, slot }) => {
+                              const isWinner = match.winner === name;
+                              const isLoser = match.winner && match.winner !== name;
+                              return (
+                                <div
+                                  key={slot}
+                                  className={`bracket-slot${isWinner ? " winner" : ""}${isLoser ? " loser" : ""}${!name ? " empty" : ""}`}
+                                  onClick={() => isAdmin && name && !match.winner && setWinner(roundIdx, matchIdx, name)}
+                                >
+                                  <span className="seed">{name ? (seedList.findIndex(p => p.name === name) + 1 || "?") : ""}</span>
+                                  <span className="slot-name">{name ?? "TBD"}</span>
+                                  {isWinner && <span className="win-mark">✓</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+
+                    {/* Champion display if bracket complete */}
+                    {(() => {
+                      const finalRnd = displayBracket[displayBracket.length - 1];
+                      const champ = finalRnd?.matchups?.[0]?.winner;
+                      if (!champ) return null;
+                      return (
+                        <div className="bracket-round" style={{ justifyContent: "center" }}>
+                          <div className="bracket-round-label">Champion</div>
+                          <div style={{ textAlign: "center", padding: "16px 8px" }}>
+                            <div style={{ fontSize: "2rem", marginBottom: 6 }}>🏆</div>
+                            <div style={{ fontFamily: "var(--font-d)", fontSize: "1rem", color: "var(--gold)", letterSpacing: "1px" }}>{champ}</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>}
+            </>;
+          })()}
+
           {leaderTab === "payouts" && (() => {
             const fee = config.entryFee ?? 0;
             const paidPlayers = members.filter(m => m.paid);
             const totalPool = fee * paidPlayers.length;
             const cats = config.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
-            const leaderMap = { overallNet: overallLB[0]?.name, overallGross: grossLB[0]?.name, bestNet: bestNetLB[0]?.name, bestGross: bestGrossLB[0]?.name };
+
+            // Map category id -> current leader name
+            const regularNetWinner = overallLB[0]?.name;
+            const regularGrossWinner = grossLB[0]?.name;
+            const bracket = config.playoffBracket ?? [];
+            // find playoff champion/runner-up from bracket
+            const finalRound = bracket[bracket.length - 1];
+            const playoffChampion = finalRound?.matchups?.[0]?.winner ?? null;
+            const playoffRunnerUp = finalRound?.matchups?.[0]
+              ? (finalRound.matchups[0].winner === finalRound.matchups[0].p1 ? finalRound.matchups[0].p2 : finalRound.matchups[0].p1)
+              : null;
+            const semiFinal = bracket.length >= 2 ? bracket[bracket.length - 2] : null;
+            const thirdPlace = semiFinal
+              ? [semiFinal.matchups[0], semiFinal.matchups[1]]
+                  .map(m => m?.winner ? (m.winner === m.p1 ? m.p2 : m.p1) : null)
+                  .filter(p => p && p !== playoffChampion && p !== playoffRunnerUp)[0] ?? null
+              : null;
+
+            const leaderMap = {
+              champion: playoffChampion,
+              runnerUp: playoffRunnerUp,
+              thirdPlace: thirdPlace,
+              regularNet: regularNetWinner,
+              regularGross: regularGrossWinner,
+            };
+
             return <div className="card">
               <div className="card-hdr">💰 Payouts</div>
 
               {fee > 0 ? (
-                <div className="payout-pool">
-                  <div>
-                    <div className="payout-pool-label">Entry Fee</div>
-                    <div style={{ fontFamily: "var(--font-d)", fontSize: "1.1rem", color: "var(--gold-light)" }}>${fee} / player · {paidPlayers.length} paid{members.length - paidPlayers.length > 0 ? ` · ${members.length - paidPlayers.length} unpaid` : ""}</div>
+                <div className="payout-pool" style={{ flexDirection: "column", gap: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", flexWrap: "wrap", gap: 8 }}>
+                    <div className="payout-pool-label" style={{ marginBottom: 0 }}>Entry Fee</div>
+                    <div style={{ fontFamily: "var(--font-d)", fontSize: "1rem", color: "var(--gold-light)" }}>${fee} / player</div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div className="payout-pool-label">Total Prize Pool</div>
-                    <div className="payout-pool-val">${totalPool.toLocaleString()}</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, width: "100%" }}>
+                    <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid var(--navy-border)", borderRadius: 8, padding: "12px 14px" }}>
+                      <div style={{ fontSize: ".58rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--cream-dim)", fontFamily: "var(--font-d)", marginBottom: 4 }}>Total Pool (All {members.length} Members)</div>
+                      <div style={{ fontFamily: "var(--font-d)", fontSize: "1.6rem", fontWeight: 700, color: "var(--cream-dim)" }}>${(fee * members.length).toLocaleString()}</div>
+                      <div style={{ fontSize: ".7rem", color: "#4b5563", marginTop: 2 }}>{members.length} × ${fee}</div>
+                    </div>
+                    <div style={{ background: "rgba(76,175,125,.08)", border: "1px solid rgba(76,175,125,.25)", borderRadius: 8, padding: "12px 14px" }}>
+                      <div style={{ fontSize: ".58rem", letterSpacing: "2px", textTransform: "uppercase", color: "#6ee7a0", fontFamily: "var(--font-d)", marginBottom: 4 }}>Collected ({paidPlayers.length} Paid)</div>
+                      <div style={{ fontFamily: "var(--font-d)", fontSize: "1.6rem", fontWeight: 700, background: "linear-gradient(135deg,var(--gold),var(--gold-light))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>${totalPool.toLocaleString()}</div>
+                      <div style={{ fontSize: ".7rem", color: "#4b5563", marginTop: 2 }}>{paidPlayers.length} × ${fee}{members.length - paidPlayers.length > 0 ? ` · ${members.length - paidPlayers.length} still unpaid` : " · fully collected ✓"}</div>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1169,25 +1376,45 @@ export default function App() {
               )}
 
               {cats.filter(c => c.pct > 0).length === 0 ? (
-                <div className="empty">No payout categories configured yet.{isAdmin ? " Go to Admin → Config → Payouts to set them up." : ""}</div>
+                <div className="empty">No payout categories configured.{isAdmin ? " Go to Admin → Config → Payouts." : ""}</div>
               ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="bg2">
-                  {cats.filter(c => c.pct > 0).map(c => {
-                    const amt = fee > 0 ? Math.round(totalPool * c.pct / 100) : null;
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {cats.filter(c => c.pct > 0).map((c, i) => {
+                    const amt = totalPool > 0 ? Math.round(totalPool * c.pct / 100) : null;
                     const leader = leaderMap[c.id];
+                    const isTopThree = ["champion","runnerUp","thirdPlace"].includes(c.id);
                     return (
-                      <div key={c.id} style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8, padding: "12px 14px" }}>
-                        <div style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginBottom: 4 }}>{c.label}</div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 6, flexWrap: "wrap" }}>
-                          <div>
-                            <span style={{ fontFamily: "var(--font-d)", fontSize: "1.2rem", color: "var(--gold)" }}>{amt != null ? `$${amt.toLocaleString()}` : `${c.pct}%`}</span>
-                            {amt != null && <span style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginLeft: 6 }}>{c.pct}%</span>}
+                      <div key={c.id} style={{
+                        background: isTopThree ? "rgba(212,168,67,.07)" : "rgba(255,255,255,.03)",
+                        border: `1px solid ${isTopThree ? "var(--gold-border)" : "var(--navy-border)"}`,
+                        borderRadius: 8, padding: "14px 16px",
+                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap"
+                      }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: ".78rem", color: isTopThree ? "var(--gold-light)" : "var(--cream-dim)", marginBottom: 3 }}>{c.label}</div>
+                          {leader
+                            ? <div style={{ fontWeight: 600, color: "var(--white)", fontSize: ".95rem" }}>▶ {leader}</div>
+                            : <div style={{ color: "#4b5563", fontSize: ".82rem", fontStyle: "italic" }}>
+                                {isTopThree ? "Determined by playoffs" : "TBD"}
+                              </div>
+                          }
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontFamily: "var(--font-d)", fontSize: "1.4rem", color: "var(--gold)" }}>
+                            {amt != null ? `$${amt.toLocaleString()}` : "—"}
                           </div>
-                          {leader && <span style={{ fontSize: ".75rem", color: "var(--green)" }}>▶ {leader}</span>}
+                          <div style={{ fontSize: ".68rem", color: "var(--cream-dim)" }}>{c.pct}% of pool</div>
                         </div>
                       </div>
                     );
                   })}
+                  {/* Total allocated check */}
+                  {(() => {
+                    const tot = cats.reduce((s, c) => s + c.pct, 0);
+                    const remaining = totalPool - cats.filter(c => c.pct > 0).reduce((s, c) => s + Math.round(totalPool * c.pct / 100), 0);
+                    if (tot < 100 && totalPool > 0) return <div className="alert-w" style={{ fontSize: ".8rem" }}>⚠ {100 - tot}% of the pool (${remaining.toLocaleString()}) is unallocated.</div>;
+                    return null;
+                  })()}
                 </div>
               )}
             </div>;
@@ -1481,7 +1708,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Live pool preview */}
                 {d.entryFee > 0 && players.length > 0 && (() => {
                   const paidCnt = members.filter(m => m.paid).length;
                   return (
@@ -1491,23 +1717,35 @@ export default function App() {
                   );
                 })()}
 
-                <div style={{ marginTop: 14 }}>
-                  <div style={{ fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)", marginBottom: 10 }}>Payout Categories</div>
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                    <div style={{ fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)" }}>Payout Categories</div>
+                    <button className="btn btn-ghost btn-sm" style={{ fontSize: ".65rem" }} onClick={() => {
+                      const cats = d.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
+                      set("payoutCategories", [...cats, { id: `custom_${Date.now()}`, label: "Custom Category", pct: 0 }]);
+                    }}>+ Add Category</button>
+                  </div>
                   <p className="note" style={{ marginBottom: 12 }}>Set the % of the prize pool for each category. Total must not exceed 100%.</p>
 
                   {(() => {
                     const cats = d.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
                     const totalPct = cats.reduce((s, c) => s + (Number(c.pct) || 0), 0);
-                    const pool = (d.entryFee ?? 0) * players.length;
+                    const pool = (d.entryFee ?? 0) * members.filter(m => m.paid).length;
                     const overLimit = totalPct > 100;
                     const remaining = 100 - totalPct;
 
                     return <>
                       {cats.map((cat, idx) => {
                         const amt = pool > 0 ? Math.round(pool * cat.pct / 100) : null;
+                        const isCustom = cat.id.startsWith("custom_");
                         return (
                           <div key={cat.id} className="payout-cat-row">
-                            <div className="payout-cat-label">{cat.label}</div>
+                            {isCustom
+                              ? <input type="text" value={cat.label} placeholder="Category name"
+                                  style={{ flex: 1, minWidth: 120 }}
+                                  onChange={e => { const updated = cats.map((c, i) => i === idx ? { ...c, label: e.target.value } : c); set("payoutCategories", updated); }} />
+                              : <div className="payout-cat-label">{cat.label}</div>
+                            }
                             <div className="payout-pct-input">
                               <input
                                 type="number" min={0} max={100} step={1}
@@ -1525,11 +1763,14 @@ export default function App() {
                             <div className="payout-amount">
                               {amt != null && cat.pct > 0 ? `$${amt.toLocaleString()}` : <span style={{ color: "#4b5563" }}>—</span>}
                             </div>
+                            {isCustom && (
+                              <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: ".7rem" }}
+                                onClick={() => set("payoutCategories", cats.filter((_, i) => i !== idx))}>✕</button>
+                            )}
                           </div>
                         );
                       })}
 
-                      {/* Progress bar */}
                       <div className="pct-bar-wrap">
                         <div className="pct-bar" style={{
                           width: `${Math.min(totalPct, 100)}%`,
@@ -1542,10 +1783,42 @@ export default function App() {
                           {overLimit ? `⚠ ${totalPct}% — exceeds 100%` : totalPct === 100 ? `✓ ${totalPct}% — fully allocated` : `${totalPct}% (${remaining}% remaining)`}
                         </span>
                       </div>
-                      {overLimit && <div className="alert-d" style={{ marginTop: 10, fontSize: ".8rem" }}>Total payout percentages exceed 100%. Please reduce before saving.</div>}
+                      {overLimit && <div className="alert-d" style={{ marginTop: 10, fontSize: ".8rem" }}>Total exceeds 100%. Please reduce before saving.</div>}
                     </>;
                   })()}
                 </div>
+              </div>
+
+              <div className="cfg-section">
+                <div className="cfg-section-title">🏆 Playoffs</div>
+                <div className="cfg-row">
+                  <div><div className="cfg-label">Enable playoffs</div><div className="cfg-desc">Adds a Playoffs tab to the leaderboard</div></div>
+                  <Toggle checked={d.playoffEnabled ?? true} onChange={v => set("playoffEnabled", v)} />
+                </div>
+                {(d.playoffEnabled ?? true) && <>
+                  <div className="cfg-row">
+                    <div><div className="cfg-label">Number of qualifiers</div><div className="cfg-desc">Top N players by regular season standings</div></div>
+                    <select value={d.playoffQualifiers ?? 4} onChange={e => set("playoffQualifiers", Number(e.target.value))} style={{ width: 80 }}>
+                      {[2, 4, 8, 16].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                  <div className="cfg-row">
+                    <div><div className="cfg-label">Seeding based on</div><div className="cfg-desc">How players are ranked to determine bracket seeding</div></div>
+                    <select value={d.playoffSeedingBy ?? "net"} onChange={e => set("playoffSeedingBy", e.target.value)} style={{ width: 130 }}>
+                      <option value="net">Regular Season Net</option>
+                      <option value="gross">Regular Season Gross</option>
+                      <option value="stableford">Stableford Pts</option>
+                    </select>
+                  </div>
+                  <div className="cfg-row">
+                    <div><div className="cfg-label">Playoff format</div><div className="cfg-desc">How playoff matches are decided</div></div>
+                    <select value={d.playoffFormat ?? "match"} onChange={e => set("playoffFormat", e.target.value)} style={{ width: 130 }}>
+                      <option value="match">Match Play</option>
+                      <option value="stroke">Stroke Play</option>
+                      <option value="stableford">Stableford</option>
+                    </select>
+                  </div>
+                </>}
               </div>
 
               <div className="cfg-section">
