@@ -364,6 +364,8 @@ export default function App() {
   const [profileDraft, setProfileDraft] = useState({});
   const [editMemberHcp, setEditMemberHcp] = useState(null);
   const [playersModal, setPlayersModal] = useState(false);
+  const [scoresFilterPlayer, setScoresFilterPlayer] = useState("all");
+  const [scoresFilterCourse, setScoresFilterCourse] = useState("all");
 
   // auth
   const [authMode, setAuthMode] = useState("signin");
@@ -1071,6 +1073,7 @@ export default function App() {
                 ...(config.scoringFormat !== "match" && config.scoringFormat !== "scramble" ? [["course", "📍 By Course"]] : []),
                 ["best", "⭐ Best Rounds"],
                 ["completion", "📋 Completion"],
+                ["scores", "📋 Scores"],
                 ...(config.playoffEnabled !== false ? [["playoffs", "🏆 Playoffs"]] : []),
                 ["payouts", "💰 Payouts"],
               ].map(([k, l]) => (
@@ -1173,6 +1176,85 @@ export default function App() {
               </div>
             ))}
           </div>}
+
+          {leaderTab === "scores" && (() => {
+            const allRounds = rounds.filter(r => !config.hideScores || myHasSubmitted || r.player_id === session?.user.id);
+            const filteredRounds = allRounds
+              .filter(r => scoresFilterPlayer === "all" || r.player_id === scoresFilterPlayer)
+              .filter(r => scoresFilterCourse === "all" || r.course_id === Number(scoresFilterCourse))
+              .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            // unique players and courses from rounds for filter dropdowns
+            const roundPlayers = [...new Map(allRounds.map(r => [r.player_id, { id: r.player_id, name: r.player_name }])).values()].sort((a, b) => a.name.localeCompare(b.name));
+            const roundCourses = [...new Map(allRounds.map(r => [r.course_id, { id: r.course_id, name: r.course_name }])).values()].sort((a, b) => a.name.localeCompare(b.name));
+
+            return <div className="card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+                <div className="card-hdr" style={{ marginBottom: 0 }}>📋 All Scores</div>
+                <div style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>{filteredRounds.length} round{filteredRounds.length !== 1 ? "s" : ""}</div>
+              </div>
+
+              {/* Filters */}
+              <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+                <div className="fg" style={{ flex: 1, minWidth: 140 }}>
+                  <label>Player</label>
+                  <select value={scoresFilterPlayer} onChange={e => setScoresFilterPlayer(e.target.value)}>
+                    <option value="all">All Players</option>
+                    {roundPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div className="fg" style={{ flex: 1, minWidth: 140 }}>
+                  <label>Course</label>
+                  <select value={scoresFilterCourse} onChange={e => setScoresFilterCourse(e.target.value)}>
+                    <option value="all">All Courses</option>
+                    {roundCourses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                {(scoresFilterPlayer !== "all" || scoresFilterCourse !== "all") && (
+                  <div className="fg" style={{ justifyContent: "flex-end" }}>
+                    <label style={{ opacity: 0 }}>x</label>
+                    <button className="btn btn-ghost btn-sm" onClick={() => { setScoresFilterPlayer("all"); setScoresFilterCourse("all"); }}>Clear</button>
+                  </div>
+                )}
+              </div>
+
+              {filteredRounds.length === 0 ? (
+                <div className="empty">No rounds match your filters.</div>
+              ) : (
+                <div className="tw"><table>
+                  <thead><tr>
+                    <th>Player</th>
+                    <th>Course</th>
+                    <th>Date</th>
+                    <th>Gross</th>
+                    {config.useHandicap && <th>Hcp</th>}
+                    {config.useHandicap && <th>Net</th>}
+                    {config.scoringFormat === "stableford" && <th>Pts</th>}
+                    <th>Status</th>
+                    <th>Card</th>
+                  </tr></thead>
+                  <tbody>{filteredRounds.map(r => (
+                    <tr key={r.id}>
+                      <td><span className="pname" style={{ fontSize: ".86rem" }}>{r.player_name}</span></td>
+                      <td style={{ fontSize: ".8rem", color: "var(--cream-dim)" }}>{r.course_name}</td>
+                      <td style={{ fontSize: ".76rem", color: "var(--cream-dim)", whiteSpace: "nowrap" }}>{r.date}</td>
+                      <td><span style={{ fontFamily: "var(--font-d)" }}>{r.gross}</span></td>
+                      {config.useHandicap && <td><span className="hcp-badge" style={{ fontSize: ".66rem" }}>{r.course_handicap}</span></td>}
+                      {config.useHandicap && <td>{netEl(r.net, r.par)}</td>}
+                      {config.scoringFormat === "stableford" && <td style={{ color: "var(--purple)", fontFamily: "var(--font-d)" }}>{r.stableford_pts ?? "-"}</td>}
+                      <td>{attestBadge(r.attest_status)}</td>
+                      <td>
+                        {r.scorecard_url
+                          ? <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}>📋 View</button>
+                          : <span style={{ color: "#4b5563", fontSize: ".76rem" }}>—</span>
+                        }
+                      </td>
+                    </tr>
+                  ))}</tbody>
+                </table></div>
+              )}
+            </div>;
+          })()}
 
           {leaderTab === "playoffs" && config.playoffEnabled !== false && (() => {
             const n = config.playoffQualifiers ?? 4;
