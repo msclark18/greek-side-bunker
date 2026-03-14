@@ -21,6 +21,8 @@ const DEFAULT_CONFIG = {
   playoffQualifiers: 4,          // how many players qualify (top N by net)
   playoffSeedingBy: "net",       // net | gross | stableford
   playoffBracket: [],            // [{round, matchups: [{p1, p2, winner}]}]
+  playoffCourse: null,           // course id for playoff matches
+  playoffDate: null,             // date string for playoff day
 };
 const FORMAT_LABELS = { stroke: "Stroke Play", stableford: "Stableford", match: "Match Play", scramble: "Scramble" };
 
@@ -1495,10 +1497,19 @@ export default function App() {
                 {/* Background texture */}
                 <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(ellipse 80% 50% at 50% 0%,rgba(212,168,67,.05),transparent)", pointerEvents: "none" }} />
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 8, position: "relative" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 8, position: "relative" }}>
                   <div>
-                    <div className="card-hdr" style={{ marginBottom: 2 }}>🏆 Tournament Bracket</div>
-                    <div style={{ fontSize: ".72rem", color: "var(--cream-dim)" }}>{FORMAT_LABELS[fmt] ?? fmt} · {n}-player single elimination</div>
+                    <div className="card-hdr" style={{ marginBottom: 4 }}>🏆 Tournament Bracket</div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>{FORMAT_LABELS[fmt] ?? fmt} · {n}-player single elimination</span>
+                      {config.playoffCourse && (() => {
+                        const pc = courses.find(c => String(c.id) === String(config.playoffCourse));
+                        return pc ? <span style={{ fontSize: ".78rem", color: "var(--gold-light)" }}>⛳ {pc.name}</span> : null;
+                      })()}
+                      {config.playoffDate && (
+                        <span style={{ fontSize: ".78rem", color: "var(--gold-light)" }}>📅 {new Date(config.playoffDate + "T12:00:00").toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}</span>
+                      )}
+                    </div>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     {isAdmin && <button className="btn btn-danger btn-sm" onClick={resetBracket}>Reset</button>}
@@ -1581,44 +1592,59 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Third place match */}
-                {thirdPlaceMatch && (
-                  <div className="bk-third">
-                    <div className="bk-third-label">🥉 Third Place Match</div>
-                    <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-                      <div className="bk-match" style={{ margin: 0 }}>
-                        <div className={`bk-match-inner${thirdPlaceMatch.winner ? " has-winner" : ""}`}>
-                          {[{ name: thirdPlaceMatch.p1, slot: "p1" }, { name: thirdPlaceMatch.p2, slot: "p2" }].map(({ name, slot }, si) => {
-                            const isWinner = thirdPlaceMatch.winner === name;
-                            const isLoser = thirdPlaceMatch.winner && !isWinner;
-                            return (
-                              <div key={slot}>
-                                <div
-                                  className={`bk-slot${isWinner ? " s-winner" : ""}${isLoser ? " s-loser" : ""}${!name ? " s-empty" : ""}${isAdmin && name && !thirdPlaceMatch.winner ? " clickable" : ""}`}
-                                  onClick={() => isAdmin && name && !thirdPlaceMatch.winner && setThirdPlaceWinner(name)}
-                                >
-                                  <span className="bk-seed">{name ? (seedList.findIndex(p => p.name === name) + 1 || "") : ""}</span>
-                                  <span className="bk-name">{name ?? "TBD"}</span>
-                                  {isWinner && <span className="bk-win-icon">🥉</span>}
+                {/* Third place match — always shown once bracket is generated */}
+                {displayBracket.length > 0 && numRounds >= 2 && (() => {
+                  // Get semifinal losers if semis are done, otherwise TBD
+                  const semis = displayBracket[numRounds - 2];
+                  const semisComplete = semis?.matchups?.every(m => m.winner);
+                  const tpm = config.thirdPlaceMatch;
+
+                  // Derive players: from saved thirdPlaceMatch or from semifinal losers
+                  const p1 = tpm?.p1 ?? (semisComplete ? (semis.matchups[0]?.winner === semis.matchups[0]?.p1 ? semis.matchups[0]?.p2 : semis.matchups[0]?.p1) : null);
+                  const p2 = tpm?.p2 ?? (semisComplete ? (semis.matchups[1]?.winner === semis.matchups[1]?.p1 ? semis.matchups[1]?.p2 : semis.matchups[1]?.p1) : null);
+                  const winner = tpm?.winner ?? null;
+
+                  return (
+                    <div className="bk-third">
+                      <div className="bk-third-label">🥉 Third Place Match</div>
+                      <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+                        <div className="bk-match" style={{ margin: 0 }}>
+                          <div className={`bk-match-inner${winner ? " has-winner" : ""}`}>
+                            {[{ name: p1, slot: "p1" }, { name: p2, slot: "p2" }].map(({ name, slot }, si) => {
+                              const isWinner = winner === name;
+                              const isLoser = winner && !isWinner;
+                              return (
+                                <div key={slot}>
+                                  <div
+                                    className={`bk-slot${isWinner ? " s-winner" : ""}${isLoser ? " s-loser" : ""}${!name ? " s-empty" : ""}${isAdmin && name && !winner ? " clickable" : ""}`}
+                                    onClick={() => isAdmin && name && !winner && setThirdPlaceWinner(name)}
+                                  >
+                                    <span className="bk-seed">{name ? (seedList.findIndex(p => p.name === name) + 1 || "") : ""}</span>
+                                    <span className="bk-name">{name ?? "TBD"}</span>
+                                    {isWinner && <span className="bk-win-icon">🥉</span>}
+                                  </div>
+                                  {si === 0 && <div className="bk-slot-divider" />}
                                 </div>
-                                {si === 0 && <div className="bk-slot-divider" />}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                      {thirdPlaceMatch.winner && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 10, padding: "10px 16px" }}>
-                          <span style={{ fontSize: "1.4rem" }}>🥉</span>
-                          <div>
-                            <div style={{ fontSize: ".58rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--cream-dim)", fontFamily: "var(--font-d)", marginBottom: 2 }}>Third Place</div>
-                            <div style={{ fontFamily: "var(--font-d)", fontSize: ".95rem", color: "var(--white)" }}>{thirdPlaceMatch.winner}</div>
+                              );
+                            })}
                           </div>
                         </div>
-                      )}
+                        {winner && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 10, padding: "10px 16px" }}>
+                            <span style={{ fontSize: "1.4rem" }}>🥉</span>
+                            <div>
+                              <div style={{ fontSize: ".58rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--cream-dim)", fontFamily: "var(--font-d)", marginBottom: 2 }}>Third Place</div>
+                              <div style={{ fontFamily: "var(--font-d)", fontSize: ".95rem", color: "var(--white)" }}>{winner}</div>
+                            </div>
+                          </div>
+                        )}
+                        {!p1 && !p2 && (
+                          <div style={{ fontSize: ".78rem", color: "#4b5563", fontStyle: "italic" }}>Awaiting semifinal results…</div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>}
             </>;
           })()}
@@ -2126,6 +2152,17 @@ export default function App() {
                       <option value="stroke">Stroke Play</option>
                       <option value="stableford">Stableford</option>
                     </select>
+                  </div>
+                  <div className="cfg-row">
+                    <div><div className="cfg-label">Playoff course</div><div className="cfg-desc">Course where playoff matches will be played</div></div>
+                    <select value={d.playoffCourse ?? ""} onChange={e => set("playoffCourse", e.target.value || null)} style={{ width: 160 }}>
+                      <option value="">Not set</option>
+                      {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="cfg-row">
+                    <div><div className="cfg-label">Playoff date</div><div className="cfg-desc">Scheduled date for playoff matches</div></div>
+                    <input type="date" value={d.playoffDate ?? ""} onChange={e => set("playoffDate", e.target.value || null)} style={{ width: 160 }} />
                   </div>
                 </>}
               </div>
