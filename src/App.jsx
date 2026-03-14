@@ -625,6 +625,10 @@ export default function App() {
     if (data) { setCourses(p => [...p, data]); setNewCourse({ name: "", par: "", holes: "18", slope: "", rating: "" }); setShowAddCourse(false); setAddMsg("Course added!"); setTimeout(() => setAddMsg(""), 3e3); }
   };
   const deleteCourse = async (id) => { await supabase.from("courses").delete().eq("id", id); setCourses(p => p.filter(c => c.id !== id)); };
+  const togglePlayoffOnly = async (id, cur) => {
+    await supabase.from("courses").update({ playoff_only: !cur }).eq("id", id);
+    setCourses(p => p.map(c => c.id === id ? { ...c, playoff_only: !cur } : c));
+  };
   const removeMember = async (uid) => { if (uid === session.user.id) return; await supabase.from("league_members").delete().eq("league_id", activeLeague.id).eq("user_id", uid); setMembers(p => p.filter(m => m.user_id !== uid)); };
   const toggleRole = async (uid, cur) => {
     const r = cur === "admin" ? "player" : "admin";
@@ -720,13 +724,15 @@ export default function App() {
   const bestNetLB = useMemo(() => players.map(p => { const pr = visible.filter(r => r.player_id === p.id); if (!pr.length) return null; return { ...p, best: pr.reduce((b, r) => r.net < b.net ? r : b) }; }).filter(Boolean).sort((a, b) => a.best.net - b.best.net), [players, visible]);
   const bestGrossLB = useMemo(() => players.map(p => { const pr = visible.filter(r => r.player_id === p.id); if (!pr.length) return null; return { ...p, best: pr.reduce((b, r) => r.gross < b.gross ? r : b) }; }).filter(Boolean).sort((a, b) => a.best.gross - b.best.gross), [players, visible]);
 
+  const regularCourses = courses.filter(c => !c.playoff_only);
+
   const completionData = useMemo(() => {
-    const total = courses.length * config.roundsPerCourse;
-    return players.map(p => ({ ...p, cs: courses.map(c => { const played = scored.filter(r => r.player_id === p.id && r.course_id === c.id).length; return { ...c, played, done: played >= config.roundsPerCourse }; }), done: scored.filter(r => r.player_id === p.id).length, total, pct: total ? Math.round(scored.filter(r => r.player_id === p.id).length / total * 100) : 0 }));
-  }, [players, scored, courses, config]);
+    const total = regularCourses.length * config.roundsPerCourse;
+    return players.map(p => ({ ...p, cs: regularCourses.map(c => { const played = scored.filter(r => r.player_id === p.id && r.course_id === c.id).length; return { ...c, played, done: played >= config.roundsPerCourse }; }), done: scored.filter(r => r.player_id === p.id && regularCourses.some(c => c.id === r.course_id)).length, total, pct: total ? Math.round(scored.filter(r => r.player_id === p.id && regularCourses.some(c => c.id === r.course_id)).length / total * 100) : 0 }));
+  }, [players, scored, regularCourses, config]);
 
   const approvedCount = scored.length;
-  const totalRequired = players.length * courses.length * config.roundsPerCourse;
+  const totalRequired = players.length * regularCourses.length * config.roundsPerCourse;
   const leaguePct = totalRequired ? Math.round(approvedCount / totalRequired * 100) : 0;
 
   // Rounds pending MY attestation
@@ -1875,7 +1881,7 @@ export default function App() {
               <div className="fg"><label>Course</label>
                 <select value={form.courseId} onChange={setF("courseId")}>
                   <option value="">Select course…</option>
-                  {courses.map(c => {
+                  {courses.filter(c => !c.playoff_only).map(c => {
                     const played = myApprovedOnCourse(c.id).length;
                     const full = played >= config.roundsPerCourse;
                     return <option key={c.id} value={c.id} disabled={full}>{c.name} · Par {c.par}{full ? " ✓" : played > 0 ? ` (${played}/${config.roundsPerCourse})` : ""}</option>;
@@ -2276,9 +2282,23 @@ export default function App() {
           {adminTab === "courses" && <div className="card">
             <div className="card-hdr">⛳ Courses</div>
             {courses.map(c => (
-              <div key={c.id} className="pchip">
-                <div style={{ flex: 1 }}><div className="pchip-name">{c.name}</div><div className="pchip-meta">Par {c.par} · {c.holes} holes · Slope {c.slope} · Rating {c.rating}</div></div>
-                <button className="btn btn-danger" onClick={() => deleteCourse(c.id)}>Remove</button>
+              <div key={c.id} className="pchip" style={{ borderColor: c.playoff_only ? "rgba(212,168,67,.25)" : undefined }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <div className="pchip-name">{c.name}</div>
+                    {c.playoff_only && (
+                      <span style={{ fontSize: ".6rem", padding: "1px 7px", borderRadius: 20, background: "rgba(212,168,67,.15)", border: "1px solid var(--gold-border)", color: "var(--gold)", fontFamily: "var(--font-d)", letterSpacing: "1px", textTransform: "uppercase" }}>Playoff Only</span>
+                    )}
+                  </div>
+                  <div className="pchip-meta">Par {c.par} · {c.holes} holes · Slope {c.slope} · Rating {c.rating}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                    <span style={{ fontSize: ".58rem", color: "var(--cream-dim)", letterSpacing: "1px", textTransform: "uppercase", fontFamily: "var(--font-d)" }}>Playoff Only</span>
+                    <Toggle checked={!!c.playoff_only} onChange={() => togglePlayoffOnly(c.id, c.playoff_only)} />
+                  </div>
+                  <button className="btn btn-danger" onClick={() => deleteCourse(c.id)}>Remove</button>
+                </div>
               </div>
             ))}
             {!showAddCourse ? <button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={() => setShowAddCourse(true)}>+ Add Course</button> : (
