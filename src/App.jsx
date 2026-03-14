@@ -42,10 +42,19 @@ const isSeasonActive = (cfg) => {
   if (cfg.seasonEnd && new Date(cfg.seasonEnd) < now) return false;
   return true;
 };
-const ghinUrl = (ghin, name) => {
-  if (!ghin && !name) return null;
-  if (name) return `https://www.ghin.com/golfer-lookup?lastName=${encodeURIComponent(name.split(" ").slice(-1)[0])}&firstName=${encodeURIComponent(name.split(" ")[0])}`;
-  return `https://www.ghin.com/golfer-lookup`;
+const ghinUrl = () => `https://www.ghin.com/golfer-lookup/all-golfers`;
+const GhinLink = ({ ghin, style }) => {
+  if (!ghin) return null;
+  const handleClick = (e) => {
+    e.preventDefault();
+    navigator.clipboard.writeText(String(ghin)).catch(() => {});
+    window.open(ghinUrl(), "_blank", "noreferrer");
+  };
+  return (
+    <a href={ghinUrl()} onClick={handleClick} className="ghin-link" style={style} title={`Copy GHIN # ${ghin} and open lookup`}>
+      🔗 GHIN ↗
+    </a>
+  );
 };
 
 const CSS = `
@@ -864,7 +873,7 @@ export default function App() {
                 <div className="fg"><label>Handicap Index</label><input type="number" step=".1" min={0} max={54} placeholder="e.g. 8.4" value={profileDraft.handicap ?? ""} onChange={e => setProfileDraft(d => ({ ...d, handicap: e.target.value }))} /></div>
                 <div className="fg"><label>GHIN #</label><input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""} onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))} /></div>
               </div>
-              {profileDraft.ghin && <a href={ghinUrl(profileDraft.ghin, profileDraft.name)} target="_blank" rel="noreferrer" className="ghin-link">🔗 Look up on GHIN ↗</a>}
+              {profileDraft.ghin && <GhinLink ghin={profileDraft.ghin} />}
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn btn-gold" onClick={saveProfile}>Save</button>
@@ -968,8 +977,8 @@ export default function App() {
                 <div className="fg"><label>Handicap Index</label><input type="number" step=".1" min={0} max={54} placeholder="e.g. 8.4" value={profileDraft.handicap ?? ""} onChange={e => setProfileDraft(d => ({ ...d, handicap: e.target.value }))} /></div>
                 <div className="fg"><label>GHIN #</label><input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""} onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))} /></div>
               </div>
-              {profileDraft.ghin && <a href={ghinUrl(profileDraft.ghin, profileDraft.name)} target="_blank" rel="noreferrer" className="ghin-link">🔗 Look up on GHIN ↗</a>}
-              <p className="note">Your GHIN number links to your official USGA handicap record at ghin.com.</p>
+              {profileDraft.ghin && <GhinLink ghin={profileDraft.ghin} />}
+              <p className="note">Your GHIN # will be copied to clipboard when you click the link so you can paste it into the search box.</p>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn btn-gold" onClick={saveProfile}>Save</button>
@@ -1028,7 +1037,7 @@ export default function App() {
                       </div>
                     )}
                     {config.useHandicap && <div style={{ marginBottom: 6 }}><span className="hcp-badge">Hcp {m.profile.handicap ?? "-"}</span></div>}
-                    {m.profile.ghin && <a href={ghinUrl(m.profile.ghin, m.profile.name)} target="_blank" rel="noreferrer" className="ghin-link" style={{ fontSize: ".68rem", marginBottom: 6, display: "inline-flex" }}>GHIN ↗</a>}
+                    {m.profile.ghin && <GhinLink ghin={m.profile.ghin} style={{ fontSize: ".68rem", marginBottom: 6, display: "inline-flex" }} />}
                     {config.useHandicap && courses.length > 0 && <div style={{ marginTop: 6 }}>
                       {courseHcps.map(c => <div key={c.id} style={{ fontSize: ".68rem", color: "var(--cream-dim)", marginTop: 2 }}>{c.name}: <span style={{ color: "var(--white)" }}>{c.ch}</span></div>)}
                     </div>}
@@ -1138,7 +1147,7 @@ export default function App() {
                   {rankEl(i)}
                   <td>
                     <span className="pname">{p.name}</span>
-                    {p.ghin && <a href={ghinUrl(p.ghin, p.name)} target="_blank" rel="noreferrer" className="ghin-link" style={{ marginLeft: 7, fontSize: ".62rem" }}>GHIN</a>}
+                    {p.ghin && <GhinLink ghin={p.ghin} style={{ marginLeft: 7, fontSize: ".62rem" }} />}
                   </td>
                   {config.useHandicap && <td style={{ color: "var(--cream-dim)" }}>{p.handicap}</td>}
                   <td>{p.totalRounds}</td>
@@ -2249,7 +2258,7 @@ export default function App() {
                   </div>
                   <div className="pchip-meta">
                     {m.profile.email} · Hcp {m.profile.handicap ?? "-"}
-                    {m.profile.ghin && <> · <a href={ghinUrl(m.profile.ghin, m.profile.name)} target="_blank" rel="noreferrer" className="ghin-link" style={{ fontSize: ".68rem" }}>GHIN ↗</a></>}
+                    {m.profile.ghin && <> · <GhinLink ghin={m.profile.ghin} style={{ fontSize: ".68rem" }} /></>}
                     {" · "}{rounds.filter(r => r.player_id === m.user_id).length} rounds
                   </div>
                   {config.useHandicap && courses.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
