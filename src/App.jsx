@@ -57,6 +57,37 @@ const GhinLink = ({ ghin, style }) => {
   );
 };
 
+// ── GSB Logo SVG component ──
+const GSBLogo = ({ size = 32, style }) => (
+  <svg width={size} height={size} viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" style={style}>
+    <defs>
+      <radialGradient id="gsb-bg" cx="50%" cy="40%" r="60%">
+        <stop offset="0%" stopColor="#1a2340"/>
+        <stop offset="100%" stopColor="#0a0e1a"/>
+      </radialGradient>
+      <linearGradient id="gsb-gold" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#f0c96a"/>
+        <stop offset="100%" stopColor="#b8882a"/>
+      </linearGradient>
+    </defs>
+    <rect width="512" height="512" rx="112" fill="url(#gsb-bg)"/>
+    <rect x="18" y="18" width="476" height="476" rx="98" fill="none" stroke="url(#gsb-gold)" strokeWidth="2.5" strokeOpacity="0.4"/>
+    <line x1="256" y1="148" x2="256" y2="340" stroke="url(#gsb-gold)" strokeWidth="7" strokeLinecap="round"/>
+    <path d="M256 148 L336 178 L256 208 Z" fill="url(#gsb-gold)"/>
+    <ellipse cx="256" cy="342" rx="38" ry="10" fill="#0d1526" stroke="url(#gsb-gold)" strokeWidth="2.5"/>
+    <path d="M156 342 Q196 330 256 332 Q316 330 356 342" fill="none" stroke="url(#gsb-gold)" strokeWidth="2.5" strokeOpacity="0.5" strokeLinecap="round"/>
+    <rect x="96" y="240" width="16" height="100" rx="2" fill="url(#gsb-gold)" opacity="0.6"/>
+    <rect x="88" y="234" width="32" height="10" rx="2" fill="url(#gsb-gold)" opacity="0.6"/>
+    <rect x="88" y="338" width="32" height="8" rx="2" fill="url(#gsb-gold)" opacity="0.6"/>
+    <rect x="400" y="240" width="16" height="100" rx="2" fill="url(#gsb-gold)" opacity="0.6"/>
+    <rect x="392" y="234" width="32" height="10" rx="2" fill="url(#gsb-gold)" opacity="0.6"/>
+    <rect x="392" y="338" width="32" height="8" rx="2" fill="url(#gsb-gold)" opacity="0.6"/>
+    <text x="256" y="420" fontFamily="Georgia, serif" fontSize="54" fontWeight="700" fill="url(#gsb-gold)" textAnchor="middle" letterSpacing="8">GSB</text>
+    <line x1="176" y1="432" x2="336" y2="432" stroke="url(#gsb-gold)" strokeWidth="1.5" strokeOpacity="0.5"/>
+    <text x="256" y="454" fontFamily="Georgia, serif" fontSize="18" fill="#d4a843" textAnchor="middle" letterSpacing="4" opacity="0.7">GOLF LEAGUE</text>
+  </svg>
+);
+
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -783,7 +814,7 @@ export default function App() {
     <><style>{CSS}</style>
       <div className="auth-bg"><div className="gp" />
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: "4rem", marginBottom: 8 }}>⛳</div>
+          <GSBLogo size={80} style={{ margin: "0 auto 12px", display: "block" }} />
           <div style={{ color: "var(--gold)", fontFamily: "var(--font-d)", letterSpacing: "3px", fontSize: "1.1rem" }}>GREEK SIDE BUNKER</div>
           <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 20 }}>
             {[0, 1, 2].map(i => <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--gold)", animation: `pulse 1.2s ease-in-out ${i * .2}s infinite`, opacity: .4 }} />)}
@@ -801,7 +832,7 @@ export default function App() {
         <div className="auth-bg"><div className="gp" />
           <div className="auth-box au">
             <div style={{ textAlign: "center", marginBottom: 22 }}>
-              <div style={{ fontSize: "3rem", marginBottom: 6 }}>⛳</div>
+              <GSBLogo size={72} style={{ margin: "0 auto 12px", display: "block" }} />
               <div className="auth-title">GREEK SIDE BUNKER</div>
               <div className="auth-sub">Golf League · Season Tracker</div>
               <div className="auth-divider" />
@@ -885,8 +916,8 @@ export default function App() {
       <div style={{ background: "var(--navy)", minHeight: "100vh" }}>
         <div className="league-picker au">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, flexWrap: "wrap", gap: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: "2rem" }}>⛳</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <GSBLogo size={48} />
               <div className="auth-title" style={{ fontSize: "1.3rem" }}>GREEK SIDE BUNKER</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
@@ -1054,7 +1085,7 @@ export default function App() {
         {/* Topbar */}
         <div className="topbar">
           <div className="brand" onClick={() => { setActiveLeague(null); setDataLoaded(false); }}>
-            <span style={{ fontSize: "1.7rem" }}>⛳</span>
+            <GSBLogo size={36} />
             <div><div className="brand-name">GREEK SIDE BUNKER</div><span className="brand-league">{activeLeague.name}</span></div>
           </div>
           <div className="topbar-right">
@@ -1190,7 +1221,7 @@ export default function App() {
 
           {leaderTab === "best" && <div className="card">
             <div className="card-hdr">⭐ Best Single Round</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }} className="bg2">
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
               <div>
                 <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "var(--gold)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 8 }}>Best Net</div>
                 {bestNetLB.length === 0 ? <div className="empty" style={{ padding: "16px 0" }}>—</div> : (
