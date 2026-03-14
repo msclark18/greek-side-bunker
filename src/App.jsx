@@ -1269,14 +1269,52 @@ export default function App() {
                 </div>
                 {seedList.length === 0
                   ? <div className="empty">No rounds submitted yet — standings needed to seed the bracket.</div>
-                  : seedList.map((p, i) => (
-                    <div key={p.id} className="qualifier-chip">
-                      <div className="qualifier-seed">#{i + 1}</div>
-                      <div className="qualifier-name">{p.name}</div>
-                      {config.useHandicap && <span className="hcp-badge" style={{ fontSize: ".66rem", marginRight: 4 }}>Hcp {p.handicap ?? "-"}</span>}
-                      <div className="qualifier-stat">{p.seedStat} {p.seedLabel}</div>
-                    </div>
-                  ))
+                  : (() => {
+                    const fee = config.entryFee ?? 0;
+                    const paidCount = members.filter(m => m.paid).length;
+                    const fullPool = fee * members.length;  // assumes all paid
+                    const collectedPool = fee * paidCount;  // actually collected
+                    // Map qualifier position to payout category
+                    const cats = config.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
+                    const positionPayout = [
+                      cats.find(c => c.id === "champion"),
+                      cats.find(c => c.id === "runnerUp"),
+                      cats.find(c => c.id === "thirdPlace"),
+                      cats.find(c => c.id === "thirdPlace"), // 4th seed also plays for 3rd
+                    ];
+                    return seedList.map((p, i) => {
+                      const memberRecord = members.find(m => m.user_id === p.id);
+                      const isPaid = memberRecord?.paid ?? false;
+                      const cat = positionPayout[i];
+                      const fullPrize = fullPool > 0 && cat?.pct > 0 ? Math.round(fullPool * cat.pct / 100) : null;
+                      const collectedPrize = collectedPool > 0 && cat?.pct > 0 ? Math.round(collectedPool * cat.pct / 100) : null;
+                      const showBoth = collectedPrize !== null && collectedPrize !== fullPrize;
+                      return (
+                        <div key={p.id} className="qualifier-chip" style={{ borderColor: isPaid ? "rgba(76,175,125,.2)" : "rgba(224,92,92,.15)" }}>
+                          <div className="qualifier-seed">#{i + 1}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                              <span className="qualifier-name" style={{ flex: "unset" }}>{p.name}</span>
+                              {config.entryFee > 0 && (
+                                <span className={`paid-badge ${isPaid ? "paid" : "unpaid"}`}>{isPaid ? "✓ Paid" : "✗ Unpaid"}</span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginTop: 2 }}>
+                              {p.seedStat} {p.seedLabel}
+                              {config.useHandicap && <> · Hcp {p.handicap ?? "-"}</>}
+                            </div>
+                          </div>
+                          {fullPrize && (
+                            <div style={{ textAlign: "right", flexShrink: 0 }}>
+                              <div style={{ fontFamily: "var(--font-d)", fontSize: "1rem", color: "var(--gold)" }}>${fullPrize.toLocaleString()}</div>
+                              {showBoth && <div style={{ fontSize: ".62rem", color: "#6ee7a0" }}>${collectedPrize.toLocaleString()} collected</div>}
+                              <div style={{ fontSize: ".62rem", color: "var(--cream-dim)" }}>{cat.pct}% if winner</div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()
                 }
               </div>
 
@@ -1425,7 +1463,9 @@ export default function App() {
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {cats.filter(c => c.pct > 0).map((c, i) => {
-                    const amt = totalPool > 0 ? Math.round(totalPool * c.pct / 100) : null;
+                    const fullAmt = fee > 0 ? Math.round(fee * members.length * c.pct / 100) : null;
+                    const collectedAmt = totalPool > 0 ? Math.round(totalPool * c.pct / 100) : null;
+                    const showBoth = collectedAmt !== null && collectedAmt !== fullAmt;
                     const leader = leaderMap[c.id];
                     const isTopThree = ["champion","runnerUp","thirdPlace"].includes(c.id);
                     return (
@@ -1436,18 +1476,25 @@ export default function App() {
                         display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap"
                       }}>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: ".78rem", color: isTopThree ? "var(--gold-light)" : "var(--cream-dim)", marginBottom: 3 }}>{c.label}</div>
-                          {leader
-                            ? <div style={{ fontWeight: 600, color: "var(--white)", fontSize: ".95rem" }}>▶ {leader}</div>
-                            : <div style={{ color: "#4b5563", fontSize: ".82rem", fontStyle: "italic" }}>
-                                {isTopThree ? "Determined by playoffs" : "TBD"}
-                              </div>
-                          }
+                          <div style={{ fontSize: ".78rem", color: isTopThree ? "var(--gold-light)" : "var(--cream-dim)", marginBottom: 4 }}>{c.label}</div>
+                          {leader ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                              <span style={{ fontWeight: 600, color: "var(--white)", fontSize: ".95rem" }}>▶ {leader}</span>
+                              {fullAmt != null && (
+                                <span style={{ fontFamily: "var(--font-d)", fontSize: ".85rem", color: "var(--gold)", background: "rgba(212,168,67,.12)", border: "1px solid var(--gold-border)", borderRadius: 5, padding: "1px 8px" }}>${fullAmt.toLocaleString()}</span>
+                              )}
+                            </div>
+                          ) : (
+                            <div style={{ color: "#4b5563", fontSize: ".82rem", fontStyle: "italic" }}>
+                              {isTopThree ? "Determined by playoffs" : "TBD"}
+                            </div>
+                          )}
                         </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontFamily: "var(--font-d)", fontSize: "1.4rem", color: "var(--gold)" }}>
-                            {amt != null ? `$${amt.toLocaleString()}` : "—"}
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontFamily: "var(--font-d)", fontSize: "1.4rem", color: leader ? "var(--gold)" : "var(--cream-dim)" }}>
+                            {fullAmt != null ? `$${fullAmt.toLocaleString()}` : "—"}
                           </div>
+                          {showBoth && <div style={{ fontSize: ".7rem", color: "#6ee7a0", marginTop: 1 }}>${collectedAmt.toLocaleString()} collected</div>}
                           <div style={{ fontSize: ".68rem", color: "var(--cream-dim)" }}>{c.pct}% of pool</div>
                         </div>
                       </div>
