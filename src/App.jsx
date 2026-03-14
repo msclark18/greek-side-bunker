@@ -318,7 +318,7 @@ export default function App() {
     const [{ data: c }, { data: r }, { data: m }, { data: s }, { data: pj }] = await Promise.all([
       supabase.from("courses").select("*").eq("league_id", league.id).order("name"),
       supabase.from("rounds").select("*").eq("league_id", league.id).order("created_at", { ascending: false }),
-      supabase.from("league_members").select("*, profile:profiles(*)").eq("league_id", league.id),
+      supabase.from("league_members").select("*, profile:profiles!inner(*)").eq("league_id", league.id),
       supabase.from("league_settings").select("*").eq("league_id", league.id).single(),
       supabase.from("league_join_requests").select("*, profile:profiles(*)").eq("league_id", league.id).eq("status", "pending"),
     ]);
