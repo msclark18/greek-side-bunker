@@ -270,7 +270,7 @@ export default function App() {
   }, [session]);
 
   const loadLeagues = async () => {
-  if (!session?.user?.id) return;
+    if (!session?.user?.id) return;
     const { data, error } = await supabase
       .from("league_members")
       .select("*, league:leagues(*)")
@@ -564,7 +564,9 @@ export default function App() {
 
   // ── Leaderboard ──
   const players = members.map(m => ({ ...m.profile, role: m.role }));
-  const scored = config.attestRequired ? rounds.filter(r => r.attest_status === "approved") : rounds;
+  const scored = rounds.filter(r =>
+    !config.attestRequired || r.attest_status === "approved"
+  );
   const myHasSubmitted = scored.some(r => r.player_id === session?.user.id);
   const visible = (config.hideScores && !myHasSubmitted) ? scored.filter(r => r.player_id === session?.user.id) : scored;
 
