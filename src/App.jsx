@@ -1328,8 +1328,57 @@ export default function App() {
               return [{ round: 1, label: roundLabels[0], matchups: matches }];
             };
 
-            // Use saved bracket or auto-generate first round
-            const displayBracket = bracket.length > 0 ? bracket : (seedList.length >= 2 ? initMatchups() : []);
+            // PRE-BUILD the full bracket structure for all rounds upfront
+            // Then overlay saved winners on top — so the full skeleton is always visible
+            const buildFullBracket = () => {
+              // Start with saved bracket or generate first round
+              const saved = bracket.length > 0 ? bracket : (seedList.length >= 2 ? initMatchups() : []);
+              if (saved.length === 0) return [];
+
+              const full = [...saved];
+
+              // Fill in subsequent rounds as TBD placeholders if not yet created
+              for (let r = full.length; r < numRounds; r++) {
+                const prevMatchCount = full[r - 1].matchups.length;
+                const matchCount = prevMatchCount / 2;
+                const matchups = Array.from({ length: matchCount }, () => ({ p1: null, p2: null, winner: null }));
+                full.push({ round: r + 1, label: roundLabels[r], matchups });
+              }
+
+              // Now propagate known winners forward into later rounds
+              for (let r = 0; r < full.length - 1; r++) {
+                const roundMatchups = full[r].matchups;
+                const allDone = roundMatchups.every(m => m.winner);
+                if (allDone) {
+                  const nextMatchups = [];
+                  for (let i = 0; i < roundMatchups.length; i += 2) {
+                    nextMatchups.push({
+                      p1: roundMatchups[i]?.winner ?? null,
+                      p2: roundMatchups[i + 1]?.winner ?? null,
+                      winner: full[r + 1]?.matchups[i / 2]?.winner ?? null,
+                    });
+                  }
+                  full[r + 1] = { ...full[r + 1], matchups: nextMatchups };
+                } else {
+                  // Partial propagation — slot in any known winners
+                  for (let i = 0; i < roundMatchups.length; i += 2) {
+                    const nextIdx = i / 2;
+                    const nextMatch = full[r + 1]?.matchups[nextIdx];
+                    if (nextMatch) {
+                      full[r + 1].matchups[nextIdx] = {
+                        ...nextMatch,
+                        p1: roundMatchups[i]?.winner ?? nextMatch.p1,
+                        p2: roundMatchups[i + 1]?.winner ?? nextMatch.p2,
+                      };
+                    }
+                  }
+                }
+              }
+
+              return full;
+            };
+
+            const displayBracket = buildFullBracket();
 
             const saveBracket = async (newBracket, newThirdPlace) => {
               const newCfg = {
@@ -1342,32 +1391,32 @@ export default function App() {
             };
 
             const setWinner = (roundIdx, matchIdx, winner) => {
-              const updated = displayBracket.map((r, ri) => ri !== roundIdx ? r : {
-                ...r, matchups: r.matchups.map((m, mi) => mi !== matchIdx ? m : { ...m, winner })
-              });
+              // Work from saved bracket (source of truth), not displayBracket (which is derived)
+              const savedBracket = bracket.length > 0 ? bracket : initMatchups();
+
+              // Ensure we have enough rounds saved
+              const updated = [...savedBracket];
+              while (updated.length <= roundIdx) {
+                updated.push({ round: updated.length + 1, label: roundLabels[updated.length], matchups: [] });
+              }
+
+              // Set the winner in this round
+              updated[roundIdx] = {
+                ...updated[roundIdx],
+                matchups: updated[roundIdx].matchups.map((m, mi) =>
+                  mi !== matchIdx ? m : { ...m, winner }
+                ),
+              };
+
+              // Check if this was the semifinals (for third place match)
               const roundMatchups = updated[roundIdx].matchups;
               const allDone = roundMatchups.every(m => m.winner);
-
-              // This is the semifinals round (second-to-last before the final, with 2+ matches)
               const isSemiFinal = allDone && numRounds >= 2 && roundIdx === numRounds - 2 && roundMatchups.length >= 2;
 
-              if (allDone && roundIdx < numRounds - 1) {
-                // Advance winners to next round (final)
-                const nextMatchups = [];
-                for (let i = 0; i < roundMatchups.length; i += 2) {
-                  nextMatchups.push({ p1: roundMatchups[i].winner, p2: roundMatchups[i + 1]?.winner ?? null, winner: null });
-                }
-                const nextRound = { round: roundIdx + 2, label: roundLabels[roundIdx + 1], matchups: nextMatchups };
-                if (updated.length <= roundIdx + 1) updated.push(nextRound);
-                else updated[roundIdx + 1] = nextRound;
-
-                if (isSemiFinal) {
-                  const loser1 = roundMatchups[0].winner === roundMatchups[0].p1 ? roundMatchups[0].p2 : roundMatchups[0].p1;
-                  const loser2 = roundMatchups[1].winner === roundMatchups[1].p1 ? roundMatchups[1].p2 : roundMatchups[1].p1;
-                  saveBracket(updated, { p1: loser1, p2: loser2, winner: null });
-                } else {
-                  saveBracket(updated);
-                }
+              if (isSemiFinal) {
+                const loser1 = roundMatchups[0].winner === roundMatchups[0].p1 ? roundMatchups[0].p2 : roundMatchups[0].p1;
+                const loser2 = roundMatchups[1].winner === roundMatchups[1].p1 ? roundMatchups[1].p2 : roundMatchups[1].p1;
+                saveBracket(updated, { p1: loser1, p2: loser2, winner: null });
               } else {
                 saveBracket(updated);
               }
