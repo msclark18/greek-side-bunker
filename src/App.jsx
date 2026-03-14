@@ -6,7 +6,16 @@ const DEFAULT_CONFIG = {
   useHandicap: true, handicapPct: 100, useSlopeRating: true, maxHandicap: null,
   joinMode: "open", maxPlayers: null, hideScores: false, seasonStart: null, seasonEnd: null,
   googleSheetUrl: null,
-  scoresToCount: null, // null = all scores count; number = best N of all submitted scores count
+  scoresToCount: null,
+  entryFee: null, // $ per player
+  payoutCategories: [
+    { id: "overallNet", label: "🏆 Overall Net", pct: 0 },
+    { id: "overallGross", label: "🏌️ Overall Gross", pct: 0 },
+    { id: "courseNet", label: "📍 Best Course Net", pct: 0 },
+    { id: "courseGross", label: "📍 Best Course Gross", pct: 0 },
+    { id: "bestNet", label: "⭐ Best Net Round", pct: 0 },
+    { id: "bestGross", label: "⭐ Best Gross Round", pct: 0 },
+  ],
 };
 const FORMAT_LABELS = { stroke: "Stroke Play", stableford: "Stableford", match: "Match Play", scramble: "Scramble" };
 
@@ -26,7 +35,8 @@ const isSeasonActive = (cfg) => {
   if (cfg.seasonEnd && new Date(cfg.seasonEnd) < now) return false;
   return true;
 };
-const ghinUrl = (id) => id ? `https://www.ghin.com/golfer/${id}` : null;
+// FIX: proper GHIN URL
+const ghinUrl = (id) => id ? `https://www.ghin.com/golfer/${id}/scores` : null;
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
@@ -46,10 +56,13 @@ html,body{height:100%;background:var(--navy);color:var(--cream);font-family:var(
 @keyframes spin{to{transform:rotate(360deg)}}
 .au{animation:fadeUp .4s ease}
 .spinner{width:18px;height:18px;border:2px solid rgba(212,168,67,.2);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+
+/* ── AUTH ── */
 .auth-bg{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--navy);position:relative;overflow:hidden}
 .auth-bg::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 20% 80%,rgba(212,168,67,.07) 0%,transparent 60%),radial-gradient(ellipse 50% 60% at 80% 20%,rgba(91,141,232,.06) 0%,transparent 55%);pointer-events:none}
 .gp{position:absolute;inset:0;opacity:.04;background-image:repeating-linear-gradient(0deg,transparent,transparent 30px,rgba(212,168,67,.5) 30px,rgba(212,168,67,.5) 31px),repeating-linear-gradient(90deg,transparent,transparent 30px,rgba(212,168,67,.5) 30px,rgba(212,168,67,.5) 31px);pointer-events:none}
-.auth-box{background:var(--navy-card);border:1px solid var(--gold-border);border-radius:16px;padding:48px 40px;width:100%;max-width:400px;position:relative;box-shadow:0 24px 80px rgba(0,0,0,.5)}
+.auth-box{background:var(--navy-card);border:1px solid var(--gold-border);border-radius:16px;padding:48px 40px;width:100%;max-width:420px;position:relative;box-shadow:0 24px 80px rgba(0,0,0,.5)}
+@media(max-width:480px){.auth-box{padding:32px 20px;margin:16px}}
 .auth-title{font-family:var(--font-d);font-size:1.65rem;font-weight:700;color:var(--white);letter-spacing:3px}
 .auth-sub{font-size:.9rem;color:var(--cream-dim);font-style:italic;margin-top:4px}
 .auth-divider{width:60px;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:16px auto}
@@ -62,8 +75,27 @@ html,body{height:100%;background:var(--navy);color:var(--cream);font-family:var(
 .auth-toggle button{background:none;border:none;color:var(--gold);cursor:pointer;font-size:.86rem;text-decoration:underline;padding:0;font-family:var(--font-b)}
 .auth-error{background:rgba(224,92,92,.12);border:1px solid rgba(224,92,92,.3);color:#f09090;border-radius:8px;padding:9px 13px;font-size:.86rem;text-align:center;margin-bottom:12px}
 .auth-success{background:rgba(76,175,125,.1);border:1px solid rgba(76,175,125,.25);color:#6ee7a0;border-radius:8px;padding:9px 13px;font-size:.86rem;text-align:center;margin-bottom:12px}
-.forgot-pw{font-size:.76rem;color:var(--cream-dim);text-align:right;cursor:pointer;display:block;background:none;border:none;width:100%;margin-top:-4px}
+.forgot-pw{font-size:.76rem;color:var(--cream-dim);text-align:right;cursor:pointer;display:block;background:none;border:none;width:100%;margin-top:-4px;font-family:var(--font-b)}
 .forgot-pw:hover{color:var(--gold)}
+
+/* FIX: password input - force correct styling */
+input[type=password]{
+  background:rgba(255,255,255,.04) !important;
+  border:1px solid rgba(255,255,255,.1) !important;
+  border-radius:8px !important;
+  padding:10px 12px !important;
+  color:var(--cream) !important;
+  font-family:var(--font-b) !important;
+  font-size:.92rem !important;
+  width:100% !important;
+  -webkit-appearance:none !important;
+  -webkit-text-fill-color:var(--cream) !important;
+  caret-color:var(--gold) !important;
+}
+input[type=password]:focus{outline:none !important;border-color:var(--gold) !important}
+input[type=password]::placeholder{color:var(--cream-dim) !important;opacity:1 !important}
+
+/* ── LEAGUE PICKER ── */
 .league-picker{max-width:600px;margin:0 auto;padding:40px 16px}
 .league-card{background:var(--navy-card);border:1px solid var(--navy-border);border-radius:var(--r);padding:20px 22px;margin-bottom:12px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .league-card:hover{border-color:var(--gold-border);background:rgba(212,168,67,.04)}
@@ -72,7 +104,9 @@ html,body{height:100%;background:var(--navy);color:var(--cream);font-family:var(
 .lrole{font-size:.62rem;letter-spacing:1.5px;text-transform:uppercase;padding:2px 8px;border-radius:20px;font-family:var(--font-d)}
 .lrole.admin{background:rgba(212,168,67,.15);border:1px solid var(--gold-border);color:var(--gold)}
 .lrole.player{background:rgba(255,255,255,.05);border:1px solid var(--navy-border);color:var(--cream-dim)}
-.fmt-pip{font-size:.6rem;padding:2px 8px;border-radius:20px;border:1px solid rgba(155,127,232,.3);background:rgba(155,127,232,.1);color:var(--purple);font-family:var(--font-d);letter-spacing:1px;text-transform:uppercase}
+.fmt-pip{font-size:.6rem;padding:2px 8px;border-radius:20px;border:1px solid rgba(155,127,232,.3);background:rgba(155,127,232,.1);color:var(--purple);font-family:var(--font-d);letter-spacing:1px;text-transform:uppercase;white-space:nowrap}
+
+/* ── APP ── */
 .app{max-width:1080px;margin:0 auto;padding:0 16px 60px}
 .topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 0 14px;border-bottom:1px solid var(--navy-border);margin-bottom:20px;flex-wrap:wrap;gap:10px}
 .brand{display:flex;align-items:center;gap:10px;cursor:pointer}
@@ -89,25 +123,41 @@ html,body{height:100%;background:var(--navy);color:var(--cream);font-family:var(
 .season-bar.active{background:rgba(76,175,125,.08);border:1px solid rgba(76,175,125,.2);color:#6ee7a0}
 .season-bar.inactive{background:rgba(224,92,92,.08);border:1px solid rgba(224,92,92,.2);color:#f09090}
 .season-bar.upcoming{background:rgba(212,168,67,.08);border:1px solid var(--gold-border);color:var(--gold-light)}
-.nav{display:flex;gap:4px;background:var(--navy-card);border:1px solid var(--navy-border);border-radius:50px;padding:4px;margin-bottom:26px;flex-wrap:wrap}
-.nav-tab{flex:1;min-width:70px;padding:8px 10px;border:none;border-radius:40px;background:transparent;color:var(--cream-dim);font-family:var(--font-b);font-size:.9rem;cursor:pointer;transition:all .22s;text-align:center;white-space:nowrap}
+
+/* ── NAV: mobile-friendly scrollable pills ── */
+.nav-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:26px;padding-bottom:2px}
+.nav-wrap::-webkit-scrollbar{height:0;display:none}
+.nav{display:inline-flex;gap:4px;background:var(--navy-card);border:1px solid var(--navy-border);border-radius:50px;padding:4px;min-width:100%;width:max-content}
+.nav-tab{flex-shrink:0;padding:8px 14px;border:none;border-radius:40px;background:transparent;color:var(--cream-dim);font-family:var(--font-b);font-size:.88rem;cursor:pointer;transition:all .22s;text-align:center;white-space:nowrap;position:relative}
 .nav-tab.active{background:linear-gradient(135deg,var(--gold),var(--gold-light));color:var(--navy);font-weight:600}
 .nav-tab:hover:not(.active){color:var(--white)}
 .nav-tab.admin-tab:not(.active){border:1px solid var(--gold-border);color:var(--gold)}
+.nav-tab.attest-tab:not(.active){border:1px solid rgba(212,168,67,.4);color:var(--gold-light)}
+.nav-badge{position:absolute;top:-2px;right:-2px;background:var(--gold);color:var(--navy);border-radius:10px;font-size:.55rem;font-family:var(--font-d);font-weight:700;padding:1px 5px;min-width:16px;text-align:center;line-height:1.4}
+
+/* ── BANNER ── */
 .banner{display:flex;background:var(--navy-card);border:1px solid var(--gold-border);border-radius:var(--r);overflow:hidden;margin-bottom:22px;flex-wrap:wrap}
 .bstat{flex:1;min-width:80px;padding:16px 18px;border-right:1px solid var(--navy-border);text-align:center}
 .bstat:last-child{border-right:none}
 .bstat-n{font-family:var(--font-d);font-size:1.8rem;font-weight:700;background:linear-gradient(135deg,var(--gold),var(--gold-light));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1}
 .bstat-l{font-size:.66rem;color:var(--cream-dim);letter-spacing:1.5px;text-transform:uppercase;margin-top:3px}
+
+/* ── CARDS ── */
 .card{background:var(--navy-card);border:1px solid var(--navy-border);border-radius:var(--r);padding:22px;margin-bottom:18px}
 .card-hdr{font-family:var(--font-d);font-size:.95rem;font-weight:600;color:var(--gold);letter-spacing:1.5px;margin-bottom:16px;text-transform:uppercase}
-.stabs{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
-.stab{padding:5px 14px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:transparent;color:var(--cream-dim);font-family:var(--font-b);font-size:.88rem;cursor:pointer;transition:all .2s}
+
+/* ── SUB TABS ── */
+.stabs-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:18px}
+.stabs-wrap::-webkit-scrollbar{height:0;display:none}
+.stabs{display:inline-flex;gap:6px;min-width:100%;width:max-content}
+.stab{flex-shrink:0;padding:5px 14px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:transparent;color:var(--cream-dim);font-family:var(--font-b);font-size:.88rem;cursor:pointer;transition:all .2s;white-space:nowrap}
 .stab.active{border-color:var(--gold);color:var(--gold);background:var(--gold-dim)}
 .stab:hover:not(.active){color:var(--white);border-color:rgba(255,255,255,.2)}
-.tw{overflow-x:auto}
+
+/* ── TABLE ── */
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
 table{width:100%;border-collapse:collapse;font-size:.92rem}
-th{text-align:left;padding:9px 13px;color:var(--gold);font-family:var(--font-d);font-size:.62rem;letter-spacing:2px;text-transform:uppercase;border-bottom:1px solid var(--gold-border);font-weight:400}
+th{text-align:left;padding:9px 13px;color:var(--gold);font-family:var(--font-d);font-size:.62rem;letter-spacing:2px;text-transform:uppercase;border-bottom:1px solid var(--gold-border);font-weight:400;white-space:nowrap}
 td{padding:12px 13px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(255,255,255,.02)}
@@ -121,6 +171,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .dpill.done{background:rgba(76,175,125,.15);color:#6ee7a0;border:1px solid rgba(76,175,125,.25)}
 .dpill.part{background:rgba(212,168,67,.12);color:var(--gold-light);border:1px solid var(--gold-border)}
 .dpill.none{background:rgba(255,255,255,.04);color:#7a6e62;border:1px solid rgba(255,255,255,.08)}
+
+/* ── FORMS ── */
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:13px}
 @media(max-width:560px){.fgrid,.bg2{grid-template-columns:1fr}.bstat{min-width:50%;border-right:none;border-bottom:1px solid var(--navy-border)}}
 .fg{display:flex;flex-direction:column;gap:5px}
@@ -129,6 +181,8 @@ input[type=text],input[type=email],input[type=number],input[type=date],input[typ
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold)}
 select option{background:#161d2e;color:var(--cream)}
 textarea{resize:vertical;min-height:60px}
+
+/* ── BUTTONS ── */
 .btn{padding:10px 22px;border:none;border-radius:8px;font-family:var(--font-d);font-size:.78rem;letter-spacing:1px;cursor:pointer;transition:all .2s}
 .btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold-light));color:var(--navy);font-weight:700}
 .btn-gold:hover{filter:brightness(1.08);transform:translateY(-1px)}
@@ -143,6 +197,8 @@ textarea{resize:vertical;min-height:60px}
 .ab.approved{background:rgba(76,175,125,.15);color:#6ee7a0;border:1px solid rgba(76,175,125,.25)}
 .ab.rejected{background:rgba(224,92,92,.12);color:#f09090;border:1px solid rgba(224,92,92,.25)}
 .ab.auto{background:rgba(255,255,255,.05);color:var(--cream-dim);border:1px solid var(--navy-border)}
+
+/* ── SCORECARD ── */
 .upload-zone{border:2px dashed rgba(212,168,67,.3);border-radius:10px;padding:18px;text-align:center;cursor:pointer;transition:all .2s;margin-top:6px;background:rgba(212,168,67,.03)}
 .upload-zone:hover{border-color:var(--gold);background:var(--gold-dim)}
 .sc-thumb{position:relative;display:inline-block;margin-top:8px}
@@ -150,29 +206,38 @@ textarea{resize:vertical;min-height:60px}
 .sc-del{position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;background:rgba(224,92,92,.9);color:#fff;border:none;cursor:pointer;font-size:.7rem;display:flex;align-items:center;justify-content:center}
 .sc-btn{display:inline-flex;align-items:center;gap:4px;font-size:.7rem;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(76,175,125,.25);background:rgba(76,175,125,.15);color:#6ee7a0;transition:all .2s}
 .sc-btn:hover{background:rgba(76,175,125,.25)}
+
+/* ── ALERTS ── */
 .alert-s{background:rgba(76,175,125,.1);border:1px solid rgba(76,175,125,.25);color:#6ee7a0;border-radius:8px;padding:9px 14px;font-size:.88rem}
 .alert-d{background:rgba(224,92,92,.1);border:1px solid rgba(224,92,92,.25);color:#f09090;border-radius:8px;padding:9px 14px;font-size:.88rem}
 .alert-w{background:rgba(212,168,67,.1);border:1px solid var(--gold-border);color:var(--gold-light);border-radius:8px;padding:9px 14px;font-size:.88rem}
 .empty{text-align:center;padding:36px 20px;color:#6b7280;font-style:italic}
 .note{font-size:.76rem;color:#6b7280;font-style:italic;margin-top:6px}
+
+/* ── PLAYER CHIPS ── */
 .pchip{display:flex;align-items:center;gap:10px;padding:11px 13px;background:rgba(255,255,255,.03);border:1px solid var(--navy-border);border-radius:8px;margin-bottom:7px;transition:border-color .2s;flex-wrap:wrap}
 .pchip:hover{border-color:rgba(212,168,67,.2)}
 .pchip-info{flex:1;min-width:0}
 .pchip-name{font-weight:600;color:var(--white);font-size:.92rem}
 .pchip-meta{font-size:.76rem;color:var(--cream-dim);margin-top:2px}
 .pchip-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+
+/* ── MODAL ── */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:200;animation:fadeIn .2s}
 .modal{background:var(--navy-card);border:1px solid var(--gold-border);border-radius:14px;padding:30px;width:100%;max-width:520px;margin:16px;box-shadow:0 24px 80px rgba(0,0,0,.5);animation:fadeUp .25s ease;max-height:90vh;overflow-y:auto}
 .modal-title{font-family:var(--font-d);font-size:1rem;color:var(--gold);letter-spacing:2px;margin-bottom:18px;text-transform:uppercase}
 .invite-box{background:var(--gold-dim);border:1px solid var(--gold-border);border-radius:8px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .invite-code{font-family:var(--font-d);font-size:1.3rem;letter-spacing:4px;color:var(--gold)}
+
+/* ── CONFIG ── */
 .cfg-section{margin-bottom:26px}
 .cfg-section-title{font-family:var(--font-d);font-size:.76rem;letter-spacing:2px;text-transform:uppercase;color:var(--gold);margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid var(--navy-border)}
-.cfg-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.04);gap:16px}
+.cfg-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.04);gap:16px;flex-wrap:wrap}
 .cfg-row:last-child{border-bottom:none}
 .cfg-label{font-size:.92rem;color:var(--cream)}
 .cfg-desc{font-size:.75rem;color:var(--cream-dim);margin-top:2px;font-style:italic}
 .format-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media(max-width:480px){.format-grid{grid-template-columns:1fr}}
 .format-btn{padding:11px 14px;border:1px solid var(--navy-border);border-radius:8px;background:transparent;color:var(--cream-dim);font-family:var(--font-b);font-size:.9rem;cursor:pointer;transition:all .2s;text-align:left}
 .format-btn.sel{border-color:var(--gold);background:var(--gold-dim);color:var(--white)}
 .format-btn:hover:not(.sel){border-color:rgba(212,168,67,.3);color:var(--cream)}
@@ -197,6 +262,36 @@ textarea{resize:vertical;min-height:60px}
 .player-card-meta{font-size:.76rem;color:var(--cream-dim)}
 .gs-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(76,175,125,.1);border:1px solid rgba(76,175,125,.25);border-radius:6px;padding:4px 10px;font-size:.76rem;color:#6ee7a0;text-decoration:none;transition:all .2s}
 .gs-badge:hover{background:rgba(76,175,125,.2)}
+
+.paid-badge{display:inline-flex;align-items:center;gap:4px;font-size:.62rem;padding:2px 8px;border-radius:20px;font-family:var(--font-d);letter-spacing:1px;text-transform:uppercase;white-space:nowrap}
+.paid-badge.paid{background:rgba(76,175,125,.15);border:1px solid rgba(76,175,125,.3);color:#6ee7a0}
+.paid-badge.unpaid{background:rgba(224,92,92,.1);border:1px solid rgba(224,92,92,.25);color:#f09090}
+/* ── PAYOUT BUILDER ── */
+.payout-pool{background:linear-gradient(135deg,rgba(212,168,67,.12),rgba(212,168,67,.06));border:1px solid var(--gold-border);border-radius:10px;padding:16px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.payout-pool-label{font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:var(--gold);font-family:var(--font-d);margin-bottom:4px}
+.payout-pool-val{font-family:var(--font-d);font-size:1.8rem;font-weight:700;background:linear-gradient(135deg,var(--gold),var(--gold-light));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1}
+.payout-cat-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.04);flex-wrap:wrap}
+.payout-cat-row:last-child{border-bottom:none}
+.payout-cat-label{flex:1;min-width:140px;font-size:.9rem;color:var(--cream)}
+.payout-pct-input{display:flex;align-items:center;gap:6px}
+.payout-pct-input input{width:70px;text-align:right}
+.payout-amount{font-family:var(--font-d);font-size:.95rem;color:var(--gold-light);min-width:60px;text-align:right}
+.pct-bar-wrap{height:6px;background:rgba(255,255,255,.07);border-radius:4px;overflow:hidden;margin-top:10px}
+.pct-bar{height:100%;border-radius:4px;transition:width .3s,background .3s}
+.pct-total-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px;font-size:.8rem}
+.pct-total-ok{color:#6ee7a0;font-family:var(--font-d);font-size:.75rem;letter-spacing:1px}
+.pct-total-over{color:#f09090;font-family:var(--font-d);font-size:.75rem;letter-spacing:1px}
+.pct-total-under{color:var(--gold-light);font-family:var(--font-d);font-size:.75rem;letter-spacing:1px}
+
+.attest-card{background:var(--navy-card);border:1px solid var(--gold-border);border-radius:var(--r);padding:18px;margin-bottom:14px}
+.attest-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.attest-player{font-family:var(--font-d);font-size:1rem;color:var(--white);letter-spacing:1px}
+.attest-meta{font-size:.8rem;color:var(--cream-dim);margin-top:3px}
+.attest-scores{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+.attest-score-block{display:flex;flex-direction:column;align-items:center;background:rgba(255,255,255,.04);border:1px solid var(--navy-border);border-radius:8px;padding:8px 14px}
+.attest-score-label{font-size:.58rem;letter-spacing:2px;text-transform:uppercase;color:var(--cream-dim);font-family:var(--font-d);margin-bottom:3px}
+.attest-score-val{font-family:var(--font-d);font-size:1.4rem;color:var(--white)}
+.attest-actions{display:flex;gap:8px;flex-wrap:wrap}
 `;
 
 export default function App() {
@@ -238,7 +333,7 @@ export default function App() {
   const [configDraft, setConfigDraft] = useState(null);
   const [profileModal, setProfileModal] = useState(false);
   const [profileDraft, setProfileDraft] = useState({});
-  const [editMemberHcp, setEditMemberHcp] = useState(null); // { uid, name, handicap, ghin }
+  const [editMemberHcp, setEditMemberHcp] = useState(null);
   const [playersModal, setPlayersModal] = useState(false);
 
   // auth
@@ -258,31 +353,14 @@ export default function App() {
 
   useEffect(() => {
     if (!session?.user?.id) return;
-
-    supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", session.user.id)
-      .single()
-      .then(({ data }) => setProfile(data));
-
+    supabase.from("profiles").select("*").eq("id", session.user.id).single().then(({ data }) => setProfile(data));
     loadLeagues();
   }, [session]);
 
   const loadLeagues = async () => {
     if (!session?.user?.id) return;
-    const { data, error } = await supabase
-      .from("league_members")
-      .select("*, league:leagues(*)")
-      .eq("user_id", session.user.id);
-
-    if (error) {
-      console.error("Supabase error loading leagues:", error);
-      return;
-    }
-
-    console.log("League data:", data);
-
+    const { data, error } = await supabase.from("league_members").select("*, league:leagues(*)").eq("user_id", session.user.id);
+    if (error) { console.error("Supabase error loading leagues:", error); return; }
     setMyMemberships(data || []);
     setLeagues((data || []).map(m => m.league).filter(Boolean));
   };
@@ -318,7 +396,7 @@ export default function App() {
     const [{ data: c }, { data: r }, { data: m }, { data: s }, { data: pj }] = await Promise.all([
       supabase.from("courses").select("*").eq("league_id", league.id).order("name"),
       supabase.from("rounds").select("*").eq("league_id", league.id).order("created_at", { ascending: false }),
-      supabase.from("league_members").select("*, profile:profiles!inner(*)").eq("league_id", league.id),
+      supabase.from("league_members").select("*, profile:profiles(*)").eq("league_id", league.id),
       supabase.from("league_settings").select("*").eq("league_id", league.id).single(),
       supabase.from("league_join_requests").select("*, profile:profiles(*)").eq("league_id", league.id).eq("status", "pending"),
     ]);
@@ -338,29 +416,10 @@ export default function App() {
   // ── League create/join ──
   const createLeague = async () => {
     if (!newLeague.name.trim()) return alert("League name required");
-
-    const { data: league, error } = await supabase
-      .from("leagues")
-      .insert({
-        name: newLeague.name.trim(),
-        description: newLeague.description,
-        owner_id: session.user.id
-      })
-      .select()
-      .single();
-
+    const { data: league, error } = await supabase.from("leagues").insert({ name: newLeague.name.trim(), description: newLeague.description, owner_id: session.user.id }).select().single();
     if (error) return alert(error.message);
-
-    // add creator as league admin
-    await supabase
-      .from("league_members")
-      .insert({
-        league_id: league.id,
-        user_id: session.user.id,
-        role: "admin"
-      });
-
-    setShowCreate(false);
+    await supabase.from("league_members").insert({ league_id: league.id, user_id: session.user.id, role: "admin" });
+    setShowCreateLeague(false);
     setNewLeague({ name: "", description: "" });
     loadLeagues();
   };
@@ -396,6 +455,9 @@ export default function App() {
 
   // ── Config ──
   const saveConfig = async (newCfg) => {
+    const cats = newCfg.payoutCategories ?? [];
+    const totalPct = cats.reduce((s, c) => s + (Number(c.pct) || 0), 0);
+    if (totalPct > 100) { alert("Payout percentages exceed 100%. Please fix before saving."); return; }
     await supabase.from("league_settings").upsert({ league_id: activeLeague.id, config: newCfg, payouts }, { onConflict: "league_id" });
     setConfig(newCfg); setConfigDraft(null);
   };
@@ -411,7 +473,6 @@ export default function App() {
     return myApprovedOnCourse(Number(form.courseId)).length < config.roundsPerCourse;
   };
 
-  // Auto-calc net when course/score changes
   const selectedCourse = courses.find(c => c.id === Number(form.courseId));
   const autoHcp = selectedCourse && config.useHandicap ? calcCourseHcp(profile?.handicap ?? 0, selectedCourse.slope, selectedCourse.par, selectedCourse.rating, config) : 0;
   const autoNet = form.score ? Number(form.score) - autoHcp : null;
@@ -474,14 +535,8 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 300,
-          messages: [{
-            role: "user", content: [
-              { type: "image", source: { type: "base64", media_type: file.type, data: b64 } },
-              { type: "text", text: 'This is a golf scorecard. Extract the total gross score and the date played. Respond ONLY with valid JSON like: {"gross": 84, "date": "2025-05-10"}. If you cannot read the score clearly, return {"gross": null, "date": null}. Do not include any other text.' }
-            ]
-          }]
+          model: "claude-sonnet-4-20250514", max_tokens: 300,
+          messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: file.type, data: b64 } }, { type: "text", text: 'This is a golf scorecard. Extract the total gross score and the date played. Respond ONLY with valid JSON like: {"gross": 84, "date": "2025-05-10"}. If you cannot read the score clearly, return {"gross": null, "date": null}. Do not include any other text.' }] }]
         })
       });
       const data = await resp.json();
@@ -489,10 +544,7 @@ export default function App() {
       const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
       setAiResult(parsed);
       if (parsed.gross) setForm(f => ({ ...f, score: String(parsed.gross), date: parsed.date || f.date }));
-    } catch (e) {
-      console.warn("AI scorecard read failed:", e);
-      setAiResult({ error: true });
-    }
+    } catch (e) { console.warn("AI scorecard read failed:", e); setAiResult({ error: true }); }
     setAiReading(false);
   };
 
@@ -510,11 +562,16 @@ export default function App() {
     setMembers(p => p.map(m => m.user_id === uid ? { ...m, role: r } : m));
     if (uid === session.user.id) setActiveMembership(a => ({ ...a, role: r }));
   };
+  const togglePaid = async (uid, cur) => {
+    const paid = !cur;
+    await supabase.from("league_members").update({ paid }).eq("league_id", activeLeague.id).eq("user_id", uid);
+    setMembers(p => p.map(m => m.user_id === uid ? { ...m, paid } : m));
+  };
+
   const deleteRound = async (id) => { await supabase.from("rounds").delete().eq("id", id); setRounds(p => p.filter(r => r.id !== id)); };
   const clearAllRounds = async () => { if (!window.confirm("Clear ALL rounds?")) return; await supabase.from("rounds").delete().eq("league_id", activeLeague.id); setRounds([]); };
   const savePayouts = async (p) => { await supabase.from("league_settings").upsert({ league_id: activeLeague.id, payouts: p, config }, { onConflict: "league_id" }); setPayouts(p); setPayoutEdit(false); };
 
-  // Commissioner update member handicap
   const saveMemberHcp = async () => {
     if (!editMemberHcp) return;
     await supabase.from("profiles").update({ handicap: Number(editMemberHcp.handicap), ghin: editMemberHcp.ghin }).eq("id", editMemberHcp.uid);
@@ -550,9 +607,8 @@ export default function App() {
     setRounds(p => p.map(r => r.id === round.id ? { ...r, scorecard_url: null } : r));
   };
 
-  // ── Google Sheet export ──
+  // ── Export ──
   const exportToGoogleSheet = () => {
-    // Build CSV data
     const headers = ["Player", "Course", "Gross", "Net", "Course Handicap", "Par", "Stableford Pts", "Date", "Status"];
     const rows = rounds.map(r => [r.player_name, r.course_name, r.gross, r.net, r.course_handicap, r.par, r.stableford_pts ?? "", r.date, r.attest_status]);
     const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
@@ -564,13 +620,10 @@ export default function App() {
 
   // ── Leaderboard ──
   const players = members.map(m => ({ ...m.profile, role: m.role }));
-  const scored = rounds.filter(r =>
-    !config.attestRequired || r.attest_status === "approved"
-  );
+  const scored = rounds.filter(r => !config.attestRequired || r.attest_status === "approved");
   const myHasSubmitted = scored.some(r => r.player_id === session?.user.id);
   const visible = (config.hideScores && !myHasSubmitted) ? scored.filter(r => r.player_id === session?.user.id) : scored;
 
-  // Apply scoresToCount: pick best N scores per player
   const applyBestN = (rounds, n, format) => {
     if (!n || rounds.length <= n) return rounds;
     if (format === "stableford") return [...rounds].sort((a, b) => (b.stableford_pts ?? 0) - (a.stableford_pts ?? 0)).slice(0, n);
@@ -603,12 +656,14 @@ export default function App() {
   }, [players, scored, courses, config]);
 
   const approvedCount = scored.length;
-  const totalRequired = players.filter(p => p.role === "player" || true).length * courses.length * config.roundsPerCourse;
+  const totalRequired = players.length * courses.length * config.roundsPerCourse;
   const leaguePct = totalRequired ? Math.round(approvedCount / totalRequired * 100) : 0;
+
+  // Rounds pending MY attestation
   const pendingForMe = rounds.filter(r => r.attester_id === session?.user.id && r.attest_status === "pending");
   const isAdmin = activeMembership?.role === "admin" || activeLeague?.owner_id === session?.user.id;
 
-  // ── Small helpers ──
+  // ── Helpers ──
   const rankEl = (i) => <td className={`rc ${i === 0 ? "r1" : i === 1 ? "r2" : i === 2 ? "r3" : ""}`}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</td>;
   const netEl = (net, par) => config.useHandicap
     ? <span className={`sb ${pmCls(net, par)}`}>{net} <span style={{ fontSize: ".72rem", opacity: .7 }}>({toPM(net, par)})</span></span>
@@ -671,17 +726,47 @@ export default function App() {
             {authMode !== "forgot" && <button className="btn-google" onClick={signInWithGoogle}><GoogleIcon /> Continue with Google</button>}
             {authMode !== "forgot" && <div className="or-divider"><span>or</span></div>}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {authMode === "signup" && <div className="fg"><label>Your Name</label><input type="text" placeholder="Jane Smith" value={authName} onChange={e => { setAuthName(e.target.value); setAuthError(""); }} onKeyDown={hk} autoComplete="name" /></div>}
-              <div className="fg"><label>Email</label><input type="email" placeholder="you@example.com" value={authEmail} onChange={e => { setAuthEmail(e.target.value); setAuthError(""); setAuthSuccess(""); }} onKeyDown={hk} autoComplete="email" /></div>
-              {authMode !== "forgot" && <div className="fg"><label>Password {authMode === "signup" && <span style={{ color: "var(--cream-dim)", fontFamily: "var(--font-b)", textTransform: "none", letterSpacing: 0 }}>(min 6 chars)</span>}</label><input type="password" placeholder={authMode === "signup" ? "Create a password" : "Enter your password"} value={authPassword} onChange={e => { setAuthPassword(e.target.value); setAuthError(""); }} onKeyDown={hk} autoComplete={authMode === "signup" ? "new-password" : "current-password"} /></div>}
-              {authMode === "signin" && <button className="forgot-pw" onClick={() => { setAuthMode("forgot"); setAuthError(""); setAuthSuccess(""); }}>Forgot password?</button>}
+              {authMode === "signup" && (
+                <div className="fg">
+                  <label>Your Name</label>
+                  <input type="text" placeholder="Jane Smith" value={authName} onChange={e => { setAuthName(e.target.value); setAuthError(""); }} onKeyDown={hk} autoComplete="name" />
+                </div>
+              )}
+              <div className="fg">
+                <label>Email</label>
+                <input type="email" placeholder="you@example.com" value={authEmail} onChange={e => { setAuthEmail(e.target.value); setAuthError(""); setAuthSuccess(""); }} onKeyDown={hk} autoComplete="email" />
+              </div>
+              {authMode !== "forgot" && (
+                <div className="fg">
+                  <label>
+                    Password{authMode === "signup" && <span style={{ color: "var(--cream-dim)", fontFamily: "var(--font-b)", textTransform: "none", letterSpacing: 0 }}> (min 6 chars)</span>}
+                  </label>
+                  <input
+                    type="password"
+                    placeholder={authMode === "signup" ? "Create a password" : "Enter your password"}
+                    value={authPassword}
+                    onChange={e => { setAuthPassword(e.target.value); setAuthError(""); }}
+                    onKeyDown={hk}
+                    autoComplete={authMode === "signup" ? "new-password" : "current-password"}
+                  />
+                </div>
+              )}
+              {authMode === "signin" && (
+                <button className="forgot-pw" onClick={() => { setAuthMode("forgot"); setAuthError(""); setAuthSuccess(""); }}>
+                  Forgot password?
+                </button>
+              )}
             </div>
-            <button className="btn btn-gold" style={{ width: "100%", padding: "13px", marginTop: 18 }} onClick={authMode === "signup" ? signUpWithEmail : authMode === "forgot" ? sendPasswordReset : signInWithEmail} disabled={authLoading}>
+            <button className="btn btn-gold" style={{ width: "100%", padding: "13px", marginTop: 18 }}
+              onClick={authMode === "signup" ? signUpWithEmail : authMode === "forgot" ? sendPasswordReset : signInWithEmail}
+              disabled={authLoading}>
               {authLoading ? <span className="spinner" /> : authMode === "signup" ? "Create Account" : authMode === "forgot" ? "Send Reset Email" : "Sign In"}
             </button>
             <div className="auth-toggle">
-              {authMode === "forgot" ? <span>Remembered it? <button onClick={() => { setAuthMode("signin"); setAuthError(""); setAuthSuccess(""); }}>Back to sign in</button></span>
-                : authMode === "signin" ? <span>New here? <button onClick={() => { setAuthMode("signup"); setAuthError(""); setAuthSuccess(""); }}>Create an account</button></span>
+              {authMode === "forgot"
+                ? <span>Remembered it? <button onClick={() => { setAuthMode("signin"); setAuthError(""); setAuthSuccess(""); }}>Back to sign in</button></span>
+                : authMode === "signin"
+                  ? <span>New here? <button onClick={() => { setAuthMode("signup"); setAuthError(""); setAuthSuccess(""); }}>Create an account</button></span>
                   : <span>Already have one? <button onClick={() => { setAuthMode("signin"); setAuthError(""); setAuthSuccess(""); }}>Sign in</button></span>}
             </div>
           </div>
@@ -701,10 +786,9 @@ export default function App() {
               <div className="fg"><label>Display Name</label><input type="text" value={profileDraft.name ?? ""} onChange={e => setProfileDraft(d => ({ ...d, name: e.target.value }))} /></div>
               <div className="fgrid">
                 <div className="fg"><label>Handicap Index</label><input type="number" step=".1" min={0} max={54} placeholder="e.g. 8.4" value={profileDraft.handicap ?? ""} onChange={e => setProfileDraft(d => ({ ...d, handicap: e.target.value }))} /></div>
-                <div className="fg"><label>GHIN # (Handicap ID)</label><input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""} onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))} /></div>
+                <div className="fg"><label>GHIN #</label><input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""} onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))} /></div>
               </div>
               {profileDraft.ghin && <a href={ghinUrl(profileDraft.ghin)} target="_blank" rel="noreferrer" className="ghin-link">🔗 View GHIN Profile ↗</a>}
-              <p className="note">Your handicap index is used to calculate your course handicap for each round. Your GHIN number links to your official USGA handicap record.</p>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn btn-gold" onClick={saveProfile}>Save</button>
@@ -720,7 +804,7 @@ export default function App() {
               <span style={{ fontSize: "2rem" }}>⛳</span>
               <div className="auth-title" style={{ fontSize: "1.3rem" }}>GREEK SIDE BUNKER</div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
               <div className="avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : ini(profile?.name)}</div>
               <div>
                 <div style={{ fontSize: ".88rem", color: "var(--cream)" }}>{profile?.name}</div>
@@ -806,9 +890,9 @@ export default function App() {
               <div className="fg"><label>Display Name</label><input type="text" value={profileDraft.name ?? ""} onChange={e => setProfileDraft(d => ({ ...d, name: e.target.value }))} /></div>
               <div className="fgrid">
                 <div className="fg"><label>Handicap Index</label><input type="number" step=".1" min={0} max={54} placeholder="e.g. 8.4" value={profileDraft.handicap ?? ""} onChange={e => setProfileDraft(d => ({ ...d, handicap: e.target.value }))} /></div>
-                <div className="fg"><label>GHIN # (Handicap ID)</label><input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""} onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))} /></div>
+                <div className="fg"><label>GHIN #</label><input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""} onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))} /></div>
               </div>
-              {profileDraft.ghin && <a href={ghinUrl(profileDraft.ghin)} target="_blank" rel="noreferrer" className="ghin-link">🔗 View your GHIN Profile ↗</a>}
+              {profileDraft.ghin && <a href={ghinUrl(profileDraft.ghin)} target="_blank" rel="noreferrer" className="ghin-link">🔗 View GHIN Profile ↗</a>}
               <p className="note">Your GHIN number links to your official USGA handicap record at ghin.com.</p>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
@@ -819,7 +903,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Edit member handicap modal (commissioner) */}
+      {/* Edit member handicap modal */}
       {editMemberHcp && (
         <div className="modal-bg" onClick={() => setEditMemberHcp(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -862,9 +946,12 @@ export default function App() {
                     <div className="player-card-meta" style={{ marginBottom: 6 }}>
                       <span className={`lrole ${m.role}`} style={{ fontSize: ".58rem" }}>{m.role === "admin" ? "Commissioner" : "Player"}</span>
                     </div>
-                    {config.useHandicap && <div style={{ marginBottom: 6 }}>
-                      <span className="hcp-badge">Hcp {m.profile.handicap ?? "-"}</span>
-                    </div>}
+                    {config.entryFee > 0 && (
+                      <div style={{ marginBottom: 6 }}>
+                        <span className={`paid-badge ${m.paid ? "paid" : "unpaid"}`}>{m.paid ? "✓ Paid" : "✗ Unpaid"}</span>
+                      </div>
+                    )}
+                    {config.useHandicap && <div style={{ marginBottom: 6 }}><span className="hcp-badge">Hcp {m.profile.handicap ?? "-"}</span></div>}
                     {m.profile.ghin && <a href={ghinUrl(m.profile.ghin)} target="_blank" rel="noreferrer" className="ghin-link" style={{ fontSize: ".68rem", marginBottom: 6, display: "inline-flex" }}>GHIN ↗</a>}
                     {config.useHandicap && courses.length > 0 && <div style={{ marginTop: 6 }}>
                       {courseHcps.map(c => <div key={c.id} style={{ fontSize: ".68rem", color: "var(--cream-dim)", marginTop: 2 }}>{c.name}: <span style={{ color: "var(--white)" }}>{c.ch}</span></div>)}
@@ -888,8 +975,11 @@ export default function App() {
           <div className="topbar-right">
             {isAdmin && <span className="badge-admin">Commissioner</span>}
             <span className="fmt-pip">{FORMAT_LABELS[config.scoringFormat]}</span>
-            {config.attestRequired && pendingForMe.length > 0 && <button className="btn btn-ghost btn-sm" style={{ color: "var(--gold-light)" }} onClick={() => setTab("score")}>⏳ {pendingForMe.length} to attest</button>}
-            {isAdmin && pendingJoins.length > 0 && <button className="btn btn-ghost btn-sm" style={{ color: "var(--purple)" }} onClick={() => { setTab("admin"); setAdminTab("members"); }}>🙋 {pendingJoins.length} join request{pendingJoins.length > 1 ? "s" : ""}</button>}
+            {isAdmin && pendingJoins.length > 0 && (
+              <button className="btn btn-ghost btn-sm" style={{ color: "var(--purple)" }} onClick={() => { setTab("admin"); setAdminTab("members"); }}>
+                🙋 {pendingJoins.length} join request{pendingJoins.length > 1 ? "s" : ""}
+              </button>
+            )}
             <button className="btn btn-ghost btn-sm" onClick={() => setPlayersModal(true)}>👥 Players</button>
             <div className="user-chip" onClick={() => { setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin }); setProfileModal(true); }}>
               <div className="avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : ini(profile?.name)}</div>
@@ -917,31 +1007,55 @@ export default function App() {
           </div>
         )}
 
-        {/* Nav */}
-        <div className="nav">
-          {[["leaderboard", "🏆 Leaderboard"], ["score", "✏️ Post Score"], ...(isAdmin ? [["admin", "⚙ Admin"]] : [])]
-            .map(([k, l]) => <button key={k} className={`nav-tab${tab === k ? " active" : ""}${k === "admin" ? " admin-tab" : ""}`} onClick={() => setTab(k)}>{l}</button>)}
+        {/* Nav — scrollable on mobile */}
+        <div className="nav-wrap">
+          <div className="nav">
+            {[
+              ["leaderboard", "🏆 Leaderboard", false],
+              ["score", "✏️ Post Score", false],
+              ...(config.attestRequired ? [["attest", "⏳ Attest", true]] : []),
+              ...(isAdmin ? [["admin", "⚙ Admin", false]] : []),
+            ].map(([k, l, isAttest]) => (
+              <button
+                key={k}
+                className={`nav-tab${tab === k ? " active" : ""}${k === "admin" ? " admin-tab" : ""}${isAttest ? " attest-tab" : ""}`}
+                onClick={() => setTab(k)}
+              >
+                {l}
+                {isAttest && pendingForMe.length > 0 && (
+                  <span className="nav-badge">{pendingForMe.length}</span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
 
         {!dataLoaded && <div className="empty">Loading…</div>}
 
         {/* ── LEADERBOARD ── */}
         {tab === "leaderboard" && dataLoaded && <>
-          <div className="stabs">
-            {[["overall", config.scoringFormat === "stableford" ? "⭐ Stableford" : "🏆 Net Standings"],
-            ["gross", "🏌️ Gross"],
-            ...(config.scoringFormat !== "match" && config.scoringFormat !== "scramble" ? [["course", "📍 By Course"]] : []),
-            ["best", "⭐ Best Rounds"], ["completion", "📋 Completion"], ["payouts", "💰 Payouts"]]
-              .map(([k, l]) => <button key={k} className={`stab${leaderTab === k ? " active" : ""}`} onClick={() => setLeaderTab(k)}>{l}</button>)}
+          <div className="stabs-wrap">
+            <div className="stabs">
+              {[
+                ["overall", config.scoringFormat === "stableford" ? "⭐ Stableford" : "🏆 Net Standings"],
+                ["gross", "🏌️ Gross"],
+                ...(config.scoringFormat !== "match" && config.scoringFormat !== "scramble" ? [["course", "📍 By Course"]] : []),
+                ["best", "⭐ Best Rounds"],
+                ["completion", "📋 Completion"],
+                ["payouts", "💰 Payouts"],
+              ].map(([k, l]) => (
+                <button key={k} className={`stab${leaderTab === k ? " active" : ""}`} onClick={() => setLeaderTab(k)}>{l}</button>
+              ))}
+            </div>
           </div>
 
           {leaderTab === "overall" && <div className="card">
-            <div className="card-hdr">{config.scoringFormat === "stableford" ? "⭐ Stableford Standings" : config.scoringFormat === "match" ? "🆚 Match Play" : "🏆 Net Standings"}{!config.useHandicap && <span style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginLeft: 10, fontFamily: "var(--font-b)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(gross only)</span>}</div>
+            <div className="card-hdr">{config.scoringFormat === "stableford" ? "⭐ Stableford Standings" : "🏆 Net Standings"}{!config.useHandicap && <span style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginLeft: 10, fontFamily: "var(--font-b)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(gross only)</span>}</div>
             {config.hideScores && !myHasSubmitted && <div className="alert-w" style={{ marginBottom: 14 }}>📵 Scores are hidden until you post your own round.</div>}
             {config.scoresToCount && <div className="alert-w" style={{ marginBottom: 14 }}>📊 Best {config.scoresToCount} of all submitted scores count toward standings.</div>}
             {overallLB.length === 0 ? <div className="empty">No {config.attestRequired ? "approved " : ""}rounds yet.</div> : (
               <div className="tw"><table>
-                <thead><tr><th>#</th><th>Player</th>{config.useHandicap && <th>Hcp Idx</th>}<th>Rounds</th>{config.scoresToCount && <th>Counting</th>}<th>{config.scoringFormat === "stableford" ? "Total Pts" : "Avg Net"}</th></tr></thead>
+                <thead><tr><th>#</th><th>Player</th>{config.useHandicap && <th>Hcp</th>}<th>Rounds</th>{config.scoresToCount && <th>Counting</th>}<th>{config.scoringFormat === "stableford" ? "Total Pts" : "Avg Net"}</th></tr></thead>
                 <tbody>{overallLB.map((p, i) => <tr key={p.id}>
                   {rankEl(i)}
                   <td>
@@ -950,7 +1064,7 @@ export default function App() {
                   </td>
                   {config.useHandicap && <td style={{ color: "var(--cream-dim)" }}>{p.handicap}</td>}
                   <td>{p.totalRounds}</td>
-                  {config.scoresToCount && <td style={{ color: "var(--gold-light)", fontSize: ".8rem" }}>{p.countingRounds} counting</td>}
+                  {config.scoresToCount && <td style={{ color: "var(--gold-light)", fontSize: ".8rem" }}>{p.countingRounds}</td>}
                   <td><span className="sb" style={{ color: "var(--gold-light)" }}>{p.label}</span></td>
                 </tr>)}</tbody>
               </table></div>
@@ -977,9 +1091,10 @@ export default function App() {
             <div className="card-hdr">📍 {courses.find(c => c.id === selCourse)?.name}</div>
             {courseLB.length === 0 ? <div className="empty">No rounds at this course yet.</div> : (
               <div className="tw"><table>
-                <thead><tr><th>#</th><th>Player</th>{config.useHandicap && <th>Course Hcp</th>}<th>Rounds</th><th>Best Net</th><th>Avg Net</th></tr></thead>
+                <thead><tr><th>#</th><th>Player</th>{config.useHandicap && <th>Crs Hcp</th>}<th>Rounds</th><th>Best Net</th><th>Avg Net</th></tr></thead>
                 <tbody>{courseLB.map((p, i) => {
-                  const ch = config.useHandicap ? calcCourseHcp(p.handicap ?? 0, courses.find(c => c.id === selCourse)?.slope ?? 113, courses.find(c => c.id === selCourse)?.par ?? 72, courses.find(c => c.id === selCourse)?.rating ?? 72, config) : null;
+                  const c = courses.find(c => c.id === selCourse);
+                  const ch = config.useHandicap ? calcCourseHcp(p.handicap ?? 0, c?.slope ?? 113, c?.par ?? 72, c?.rating ?? 72, config) : null;
                   return <tr key={p.id}>{rankEl(i)}<td><span className="pname">{p.name}</span></td>{config.useHandicap && <td><span className="hcp-badge">{ch}</span></td>}<td>{p.cr.length}/{config.roundsPerCourse}</td><td>{netEl(p.best, p.par)}</td><td style={{ color: "var(--cream-dim)" }}>{p.avg}</td></tr>;
                 })}</tbody>
               </table></div>
@@ -1029,72 +1144,124 @@ export default function App() {
             ))}
           </div>}
 
-          {leaderTab === "payouts" && <div className="card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
-              <div className="card-hdr" style={{ marginBottom: 0 }}>💰 Payouts</div>
-              {isAdmin && !payoutEdit && <button className="btn btn-ghost btn-sm" onClick={() => { setPayoutDraft({ ...payouts }); setPayoutEdit(true); }}>Edit</button>}
-            </div>
-            {payoutEdit ? (
-              <div>
-                <div className="fgrid" style={{ marginBottom: 14 }}>
-                  {[["overallNet", "🏆 Overall Net"], ["overallGross", "🏌️ Overall Gross"], ["courseNet", "📍 Per-Course Net"], ["courseGross", "📍 Per-Course Gross"], ["bestNet", "⭐ Best Net Round"], ["bestGross", "⭐ Best Gross Round"]].map(([k, l]) => (
-                    <div className="fg" key={k}><label>{l}</label><input type="text" placeholder="e.g. $50" value={payoutDraft?.[k] ?? ""} onChange={e => setPayoutDraft(d => ({ ...d, [k]: e.target.value }))} /></div>
-                  ))}
-                </div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button className="btn btn-gold" onClick={() => savePayouts(payoutDraft)}>Save</button>
-                  <button className="btn btn-ghost" onClick={() => setPayoutEdit(false)}>Cancel</button>
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="bg2">
-                {[["overallNet", "🏆 Overall Net", overallLB[0]?.name], ["overallGross", "🏌️ Overall Gross", grossLB[0]?.name], ["courseNet", "📍 Per-Course Net", null], ["courseGross", "📍 Per-Course Gross", null], ["bestNet", "⭐ Best Net", bestNetLB[0]?.name], ["bestGross", "⭐ Best Gross", bestGrossLB[0]?.name]].map(([k, l, leader]) => (
-                  <div key={k} style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8, padding: "11px 13px" }}>
-                    <div style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginBottom: 3 }}>{l}</div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      <span style={{ fontFamily: "var(--font-d)", fontSize: "1.05rem", color: "var(--gold)" }}>{payouts?.[k] || <span style={{ color: "#4b5563", fontSize: ".8rem", fontFamily: "var(--font-b)", fontStyle: "italic" }}>Not set</span>}</span>
-                      {leader && <span style={{ fontSize: ".75rem", color: "var(--green)" }}>▶ {leader}</span>}
-                    </div>
+          {leaderTab === "payouts" && (() => {
+            const fee = config.entryFee ?? 0;
+            const paidPlayers = members.filter(m => m.paid);
+            const totalPool = fee * paidPlayers.length;
+            const cats = config.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
+            const leaderMap = { overallNet: overallLB[0]?.name, overallGross: grossLB[0]?.name, bestNet: bestNetLB[0]?.name, bestGross: bestGrossLB[0]?.name };
+            return <div className="card">
+              <div className="card-hdr">💰 Payouts</div>
+
+              {fee > 0 ? (
+                <div className="payout-pool">
+                  <div>
+                    <div className="payout-pool-label">Entry Fee</div>
+                    <div style={{ fontFamily: "var(--font-d)", fontSize: "1.1rem", color: "var(--gold-light)" }}>${fee} / player · {paidPlayers.length} paid{members.length - paidPlayers.length > 0 ? ` · ${members.length - paidPlayers.length} unpaid` : ""}</div>
                   </div>
-                ))}
+                  <div style={{ textAlign: "right" }}>
+                    <div className="payout-pool-label">Total Prize Pool</div>
+                    <div className="payout-pool-val">${totalPool.toLocaleString()}</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="alert-w" style={{ marginBottom: 16 }}>No entry fee set — configure in Admin → Config → Payouts.</div>
+              )}
+
+              {cats.filter(c => c.pct > 0).length === 0 ? (
+                <div className="empty">No payout categories configured yet.{isAdmin ? " Go to Admin → Config → Payouts to set them up." : ""}</div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="bg2">
+                  {cats.filter(c => c.pct > 0).map(c => {
+                    const amt = fee > 0 ? Math.round(totalPool * c.pct / 100) : null;
+                    const leader = leaderMap[c.id];
+                    return (
+                      <div key={c.id} style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8, padding: "12px 14px" }}>
+                        <div style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginBottom: 4 }}>{c.label}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 6, flexWrap: "wrap" }}>
+                          <div>
+                            <span style={{ fontFamily: "var(--font-d)", fontSize: "1.2rem", color: "var(--gold)" }}>{amt != null ? `$${amt.toLocaleString()}` : `${c.pct}%`}</span>
+                            {amt != null && <span style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginLeft: 6 }}>{c.pct}%</span>}
+                          </div>
+                          {leader && <span style={{ fontSize: ".75rem", color: "var(--green)" }}>▶ {leader}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>;
+          })()}
+        </>}
+
+        {/* ── ATTEST TAB ── */}
+        {tab === "attest" && dataLoaded && <>
+          <div className="card-hdr" style={{ marginBottom: 16 }}>⏳ Rounds Awaiting Your Attestation</div>
+
+          {pendingForMe.length === 0 ? (
+            <div className="card"><div className="empty">No rounds waiting for your attestation. 🎉</div></div>
+          ) : (
+            pendingForMe.map(r => (
+              <div key={r.id} className="attest-card">
+                <div className="attest-card-top">
+                  <div>
+                    <div className="attest-player">{r.player_name}</div>
+                    <div className="attest-meta">{r.course_name} · {r.date}</div>
+                  </div>
+                  {r.scorecard_url && (
+                    <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}>
+                      📋 View Scorecard
+                    </button>
+                  )}
+                </div>
+
+                <div className="attest-scores">
+                  <div className="attest-score-block">
+                    <div className="attest-score-label">Gross</div>
+                    <div className="attest-score-val">{r.gross}</div>
+                  </div>
+                  {config.useHandicap && (
+                    <div className="attest-score-block">
+                      <div className="attest-score-label">Course Hcp</div>
+                      <div className="attest-score-val" style={{ fontSize: "1.1rem", color: "#9ab8f0" }}>{r.course_handicap}</div>
+                    </div>
+                  )}
+                  <div className="attest-score-block">
+                    <div className="attest-score-label">Net</div>
+                    <div className="attest-score-val">{netEl(r.net, r.par)}</div>
+                  </div>
+                  <div className="attest-score-block">
+                    <div className="attest-score-label">Par</div>
+                    <div className="attest-score-val" style={{ color: "var(--cream-dim)", fontSize: "1.1rem" }}>{r.par}</div>
+                  </div>
+                  {config.scoringFormat === "stableford" && r.stableford_pts != null && (
+                    <div className="attest-score-block">
+                      <div className="attest-score-label">Pts</div>
+                      <div className="attest-score-val" style={{ color: "var(--purple)" }}>{r.stableford_pts}</div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="attest-actions">
+                  <button className="btn btn-gold btn-sm" onClick={async () => {
+                    const { error } = await supabase.from("rounds").update({ attest_status: "approved", attest_at: new Date().toISOString() }).eq("id", r.id);
+                    if (error) { alert("Error: " + error.message); return; }
+                    setRounds(p => p.map(x => x.id === r.id ? { ...x, attest_status: "approved" } : x));
+                  }}>✓ Approve Round</button>
+                  <button className="btn btn-danger" onClick={async () => {
+                    const note = window.prompt("Reason for rejection (optional):") || "";
+                    const { error } = await supabase.from("rounds").update({ attest_status: "rejected", attest_note: note, attest_at: new Date().toISOString() }).eq("id", r.id);
+                    if (error) { alert("Error: " + error.message); return; }
+                    setRounds(p => p.map(x => x.id === r.id ? { ...x, attest_status: "rejected", attest_note: note } : x));
+                  }}>✗ Reject</button>
+                </div>
               </div>
-            )}
-          </div>}
+            ))
+          )}
         </>}
 
         {/* ── POST SCORE ── */}
         {tab === "score" && dataLoaded && <>
-          {config.attestRequired && pendingForMe.length > 0 && (
-            <div className="card" style={{ borderColor: "var(--gold-border)" }}>
-              <div className="card-hdr" style={{ color: "var(--gold-light)" }}>⏳ Rounds Awaiting Your Attestation</div>
-              <div className="tw"><table>
-                <thead><tr><th>Player</th><th>Course</th><th>Date</th><th>Gross</th><th>Net</th><th>Card</th><th>Action</th></tr></thead>
-                <tbody>{pendingForMe.map(r => (
-                  <tr key={r.id}>
-                    <td><span className="pname" style={{ fontSize: ".86rem" }}>{r.player_name}</span></td>
-                    <td style={{ fontSize: ".8rem", color: "var(--cream-dim)" }}>{r.course_name}</td>
-                    <td style={{ fontSize: ".76rem", color: "var(--cream-dim)" }}>{r.date}</td>
-                    <td>{r.gross}</td><td>{netEl(r.net, r.par)}</td>
-                    <td>{r.scorecard_url ? <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}>📋 View</button> : <span style={{ color: "#4b5563", fontSize: ".8rem" }}>None</span>}</td>
-                    <td><div style={{ display: "flex", gap: 5 }}>
-                      <button className="btn btn-gold btn-sm" onClick={async () => {
-                        const { error } = await supabase.from("rounds").update({ attest_status: "approved", attest_at: new Date().toISOString() }).eq("id", r.id);
-                        if (error) { alert("Error: " + error.message); return; }
-                        setRounds(p => p.map(x => x.id === r.id ? { ...x, attest_status: "approved" } : x));
-                      }}>✓ Approve</button>
-                      <button className="btn btn-danger" onClick={async () => {
-                        const note = window.prompt("Reason for rejection (optional):") || "";
-                        const { error } = await supabase.from("rounds").update({ attest_status: "rejected", attest_note: note, attest_at: new Date().toISOString() }).eq("id", r.id);
-                        if (error) { alert("Error: " + error.message); return; }
-                        setRounds(p => p.map(x => x.id === r.id ? { ...x, attest_status: "rejected", attest_note: note } : x));
-                      }}>✗ Reject</button>
-                    </div></td>
-                  </tr>
-                ))}</tbody>
-              </table></div>
-            </div>
-          )}
-
           {!isOpen && <div className="alert-d" style={{ marginBottom: 16 }}>⛔ Season is not currently active — score submission is closed.</div>}
 
           <div className="card" style={{ opacity: isOpen ? 1 : .65, pointerEvents: isOpen ? "auto" : "none" }}>
@@ -1102,7 +1269,6 @@ export default function App() {
               {config.scoringFormat !== "stroke" && <span style={{ fontSize: ".74rem", color: "var(--purple)", marginLeft: 10, fontFamily: "var(--font-b)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>{FORMAT_LABELS[config.scoringFormat]}</span>}
             </div>
 
-            {/* Scorecard upload FIRST so AI can pre-fill */}
             <div className="fg" style={{ marginBottom: 14 }}>
               <label>Scorecard Photo {config.scorecardRequired ? <span style={{ color: "var(--red)" }}>*</span> : <span style={{ color: "var(--cream-dim)", textTransform: "none", letterSpacing: 0, fontFamily: "var(--font-b)" }}>(optional — we'll try to read your score automatically)</span>}</label>
               {!cardPreview ? (
@@ -1155,17 +1321,14 @@ export default function App() {
               <div className="fg"><label>Date Played</label><input type="date" value={form.date} onChange={setF("date")} /></div>
             </div>
 
-            {/* Auto net preview */}
             {form.courseId && form.score && (() => {
               const gross = Number(form.score);
               return <div style={{ marginTop: 12, padding: "12px 16px", background: "var(--gold-dim)", border: "1px solid var(--gold-border)", borderRadius: 8, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
                 <span style={{ fontSize: ".6rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)" }}>Auto-Calculated</span>
-                {config.useHandicap && selectedCourse && <>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                    <span style={{ fontSize: ".6rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Course Hcp</span>
-                    <span className="hcp-badge" style={{ marginTop: 2 }}>{autoHcp}</span>
-                  </div>
-                </>}
+                {config.useHandicap && selectedCourse && <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <span style={{ fontSize: ".6rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Course Hcp</span>
+                  <span className="hcp-badge" style={{ marginTop: 2 }}>{autoHcp}</span>
+                </div>}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                   <span style={{ fontSize: ".6rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Gross</span>
                   <span style={{ fontFamily: "var(--font-d)", fontSize: "1.2rem", color: "var(--cream)" }}>{gross}</span>
@@ -1184,7 +1347,6 @@ export default function App() {
                     <span style={{ fontFamily: "var(--font-d)", fontSize: "1.2rem", color: "var(--purple)" }}>{autoPts} pts</span>
                   </div>
                 </>}
-                {config.useHandicap && selectedCourse && <span style={{ fontSize: ".74rem", color: "var(--cream-dim)", marginLeft: "auto" }}>Idx {profile?.handicap ?? 0} × {config.handicapPct}%{config.useSlopeRating ? ` · Slope ${selectedCourse.slope}` : ""}</span>}
               </div>;
             })()}
 
@@ -1197,17 +1359,21 @@ export default function App() {
             </p>
           </div>
 
-          {/* My rounds */}
+          {/* My rounds — now shows attester + scorecard for all members */}
           {rounds.filter(r => r.player_id === session.user.id).length > 0 && (
             <div className="card">
               <div className="card-hdr">My Rounds</div>
               <div className="tw"><table>
                 <thead><tr>
-                  <th>Course</th><th>Gross</th>
-                  {config.useHandicap && <th>Course Hcp</th>}
+                  <th>Course</th>
+                  <th>Gross</th>
+                  {config.useHandicap && <th>Crs Hcp</th>}
                   {config.useHandicap && <th>Net</th>}
                   {config.scoringFormat === "stableford" && <th>Pts</th>}
-                  <th>Date</th><th>Status</th><th>Scorecard</th>
+                  <th>Date</th>
+                  {config.attestRequired && <th>Attester</th>}
+                  <th>Status</th>
+                  <th>Card</th>
                 </tr></thead>
                 <tbody>{rounds.filter(r => r.player_id === session.user.id).map(r => (
                   <tr key={r.id}>
@@ -1217,6 +1383,7 @@ export default function App() {
                     {config.useHandicap && <td>{netEl(r.net, r.par)}</td>}
                     {config.scoringFormat === "stableford" && <td><span style={{ color: "var(--purple)", fontFamily: "var(--font-d)" }}>{r.stableford_pts ?? "-"}</span></td>}
                     <td style={{ fontSize: ".76rem", color: "var(--cream-dim)" }}>{r.date}</td>
+                    {config.attestRequired && <td style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>{r.attester_name ?? "—"}</td>}
                     <td>{attestBadge(r.attest_status)}{r.attest_note && <div style={{ fontSize: ".7rem", color: "#f09090", marginTop: 2 }}>{r.attest_note}</div>}</td>
                     <td>{r.scorecard_url ? (
                       <div style={{ display: "flex", gap: 5 }}>
@@ -1237,9 +1404,11 @@ export default function App() {
 
         {/* ── ADMIN ── */}
         {tab === "admin" && isAdmin && dataLoaded && <>
-          <div className="stabs">
-            {[["config", "⚙ Config"], ["members", `Members${pendingJoins.length > 0 ? ` (${pendingJoins.length})` : ""}`], ["courses", "Courses"], ["rounds", "All Rounds"], ["export", "📊 Export"], ["league", "League Info"]]
-              .map(([k, l]) => <button key={k} className={`stab${adminTab === k ? " active" : ""}`} onClick={() => setAdminTab(k)}>{l}</button>)}
+          <div className="stabs-wrap">
+            <div className="stabs">
+              {[["config", "⚙ Config"], ["members", `Members${pendingJoins.length > 0 ? ` (${pendingJoins.length})` : ""}`], ["courses", "Courses"], ["rounds", "All Rounds"], ["export", "📊 Export"], ["league", "League Info"]]
+                .map(([k, l]) => <button key={k} className={`stab${adminTab === k ? " active" : ""}`} onClick={() => setAdminTab(k)}>{l}</button>)}
+            </div>
           </div>
           {addMsg && <div className="alert-s" style={{ marginBottom: 12 }}>{addMsg}</div>}
 
@@ -1248,11 +1417,14 @@ export default function App() {
             const d = configDraft ?? config;
             const set = (k, v) => setConfigDraft(prev => ({ ...(prev ?? config), [k]: v }));
             const dirty = configDraft !== null;
+            const payoutCats = d.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
+            const totalPayoutPct = payoutCats.reduce((s, c) => s + (Number(c.pct) || 0), 0);
+            const payoutOverLimit = totalPayoutPct > 100;
             return <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
                 <div className="card-hdr" style={{ marginBottom: 0 }}>⚙ League Configuration</div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  {dirty && <><button className="btn btn-gold" onClick={() => saveConfig(configDraft)}>Save Changes</button><button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button></>}
+                  {dirty && <><button className="btn btn-gold" onClick={() => saveConfig(configDraft)} disabled={payoutOverLimit}>Save Changes</button><button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button></>}
                   {!dirty && <span style={{ fontSize: ".76rem", color: "var(--green)", fontFamily: "var(--font-d)", letterSpacing: "1px" }}>✓ Saved</span>}
                 </div>
               </div>
@@ -1272,7 +1444,7 @@ export default function App() {
                 <div className="cfg-section-title">Round Rules</div>
                 <div className="cfg-row"><div><div className="cfg-label">Required rounds per course</div><div className="cfg-desc">How many rounds each player must post at each course</div></div>
                   <select value={d.roundsPerCourse} onChange={e => set("roundsPerCourse", Number(e.target.value))} style={{ width: 80 }}>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
-                <div className="cfg-row"><div><div className="cfg-label">Best N scores count</div><div className="cfg-desc">Only the best N of all submitted scores count toward standings. Leave blank to count all.</div></div>
+                <div className="cfg-row"><div><div className="cfg-label">Best N scores count</div><div className="cfg-desc">Only the best N of all submitted scores count. Leave blank to count all.</div></div>
                   <input type="number" min={1} placeholder="All" value={d.scoresToCount ?? ""} onChange={e => set("scoresToCount", e.target.value ? Number(e.target.value) : null)} style={{ width: 80 }} /></div>
                 <div className="cfg-row"><div><div className="cfg-label">Require attestation</div><div className="cfg-desc">Playing partner must approve each round by email</div></div><Toggle checked={d.attestRequired} onChange={v => set("attestRequired", v)} /></div>
                 <div className="cfg-row"><div><div className="cfg-label">Require scorecard photo</div><div className="cfg-desc">Players must upload a photo with every submission</div></div><Toggle checked={d.scorecardRequired} onChange={v => set("scorecardRequired", v)} /></div>
@@ -1300,6 +1472,83 @@ export default function App() {
               </div>
 
               <div className="cfg-section">
+                <div className="cfg-section-title">💰 Payouts & Entry Fee</div>
+                <div className="cfg-row">
+                  <div><div className="cfg-label">Entry fee per player</div><div className="cfg-desc">Used to calculate the total prize pool</div></div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ color: "var(--cream-dim)" }}>$</span>
+                    <input type="number" min={0} placeholder="0" value={d.entryFee ?? ""} onChange={e => set("entryFee", e.target.value ? Number(e.target.value) : null)} style={{ width: 90 }} />
+                  </div>
+                </div>
+
+                {/* Live pool preview */}
+                {d.entryFee > 0 && players.length > 0 && (() => {
+                  const paidCnt = members.filter(m => m.paid).length;
+                  return (
+                    <div style={{ padding: "10px 0 4px", fontSize: ".82rem", color: "var(--cream-dim)" }}>
+                      <span style={{ color: "var(--gold-light)", fontFamily: "var(--font-d)" }}>${(d.entryFee * paidCnt).toLocaleString()}</span> collected so far ({paidCnt} of {players.length} players paid)
+                    </div>
+                  );
+                })()}
+
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)", marginBottom: 10 }}>Payout Categories</div>
+                  <p className="note" style={{ marginBottom: 12 }}>Set the % of the prize pool for each category. Total must not exceed 100%.</p>
+
+                  {(() => {
+                    const cats = d.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
+                    const totalPct = cats.reduce((s, c) => s + (Number(c.pct) || 0), 0);
+                    const pool = (d.entryFee ?? 0) * players.length;
+                    const overLimit = totalPct > 100;
+                    const remaining = 100 - totalPct;
+
+                    return <>
+                      {cats.map((cat, idx) => {
+                        const amt = pool > 0 ? Math.round(pool * cat.pct / 100) : null;
+                        return (
+                          <div key={cat.id} className="payout-cat-row">
+                            <div className="payout-cat-label">{cat.label}</div>
+                            <div className="payout-pct-input">
+                              <input
+                                type="number" min={0} max={100} step={1}
+                                value={cat.pct || ""}
+                                placeholder="0"
+                                style={{ borderColor: overLimit && cat.pct > 0 ? "rgba(224,92,92,.5)" : undefined }}
+                                onChange={e => {
+                                  const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                                  const updated = cats.map((c, i) => i === idx ? { ...c, pct: val } : c);
+                                  set("payoutCategories", updated);
+                                }}
+                              />
+                              <span style={{ color: "var(--cream-dim)" }}>%</span>
+                            </div>
+                            <div className="payout-amount">
+                              {amt != null && cat.pct > 0 ? `$${amt.toLocaleString()}` : <span style={{ color: "#4b5563" }}>—</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Progress bar */}
+                      <div className="pct-bar-wrap">
+                        <div className="pct-bar" style={{
+                          width: `${Math.min(totalPct, 100)}%`,
+                          background: overLimit ? "var(--red)" : totalPct === 100 ? "var(--green)" : "linear-gradient(90deg,var(--gold),var(--gold-light))"
+                        }} />
+                      </div>
+                      <div className="pct-total-row">
+                        <span style={{ color: "var(--cream-dim)" }}>Total allocated</span>
+                        <span className={overLimit ? "pct-total-over" : totalPct === 100 ? "pct-total-ok" : "pct-total-under"}>
+                          {overLimit ? `⚠ ${totalPct}% — exceeds 100%` : totalPct === 100 ? `✓ ${totalPct}% — fully allocated` : `${totalPct}% (${remaining}% remaining)`}
+                        </span>
+                      </div>
+                      {overLimit && <div className="alert-d" style={{ marginTop: 10, fontSize: ".8rem" }}>Total payout percentages exceed 100%. Please reduce before saving.</div>}
+                    </>;
+                  })()}
+                </div>
+              </div>
+
+              <div className="cfg-section">
                 <div className="cfg-section-title">Season Window</div>
                 <p className="note" style={{ marginBottom: 12 }}>Submissions accepted only within this range. Leave blank for no restriction.</p>
                 <div className="fgrid">
@@ -1309,7 +1558,7 @@ export default function App() {
               </div>
 
               {dirty && <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-                <button className="btn btn-gold" onClick={() => saveConfig(configDraft)}>Save Changes</button>
+                <button className="btn btn-gold" onClick={() => saveConfig(configDraft)} disabled={payoutOverLimit}>Save Changes</button>
                 <button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button>
               </div>}
             </div>;
@@ -1317,7 +1566,22 @@ export default function App() {
 
           {/* MEMBERS */}
           {adminTab === "members" && <div className="card">
-            <div className="card-hdr">👤 League Members</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+              <div className="card-hdr" style={{ marginBottom: 0 }}>👤 League Members</div>
+              {config.entryFee > 0 && (() => {
+                const paidCount = members.filter(m => m.paid).length;
+                const unpaidCount = members.length - paidCount;
+                const collected = paidCount * config.entryFee;
+                const total = members.length * config.entryFee;
+                return (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: ".76rem", color: "#6ee7a0" }}>✓ {paidCount} paid</span>
+                    {unpaidCount > 0 && <span style={{ fontSize: ".76rem", color: "#f09090" }}>⚠ {unpaidCount} unpaid</span>}
+                    <span style={{ fontSize: ".76rem", color: "var(--gold-light)", fontFamily: "var(--font-d)" }}>${collected.toLocaleString()} / ${total.toLocaleString()} collected</span>
+                  </div>
+                );
+              })()}
+            </div>
             {pendingJoins.length > 0 && <>
               <div style={{ fontSize: ".7rem", color: "var(--purple)", fontFamily: "var(--font-d)", letterSpacing: "2px", textTransform: "uppercase", marginBottom: 8 }}>Pending Join Requests</div>
               {pendingJoins.map(req => (
@@ -1333,16 +1597,22 @@ export default function App() {
               <div style={{ borderTop: "1px solid var(--navy-border)", margin: "12px 0" }} />
             </>}
             {members.map(m => (
-              <div key={m.user_id} className="pchip">
+              <div key={m.user_id} className="pchip" style={{ borderColor: config.entryFee > 0 ? (m.paid ? "rgba(76,175,125,.2)" : "rgba(224,92,92,.15)") : undefined }}>
                 <div className="avatar lg">{m.profile.avatar_url ? <img src={m.profile.avatar_url} alt="" /> : ini(m.profile.name)}</div>
                 <div className="pchip-info">
-                  <div className="pchip-name">{m.profile.name}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <div className="pchip-name">{m.profile.name}</div>
+                    {config.entryFee > 0 && (
+                      <span className={`paid-badge ${m.paid ? "paid" : "unpaid"}`}>
+                        {m.paid ? "✓ Paid" : "✗ Unpaid"}
+                      </span>
+                    )}
+                  </div>
                   <div className="pchip-meta">
                     {m.profile.email} · Hcp {m.profile.handicap ?? "-"}
-                    {m.profile.ghin && <> · <a href={ghinUrl(m.profile.ghin)} target="_blank" rel="noreferrer" className="ghin-link" style={{ fontSize: ".68rem" }}>GHIN {m.profile.ghin} ↗</a></>}
+                    {m.profile.ghin && <> · <a href={ghinUrl(m.profile.ghin)} target="_blank" rel="noreferrer" className="ghin-link" style={{ fontSize: ".68rem" }}>GHIN ↗</a></>}
                     {" · "}{rounds.filter(r => r.player_id === m.user_id).length} rounds
                   </div>
-                  {/* Course handicaps row */}
                   {config.useHandicap && courses.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
                     {courses.map(c => {
                       const ch = calcCourseHcp(m.profile.handicap ?? 0, c.slope, c.par, c.rating, config);
@@ -1352,6 +1622,15 @@ export default function App() {
                 </div>
                 <div className="pchip-actions">
                   <span className={`lrole ${m.role}`}>{m.role === "admin" ? "Commissioner" : "Player"}</span>
+                  {config.entryFee > 0 && (
+                    <button
+                      className={`btn btn-sm ${m.paid ? "btn-danger" : "btn-gold"}`}
+                      style={m.paid ? {} : { fontSize: ".68rem" }}
+                      onClick={() => togglePaid(m.user_id, m.paid)}
+                    >
+                      {m.paid ? "Mark Unpaid" : "✓ Mark Paid"}
+                    </button>
+                  )}
                   <button className="btn btn-ghost btn-sm" onClick={() => setEditMemberHcp({ uid: m.user_id, name: m.profile.name, handicap: m.profile.handicap, ghin: m.profile.ghin })}>Edit Hcp</button>
                   {m.user_id !== session.user.id && <button className="btn btn-ghost btn-sm" onClick={() => toggleRole(m.user_id, m.role)}>{m.role === "admin" ? "→ Player" : "→ Commissioner"}</button>}
                   {m.user_id !== session.user.id && <button className="btn btn-danger" onClick={() => removeMember(m.user_id)}>Remove</button>}
@@ -1386,7 +1665,7 @@ export default function App() {
             )}
           </div>}
 
-          {/* ALL ROUNDS */}
+          {/* ALL ROUNDS — with attester + scorecard visible to all */}
           {adminTab === "rounds" && <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
               <div className="card-hdr" style={{ marginBottom: 0 }}>📋 All Rounds</div>
@@ -1394,7 +1673,14 @@ export default function App() {
             </div>
             {rounds.length === 0 ? <div className="empty">No rounds yet.</div> : (
               <div className="tw"><table>
-                <thead><tr><th>Player</th><th>Course</th><th>Gross</th>{config.useHandicap && <th>Crs Hcp</th>}<th>Net</th>{config.scoringFormat === "stableford" && <th>Pts</th>}<th>Status</th><th>Date</th><th>Card</th><th></th></tr></thead>
+                <thead><tr>
+                  <th>Player</th><th>Course</th><th>Gross</th>
+                  {config.useHandicap && <th>Crs Hcp</th>}
+                  <th>Net</th>
+                  {config.scoringFormat === "stableford" && <th>Pts</th>}
+                  {config.attestRequired && <th>Attester</th>}
+                  <th>Status</th><th>Date</th><th>Card</th><th></th>
+                </tr></thead>
                 <tbody>{rounds.map(r => (
                   <tr key={r.id}>
                     <td><span className="pname" style={{ fontSize: ".84rem" }}>{r.player_name}</span></td>
@@ -1403,6 +1689,7 @@ export default function App() {
                     {config.useHandicap && <td><span className="hcp-badge" style={{ fontSize: ".66rem" }}>{r.course_handicap}</span></td>}
                     <td>{netEl(r.net, r.par)}</td>
                     {config.scoringFormat === "stableford" && <td style={{ color: "var(--purple)" }}>{r.stableford_pts ?? "-"}</td>}
+                    {config.attestRequired && <td style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>{r.attester_name ?? "—"}</td>}
                     <td>{attestBadge(r.attest_status)}</td>
                     <td style={{ fontSize: ".76rem", color: "var(--cream-dim)" }}>{r.date}</td>
                     <td>{r.scorecard_url ? <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}>📋</button> : <span style={{ color: "#4b5563" }}>—</span>}</td>
@@ -1419,17 +1706,14 @@ export default function App() {
             <div style={{ marginBottom: 20 }}>
               <div className="cfg-section-title">Google Sheet Integration</div>
               <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 14, lineHeight: 1.6 }}>
-                Link your Google Sheet so players can view exported data. To export, download the CSV below and import it into your Google Sheet via <strong style={{ color: "var(--cream)" }}>File → Import</strong>.
-                {" "}Alternatively, use <a href="https://zapier.com" target="_blank" rel="noreferrer" style={{ color: "var(--gold)" }}>Zapier</a> or <a href="https://make.com" target="_blank" rel="noreferrer" style={{ color: "var(--gold)" }}>Make</a> to automate syncing.
+                Link your Google Sheet so players can view exported data. Download the CSV below and import via <strong style={{ color: "var(--cream)" }}>File → Import</strong>.
               </p>
               <div className="fg" style={{ marginBottom: 12 }}>
                 <label>Google Sheet URL (shown to all members)</label>
                 <input type="url" placeholder="https://docs.google.com/spreadsheets/d/..." value={configDraft?.googleSheetUrl ?? config.googleSheetUrl ?? ""} onChange={e => setConfigDraft(d => ({ ...(d ?? config), googleSheetUrl: e.target.value || null }))} />
               </div>
               {(configDraft?.googleSheetUrl || config.googleSheetUrl) && (
-                <a href={configDraft?.googleSheetUrl ?? config.googleSheetUrl} target="_blank" rel="noreferrer" className="gs-badge" style={{ marginBottom: 12, display: "inline-flex" }}>
-                  📊 Open Google Sheet ↗
-                </a>
+                <a href={configDraft?.googleSheetUrl ?? config.googleSheetUrl} target="_blank" rel="noreferrer" className="gs-badge" style={{ marginBottom: 12, display: "inline-flex" }}>📊 Open Google Sheet ↗</a>
               )}
               {configDraft && <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
                 <button className="btn btn-gold btn-sm" onClick={() => saveConfig(configDraft)}>Save Sheet URL</button>
@@ -1438,7 +1722,7 @@ export default function App() {
             </div>
             <div style={{ borderTop: "1px solid var(--navy-border)", paddingTop: 16 }}>
               <div className="cfg-section-title">Download CSV</div>
-              <p style={{ fontSize: ".86rem", color: "var(--cream-dim)", marginBottom: 14 }}>Download all rounds as a CSV file, then import into Google Sheets or Excel.</p>
+              <p style={{ fontSize: ".86rem", color: "var(--cream-dim)", marginBottom: 14 }}>Download all rounds as a CSV file.</p>
               <button className="btn btn-gold" onClick={exportToGoogleSheet} disabled={rounds.length === 0}>
                 ⬇ Download Rounds CSV ({rounds.length} rounds)
               </button>
@@ -1473,5 +1757,6 @@ export default function App() {
           </div>}
         </>}
       </div>
-    </>);
+    </>
+  );
 }
