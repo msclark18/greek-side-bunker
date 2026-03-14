@@ -1220,10 +1220,14 @@ export default function App() {
               const updated = displayBracket.map((r, ri) => ri !== roundIdx ? r : {
                 ...r, matchups: r.matchups.map((m, mi) => mi !== matchIdx ? m : { ...m, winner })
               });
-              // Advance winners to next round
               const roundMatchups = updated[roundIdx].matchups;
               const allDone = roundMatchups.every(m => m.winner);
+
+              // This is the semifinals round (second-to-last before the final, with 2+ matches)
+              const isSemiFinal = allDone && numRounds >= 2 && roundIdx === numRounds - 2 && roundMatchups.length >= 2;
+
               if (allDone && roundIdx < numRounds - 1) {
+                // Advance winners to next round (final)
                 const nextMatchups = [];
                 for (let i = 0; i < roundMatchups.length; i += 2) {
                   nextMatchups.push({ p1: roundMatchups[i].winner, p2: roundMatchups[i + 1]?.winner ?? null, winner: null });
@@ -1231,11 +1235,28 @@ export default function App() {
                 const nextRound = { round: roundIdx + 2, label: roundLabels[roundIdx + 1], matchups: nextMatchups };
                 if (updated.length <= roundIdx + 1) updated.push(nextRound);
                 else updated[roundIdx + 1] = nextRound;
+
+                // After semifinals: also create third place match from the two losers
+                if (isSemiFinal) {
+                  const loser1 = roundMatchups[0].winner === roundMatchups[0].p1 ? roundMatchups[0].p2 : roundMatchups[0].p1;
+                  const loser2 = roundMatchups[1].winner === roundMatchups[1].p1 ? roundMatchups[1].p2 : roundMatchups[1].p1;
+                  // Store third place match in a special field on the bracket array
+                  updated.thirdPlaceMatch = { p1: loser1, p2: loser2, winner: null };
+                }
               }
               saveBracket(updated);
             };
 
+            const setThirdPlaceWinner = (winner) => {
+              const updated = [...displayBracket];
+              updated.thirdPlaceMatch = { ...displayBracket.thirdPlaceMatch, winner };
+              saveBracket(updated);
+            };
+
             const resetBracket = () => { if (window.confirm("Reset the entire bracket?")) saveBracket([]); };
+
+            // Third place match lives on the bracket array as a special property
+            const thirdPlaceMatch = displayBracket.thirdPlaceMatch ?? null;
 
             return <>
               <div className="card">
@@ -1268,7 +1289,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {isAdmin && <div className="alert-w" style={{ marginBottom: 14, fontSize: ".8rem" }}>Click a player's name in a matchup to mark them as the winner and advance the bracket.</div>}
+                {isAdmin && displayBracket.length > 0 && <div className="alert-w" style={{ marginBottom: 14, fontSize: ".8rem" }}>Click a player's name in a matchup to mark them as the winner and advance the bracket.</div>}
 
                 <div className="bracket-wrap">
                   <div className="bracket">
@@ -1297,7 +1318,7 @@ export default function App() {
                       </div>
                     ))}
 
-                    {/* Champion display if bracket complete */}
+                    {/* Champion display if final is complete */}
                     {(() => {
                       const finalRnd = displayBracket[displayBracket.length - 1];
                       const champ = finalRnd?.matchups?.[0]?.winner;
@@ -1314,6 +1335,35 @@ export default function App() {
                     })()}
                   </div>
                 </div>
+
+                {/* Third place match — shown below main bracket once semis are done */}
+                {thirdPlaceMatch && (
+                  <div style={{ marginTop: 20, borderTop: "1px solid var(--navy-border)", paddingTop: 18 }}>
+                    <div style={{ fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--cream-dim)", fontFamily: "var(--font-d)", marginBottom: 10 }}>🥉 Third Place Match</div>
+                    <div className="bracket-match" style={{ maxWidth: 280 }}>
+                      {[{ name: thirdPlaceMatch.p1, slot: "p1" }, { name: thirdPlaceMatch.p2, slot: "p2" }].map(({ name, slot }) => {
+                        const isWinner = thirdPlaceMatch.winner === name;
+                        const isLoser = thirdPlaceMatch.winner && thirdPlaceMatch.winner !== name;
+                        return (
+                          <div
+                            key={slot}
+                            className={`bracket-slot${isWinner ? " winner" : ""}${isLoser ? " loser" : ""}${!name ? " empty" : ""}`}
+                            onClick={() => isAdmin && name && !thirdPlaceMatch.winner && setThirdPlaceWinner(name)}
+                          >
+                            <span className="seed">{name ? (seedList.findIndex(p => p.name === name) + 1 || "?") : ""}</span>
+                            <span className="slot-name">{name ?? "TBD"}</span>
+                            {isWinner && <span className="win-mark">🥉</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {thirdPlaceMatch.winner && (
+                      <div style={{ marginTop: 8, fontSize: ".82rem", color: "var(--cream-dim)" }}>
+                        🥉 Third place: <span style={{ color: "var(--white)", fontWeight: 600 }}>{thirdPlaceMatch.winner}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>}
             </>;
           })()}
@@ -1334,17 +1384,12 @@ export default function App() {
             const playoffRunnerUp = finalRound?.matchups?.[0]
               ? (finalRound.matchups[0].winner === finalRound.matchups[0].p1 ? finalRound.matchups[0].p2 : finalRound.matchups[0].p1)
               : null;
-            const semiFinal = bracket.length >= 2 ? bracket[bracket.length - 2] : null;
-            const thirdPlace = semiFinal
-              ? [semiFinal.matchups[0], semiFinal.matchups[1]]
-                  .map(m => m?.winner ? (m.winner === m.p1 ? m.p2 : m.p1) : null)
-                  .filter(p => p && p !== playoffChampion && p !== playoffRunnerUp)[0] ?? null
-              : null;
+            const thirdPlaceWinner = bracket.thirdPlaceMatch?.winner ?? null;
 
             const leaderMap = {
               champion: playoffChampion,
               runnerUp: playoffRunnerUp,
-              thirdPlace: thirdPlace,
+              thirdPlace: thirdPlaceWinner,
               regularNet: regularNetWinner,
               regularGross: regularGrossWinner,
             };
