@@ -40,8 +40,11 @@ const isSeasonActive = (cfg) => {
   if (cfg.seasonEnd && new Date(cfg.seasonEnd) < now) return false;
   return true;
 };
-// FIX: proper GHIN URL
-const ghinUrl = (id) => id ? `https://www.ghin.com/golfer/${id}/scores` : null;
+const ghinUrl = (ghin, name) => {
+  if (!ghin && !name) return null;
+  if (name) return `https://www.ghin.com/golfer-lookup?lastName=${encodeURIComponent(name.split(" ").slice(-1)[0])}&firstName=${encodeURIComponent(name.split(" ")[0])}`;
+  return `https://www.ghin.com/golfer-lookup`;
+};
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
@@ -819,7 +822,7 @@ export default function App() {
                 <div className="fg"><label>Handicap Index</label><input type="number" step=".1" min={0} max={54} placeholder="e.g. 8.4" value={profileDraft.handicap ?? ""} onChange={e => setProfileDraft(d => ({ ...d, handicap: e.target.value }))} /></div>
                 <div className="fg"><label>GHIN #</label><input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""} onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))} /></div>
               </div>
-              {profileDraft.ghin && <a href={ghinUrl(profileDraft.ghin)} target="_blank" rel="noreferrer" className="ghin-link">🔗 View GHIN Profile ↗</a>}
+              {profileDraft.ghin && <a href={ghinUrl(profileDraft.ghin, profileDraft.name)} target="_blank" rel="noreferrer" className="ghin-link">🔗 Look up on GHIN ↗</a>}
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn btn-gold" onClick={saveProfile}>Save</button>
@@ -923,7 +926,7 @@ export default function App() {
                 <div className="fg"><label>Handicap Index</label><input type="number" step=".1" min={0} max={54} placeholder="e.g. 8.4" value={profileDraft.handicap ?? ""} onChange={e => setProfileDraft(d => ({ ...d, handicap: e.target.value }))} /></div>
                 <div className="fg"><label>GHIN #</label><input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""} onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))} /></div>
               </div>
-              {profileDraft.ghin && <a href={ghinUrl(profileDraft.ghin)} target="_blank" rel="noreferrer" className="ghin-link">🔗 View GHIN Profile ↗</a>}
+              {profileDraft.ghin && <a href={ghinUrl(profileDraft.ghin, profileDraft.name)} target="_blank" rel="noreferrer" className="ghin-link">🔗 Look up on GHIN ↗</a>}
               <p className="note">Your GHIN number links to your official USGA handicap record at ghin.com.</p>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
@@ -983,7 +986,7 @@ export default function App() {
                       </div>
                     )}
                     {config.useHandicap && <div style={{ marginBottom: 6 }}><span className="hcp-badge">Hcp {m.profile.handicap ?? "-"}</span></div>}
-                    {m.profile.ghin && <a href={ghinUrl(m.profile.ghin)} target="_blank" rel="noreferrer" className="ghin-link" style={{ fontSize: ".68rem", marginBottom: 6, display: "inline-flex" }}>GHIN ↗</a>}
+                    {m.profile.ghin && <a href={ghinUrl(m.profile.ghin, m.profile.name)} target="_blank" rel="noreferrer" className="ghin-link" style={{ fontSize: ".68rem", marginBottom: 6, display: "inline-flex" }}>GHIN ↗</a>}
                     {config.useHandicap && courses.length > 0 && <div style={{ marginTop: 6 }}>
                       {courseHcps.map(c => <div key={c.id} style={{ fontSize: ".68rem", color: "var(--cream-dim)", marginTop: 2 }}>{c.name}: <span style={{ color: "var(--white)" }}>{c.ch}</span></div>)}
                     </div>}
@@ -1093,7 +1096,7 @@ export default function App() {
                   {rankEl(i)}
                   <td>
                     <span className="pname">{p.name}</span>
-                    {p.ghin && <a href={ghinUrl(p.ghin)} target="_blank" rel="noreferrer" className="ghin-link" style={{ marginLeft: 7, fontSize: ".62rem" }}>GHIN</a>}
+                    {p.ghin && <a href={ghinUrl(p.ghin, p.name)} target="_blank" rel="noreferrer" className="ghin-link" style={{ marginLeft: 7, fontSize: ".62rem" }}>GHIN</a>}
                   </td>
                   {config.useHandicap && <td style={{ color: "var(--cream-dim)" }}>{p.handicap}</td>}
                   <td>{p.totalRounds}</td>
@@ -1227,9 +1230,10 @@ export default function App() {
                     <th>Course</th>
                     <th>Date</th>
                     <th>Gross</th>
-                    {config.useHandicap && <th>Hcp</th>}
+                    {config.useHandicap && <th>Course Hcp</th>}
                     {config.useHandicap && <th>Net</th>}
                     {config.scoringFormat === "stableford" && <th>Pts</th>}
+                    {config.attestRequired && <th>Attested By</th>}
                     <th>Status</th>
                     <th>Card</th>
                   </tr></thead>
@@ -1242,6 +1246,7 @@ export default function App() {
                       {config.useHandicap && <td><span className="hcp-badge" style={{ fontSize: ".66rem" }}>{r.course_handicap}</span></td>}
                       {config.useHandicap && <td>{netEl(r.net, r.par)}</td>}
                       {config.scoringFormat === "stableford" && <td style={{ color: "var(--purple)", fontFamily: "var(--font-d)" }}>{r.stableford_pts ?? "-"}</td>}
+                      {config.attestRequired && <td style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>{r.attester_name ?? "—"}</td>}
                       <td>{attestBadge(r.attest_status)}</td>
                       <td>
                         {r.scorecard_url
@@ -2057,7 +2062,7 @@ export default function App() {
                   </div>
                   <div className="pchip-meta">
                     {m.profile.email} · Hcp {m.profile.handicap ?? "-"}
-                    {m.profile.ghin && <> · <a href={ghinUrl(m.profile.ghin)} target="_blank" rel="noreferrer" className="ghin-link" style={{ fontSize: ".68rem" }}>GHIN ↗</a></>}
+                    {m.profile.ghin && <> · <a href={ghinUrl(m.profile.ghin, m.profile.name)} target="_blank" rel="noreferrer" className="ghin-link" style={{ fontSize: ".68rem" }}>GHIN ↗</a></>}
                     {" · "}{rounds.filter(r => r.player_id === m.user_id).length} rounds
                   </div>
                   {config.useHandicap && courses.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
