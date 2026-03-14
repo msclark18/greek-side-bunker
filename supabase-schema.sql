@@ -270,3 +270,7 @@ create policy "profiles_update_by_admin"
       and lm2.user_id = profiles.id
     )
   );
+
+create policy "rounds_update_attester"
+on rounds for update
+using (attester_id = auth.uid());

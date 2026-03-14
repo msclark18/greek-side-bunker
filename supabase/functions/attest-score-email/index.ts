@@ -1,100 +1,99 @@
-// supabase/functions/attest-score-email/index.ts
-// Sends the attestation email to the playing partner.
-// Uses Resend (https://resend.com) — free tier: 100 emails/day, 3,000/month.
+// supabase/functions/attest-score/index.ts
+// Handles GET requests from attester email links:
+//   ?token=<uuid>&action=approved
+//   ?token=<uuid>&action=rejected&note=<reason>
 //
-// Deploy: supabase functions deploy attest-score-email
-// Set secret: supabase secrets set RESEND_API_KEY=re_xxxx
-//             supabase secrets set APP_URL=https://your-app.vercel.app
-//             supabase secrets set FROM_EMAIL=noreply@yourdomain.com
+// Deploy with: supabase functions deploy attest-score
 
-const RESEND_KEY = Deno.env.get("RESEND_API_KEY")!;
-const APP_URL    = Deno.env.get("APP_URL") ?? "https://your-app.vercel.app";
-const FROM_EMAIL = Deno.env.get("FROM_EMAIL") ?? "noreply@thegreeksheet.com";
-// The attest-score function URL (your Supabase project URL + function path)
-const ATTEST_FN  = Deno.env.get("SUPABASE_URL") + "/functions/v1/attest-score";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-Deno.serve(async (req) => {
-  const {
-    attesterEmail, attesterName, playerName,
-    courseName, gross, net, par, date,
-    leagueName, token, appUrl
-  } = await req.json();
+const supabase = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!  // service role bypasses RLS
+);
 
-  const baseUrl = appUrl ?? APP_URL;
-  const approveUrl = `${ATTEST_FN}?token=${token}&action=approved`;
-  const rejectUrl  = `${ATTEST_FN}?token=${token}&action=rejected`;
-  const diff = net - par;
-  const pm   = diff === 0 ? "Even" : diff > 0 ? `+${diff}` : `${diff}`;
+const APP_URL = Deno.env.get("APP_URL") ?? "https://your-app.vercel.app";
 
-  const html = `<!DOCTYPE html>
+const html = (title: string, body: string) => `<!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8">
-<style>
-  body{margin:0;padding:0;background:#f4f4f5;font-family:Georgia,serif}
-  .wrap{max-width:560px;margin:32px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08)}
-  .header{background:#0a0e1a;padding:32px;text-align:center}
-  .omega{font-size:2.5rem;color:#d4a843;font-family:serif}
-  .header h1{font-family:Georgia,serif;font-size:1.4rem;color:#faf9f6;letter-spacing:3px;margin:8px 0 4px}
-  .header p{color:#c8bfa8;font-size:.9rem;font-style:italic;margin:0}
-  .body{padding:32px}
-  .body p{color:#2d2d2d;font-size:1rem;line-height:1.7;margin:0 0 16px}
-  .score-box{background:#f9f7f2;border:1px solid #e5dcc8;border-radius:10px;padding:20px 24px;margin:20px 0}
-  .score-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #ede9df;font-size:.95rem;color:#555}
-  .score-row:last-child{border-bottom:none}
-  .score-row strong{color:#1a1a1a}
-  .actions{display:flex;gap:12px;margin:24px 0;flex-wrap:wrap}
-  .btn-approve{flex:1;padding:14px;background:#1a6b3c;color:#fff;border:none;border-radius:8px;font-size:1rem;font-family:Georgia,serif;font-weight:bold;text-align:center;text-decoration:none;display:block}
-  .btn-reject{flex:1;padding:14px;background:#fff;color:#c0392b;border:2px solid #c0392b;border-radius:8px;font-size:1rem;font-family:Georgia,serif;font-weight:bold;text-align:center;text-decoration:none;display:block}
-  .footer{padding:20px 32px;background:#f9f7f2;text-align:center;font-size:.78rem;color:#999;font-style:italic}
-  a.app-link{color:#d4a843}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${title} · The Greek Sheet</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=EB+Garamond:ital,wght@0,400;1,400&display=swap');
+    body{margin:0;background:#0a0e1a;color:#f0ead8;font-family:'EB Garamond',Georgia,serif;display:flex;align-items:center;justify-content:center;min-height:100vh;}
+    .box{background:#161d2e;border:1px solid rgba(212,168,67,0.3);border-radius:16px;padding:48px 40px;max-width:420px;width:100%;text-align:center;}
+    .omega{font-size:3rem;background:linear-gradient(135deg,#d4a843,#f0c96a);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    h1{font-family:'Cinzel',serif;font-size:1.4rem;color:#faf9f6;letter-spacing:2px;margin:12px 0 8px;}
+    p{color:#c8bfa8;font-size:1.05rem;line-height:1.6;}
+    .icon{font-size:3rem;margin:16px 0;}
+    a{display:inline-block;margin-top:20px;padding:12px 28px;background:linear-gradient(135deg,#d4a843,#f0c96a);color:#0a0e1a;border-radius:8px;text-decoration:none;font-family:'Cinzel',serif;font-size:0.85rem;letter-spacing:1px;font-weight:700;}
+  </style>
 </head>
-<body>
-<div class="wrap">
-  <div class="header">
-    <div class="omega">Ω</div>
-    <h1>THE GREEK SIDE BUNKER</h1>
-    <p>${leagueName ?? "Golf League"}</p>
-  </div>
-  <div class="body">
-    <p>Hi ${attesterName},</p>
-    <p><strong>${playerName}</strong> has submitted a round and listed you as their playing partner. Please review and attest their score:</p>
-    <div class="score-box">
-      <div class="score-row"><span>Course</span><strong>${courseName}</strong></div>
-      <div class="score-row"><span>Date</span><strong>${date}</strong></div>
-      <div class="score-row"><span>Gross Score</span><strong>${gross}</strong></div>
-      <div class="score-row"><span>Net Score</span><strong>${net} (${pm})</strong></div>
-    </div>
-    <p>Did you play with ${playerName} and can confirm this score is accurate?</p>
-    <div class="actions">
-      <a href="${approveUrl}" class="btn-approve">✓ Yes, Approve Score</a>
-      <a href="${rejectUrl}" class="btn-reject">✗ No, Reject Score</a>
-    </div>
-    <p style="font-size:.85rem;color:#888">Clicking Approve or Reject will take you to a confirmation page. Only approved rounds count on the leaderboard.</p>
-  </div>
-  <div class="footer">
-    <a href="${baseUrl}" class="app-link">Open The GREEK SIDE BUNKER</a> &nbsp;·&nbsp; You're receiving this because you were listed as a playing partner.
-  </div>
-</div>
-</body>
+<body><div class="box">
+  <div class="omega">Ω</div>
+  <h1>THE GREEK SHEET</h1>
+  <div class="icon">${title === "Score Approved" ? "✅" : title === "Score Rejected" ? "❌" : "⚠️"}</div>
+  <h1>${title}</h1>
+  <p>${body}</p>
+  <a href="${APP_URL}">Go to the App</a>
+</div></body>
 </html>`;
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_KEY}` },
-    body: JSON.stringify({
-      from: FROM_EMAIL,
-      to: attesterEmail,
-      subject: `⛳ Please attest ${playerName}'s round at ${courseName}`,
-      html,
-    }),
-  });
+Deno.serve(async (req) => {
+  const url = new URL(req.url);
+  const token = url.searchParams.get("token");
+  const action = url.searchParams.get("action");
+  const note = url.searchParams.get("note") ?? "";
 
-  if (!res.ok) {
-    const err = await res.text();
-    return new Response(JSON.stringify({ error: err }), { status: 500, headers: { "Content-Type": "application/json" } });
+  if (!token || !["approved", "rejected"].includes(action ?? "")) {
+    return new Response(html("Invalid Link", "This link is missing required parameters. Please contact your league admin."),
+      { headers: { "content-type": "text/html" }, status: 400 });
   }
 
-  return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+  // Look up round by token
+  const { data: round, error } = await supabase
+    .from("rounds")
+    .select("id, attest_status, player_name, course_name, gross, net, par, date, league_id")
+    .eq("attest_token", token)
+    .single();
+
+  if (error || !round) {
+    return new Response(html("Link Not Found", "This attestation link is invalid or has already been used."),
+      { headers: { "content-type": "text/html" }, status: 404 });
+  }
+
+  if (round.attest_status !== "pending") {
+    const already = round.attest_status === "approved" ? "already approved ✅" : "already rejected ❌";
+    return new Response(html("Already Actioned", `This score was ${already}. No further action needed.`),
+      { headers: { "content-type": "text/html" } });
+  }
+
+  // Update the round
+  const { error: updateErr } = await supabase
+    .from("rounds")
+    .update({
+      attest_status: action,
+      attest_note: note || null,
+      attest_at: new Date().toISOString(),
+    })
+    .eq("id", round.id);
+
+  if (updateErr) {
+    return new Response(html("Error", "Something went wrong updating the score. Please try again or contact your league admin."),
+      { headers: { "content-type": "text/html" }, status: 500 });
+  }
+
+  if (action === "approved") {
+    return new Response(
+      html("Score Approved", `You've confirmed <strong>${round.player_name}</strong>'s round at <strong>${round.course_name}</strong> on ${round.date} — Gross ${round.gross}, Net ${round.net}. Thanks for keeping the league honest!`),
+      { headers: { "content-type": "text/html" } }
+    );
+  } else {
+    return new Response(
+      html("Score Rejected", `You've rejected <strong>${round.player_name}</strong>'s round at <strong>${round.course_name}</strong>. ${note ? `Reason: "${note}"` : ""} They'll be notified to resubmit.`),
+      { headers: { "content-type": "text/html" } }
+    );
+  }
 });

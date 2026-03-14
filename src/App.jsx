@@ -6,6 +6,7 @@ const DEFAULT_CONFIG = {
   useHandicap:true, handicapPct:100, useSlopeRating:true, maxHandicap:null,
   joinMode:"open", maxPlayers:null, hideScores:false, seasonStart:null, seasonEnd:null,
   googleSheetUrl:null,
+  scoresToCount:null, // null = all scores count; number = best N of all submitted scores count
 };
 const FORMAT_LABELS = { stroke:"Stroke Play", stableford:"Stableford", match:"Match Play", scramble:"Scramble" };
 
@@ -513,7 +514,6 @@ export default function App() {
 
   // ── Google Sheet export ──
   const exportToGoogleSheet = () => {
-    if (!config.googleSheetUrl) return;
     // Build CSV data
     const headers = ["Player","Course","Gross","Net","Course Handicap","Par","Stableford Pts","Date","Status"];
     const rows = rounds.map(r=>[r.player_name,r.course_name,r.gross,r.net,r.course_handicap,r.par,r.stableford_pts??"",r.date,r.attest_status]);
@@ -530,11 +530,19 @@ export default function App() {
   const myHasSubmitted = scored.some(r=>r.player_id===session?.user.id);
   const visible  = (config.hideScores&&!myHasSubmitted) ? scored.filter(r=>r.player_id===session?.user.id) : scored;
 
+  // Apply scoresToCount: pick best N scores per player
+  const applyBestN = (rounds, n, format) => {
+    if (!n || rounds.length <= n) return rounds;
+    if (format === "stableford") return [...rounds].sort((a,b)=>(b.stableford_pts??0)-(a.stableford_pts??0)).slice(0,n);
+    return [...rounds].sort((a,b)=>a.net-b.net).slice(0,n);
+  };
+
   const overallLB = useMemo(()=>players.map(p=>{
     const pr=visible.filter(r=>r.player_id===p.id); if(!pr.length)return null;
-    if(config.scoringFormat==="stableford"){const total=pr.reduce((s,r)=>s+(r.stableford_pts??0),0);return{...p,pr,primary:total,label:`${total} pts`,totalRounds:pr.length};}
-    const avg=pr.reduce((s,r)=>s+r.net,0)/pr.length;
-    return{...p,pr,primary:avg,label:avg.toFixed(1),totalRounds:pr.length};
+    const counting = applyBestN(pr, config.scoresToCount, config.scoringFormat);
+    if(config.scoringFormat==="stableford"){const total=counting.reduce((s,r)=>s+(r.stableford_pts??0),0);return{...p,pr,counting,primary:total,label:`${total} pts`,totalRounds:pr.length,countingRounds:counting.length};}
+    const avg=counting.reduce((s,r)=>s+r.net,0)/counting.length;
+    return{...p,pr,counting,primary:avg,label:avg.toFixed(1),totalRounds:pr.length,countingRounds:counting.length};
   }).filter(Boolean).sort((a,b)=>config.scoringFormat==="stableford"?b.primary-a.primary:a.primary-b.primary),
   [players,visible,config]);
 
@@ -890,9 +898,10 @@ export default function App() {
           {leaderTab==="overall"&&<div className="card">
             <div className="card-hdr">{config.scoringFormat==="stableford"?"⭐ Stableford Standings":config.scoringFormat==="match"?"🆚 Match Play":"🏆 Net Standings"}{!config.useHandicap&&<span style={{fontSize:".72rem",color:"var(--cream-dim)",marginLeft:10,fontFamily:"var(--font-b)",fontWeight:400,textTransform:"none",letterSpacing:0}}>(gross only)</span>}</div>
             {config.hideScores&&!myHasSubmitted&&<div className="alert-w" style={{marginBottom:14}}>📵 Scores are hidden until you post your own round.</div>}
+            {config.scoresToCount&&<div className="alert-w" style={{marginBottom:14}}>📊 Best {config.scoresToCount} of all submitted scores count toward standings.</div>}
             {overallLB.length===0?<div className="empty">No {config.attestRequired?"approved ":""}rounds yet.</div>:(
               <div className="tw"><table>
-                <thead><tr><th>#</th><th>Player</th>{config.useHandicap&&<th>Hcp Idx</th>}<th>Rounds</th><th>{config.scoringFormat==="stableford"?"Total Pts":"Avg Net"}</th></tr></thead>
+                <thead><tr><th>#</th><th>Player</th>{config.useHandicap&&<th>Hcp Idx</th>}<th>Rounds</th>{config.scoresToCount&&<th>Counting</th>}<th>{config.scoringFormat==="stableford"?"Total Pts":"Avg Net"}</th></tr></thead>
                 <tbody>{overallLB.map((p,i)=><tr key={p.id}>
                   {rankEl(i)}
                   <td>
@@ -901,6 +910,7 @@ export default function App() {
                   </td>
                   {config.useHandicap&&<td style={{color:"var(--cream-dim)"}}>{p.handicap}</td>}
                   <td>{p.totalRounds}</td>
+                  {config.scoresToCount&&<td style={{color:"var(--gold-light)",fontSize:".8rem"}}>{p.countingRounds} counting</td>}
                   <td><span className="sb" style={{color:"var(--gold-light)"}}>{p.label}</span></td>
                 </tr>)}</tbody>
               </table></div>
@@ -1028,12 +1038,14 @@ export default function App() {
                     <td>{r.scorecard_url?<button className="sc-btn" onClick={()=>setViewCardModal({url:r.scorecard_url})}>📋 View</button>:<span style={{color:"#4b5563",fontSize:".8rem"}}>None</span>}</td>
                     <td><div style={{display:"flex",gap:5}}>
                       <button className="btn btn-gold btn-sm" onClick={async()=>{
-                        await supabase.from("rounds").update({attest_status:"approved",attest_at:new Date().toISOString()}).eq("id",r.id);
+                        const { error } = await supabase.from("rounds").update({attest_status:"approved",attest_at:new Date().toISOString()}).eq("id",r.id);
+                        if (error) { alert("Error: "+error.message); return; }
                         setRounds(p=>p.map(x=>x.id===r.id?{...x,attest_status:"approved"}:x));
                       }}>✓ Approve</button>
                       <button className="btn btn-danger" onClick={async()=>{
                         const note=window.prompt("Reason for rejection (optional):")||"";
-                        await supabase.from("rounds").update({attest_status:"rejected",attest_note:note,attest_at:new Date().toISOString()}).eq("id",r.id);
+                        const { error } = await supabase.from("rounds").update({attest_status:"rejected",attest_note:note,attest_at:new Date().toISOString()}).eq("id",r.id);
+                        if (error) { alert("Error: "+error.message); return; }
                         setRounds(p=>p.map(x=>x.id===r.id?{...x,attest_status:"rejected",attest_note:note}:x));
                       }}>✗ Reject</button>
                     </div></td>
@@ -1220,6 +1232,8 @@ export default function App() {
                 <div className="cfg-section-title">Round Rules</div>
                 <div className="cfg-row"><div><div className="cfg-label">Required rounds per course</div><div className="cfg-desc">How many rounds each player must post at each course</div></div>
                   <select value={d.roundsPerCourse} onChange={e=>set("roundsPerCourse",Number(e.target.value))} style={{width:80}}>{[1,2,3,4,5].map(n=><option key={n} value={n}>{n}</option>)}</select></div>
+                <div className="cfg-row"><div><div className="cfg-label">Best N scores count</div><div className="cfg-desc">Only the best N of all submitted scores count toward standings. Leave blank to count all.</div></div>
+                  <input type="number" min={1} placeholder="All" value={d.scoresToCount??""} onChange={e=>set("scoresToCount",e.target.value?Number(e.target.value):null)} style={{width:80}}/></div>
                 <div className="cfg-row"><div><div className="cfg-label">Require attestation</div><div className="cfg-desc">Playing partner must approve each round by email</div></div><Toggle checked={d.attestRequired} onChange={v=>set("attestRequired",v)}/></div>
                 <div className="cfg-row"><div><div className="cfg-label">Require scorecard photo</div><div className="cfg-desc">Players must upload a photo with every submission</div></div><Toggle checked={d.scorecardRequired} onChange={v=>set("scorecardRequired",v)}/></div>
               </div>
