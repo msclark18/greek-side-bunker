@@ -1402,6 +1402,20 @@ export default function App() {
                 updated.push({ round: updated.length + 1, label: roundLabels[updated.length], matchups: [] });
               }
 
+              // If this round's matchups are empty (pre-built skeleton), populate from prev round winners
+              if (updated[roundIdx].matchups.length === 0 && roundIdx > 0) {
+                const prevMatchups = updated[roundIdx - 1].matchups;
+                const populated = [];
+                for (let i = 0; i < prevMatchups.length; i += 2) {
+                  populated.push({
+                    p1: prevMatchups[i]?.winner ?? null,
+                    p2: prevMatchups[i + 1]?.winner ?? null,
+                    winner: null,
+                  });
+                }
+                updated[roundIdx] = { ...updated[roundIdx], matchups: populated };
+              }
+
               // Set the winner in this round
               updated[roundIdx] = {
                 ...updated[roundIdx],
