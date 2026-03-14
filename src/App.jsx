@@ -318,16 +318,33 @@ export default function App() {
 
   // ── League create/join ──
   const createLeague = async () => {
-    if (!newLeague.name.trim()) return;
-    const { data:league } = await supabase.from("leagues").insert({ name:newLeague.name.trim(), description:newLeague.description, owner_id:session.user.id }).select().single();
-    if (!league) return;
-    await Promise.all([
-      supabase.from("league_members").insert({ league_id:league.id, user_id:session.user.id, role:"admin" }),
-      supabase.from("league_settings").insert({ league_id:league.id, config:DEFAULT_CONFIG, payouts:{} }),
-    ]);
-    setNewLeague({ name:"", description:"" }); setShowCreateLeague(false);
-    await loadLeagues(); selectLeague(league);
-  };
+  if(!newLeague.name.trim()) return alert("League name required");
+
+  const { data:league, error } = await supabase
+    .from("leagues")
+    .insert({
+      name:newLeague.name.trim(),
+      description:newLeague.description,
+      owner_id:session.user.id
+    })
+    .select()
+    .single();
+
+  if(error) return alert(error.message);
+
+  // add creator as league admin
+  await supabase
+    .from("league_members")
+    .insert({
+      league_id: league.id,
+      user_id: session.user.id,
+      role: "admin"
+    });
+
+  setShowCreate(false);
+  setNewLeague({name:"",description:""});
+  loadLeagues();
+};
 
   const joinLeague = async () => {
     if (!joinCode.trim()) return;
