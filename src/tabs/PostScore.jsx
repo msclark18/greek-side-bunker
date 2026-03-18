@@ -66,20 +66,13 @@ export default function PostScore({
         r.onerror = () => rej(new Error("Read failed"));
         r.readAsDataURL(file);
       });
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const apiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
+      const resp = await fetch(`${apiUrl}/api/read-scorecard`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 300,
-          messages: [{ role: "user", content: [
-            { type: "image", source: { type: "base64", media_type: file.type, data: b64 } },
-            { type: "text", text: 'This is a golf scorecard. Extract the total gross score and the date played. Respond ONLY with valid JSON like: {"gross": 84, "date": "2025-05-10"}. If you cannot read the score clearly, return {"gross": null, "date": null}. Do not include any other text.' }
-          ]}]
-        })
+        body: JSON.stringify({ imageData: b64, mediaType: file.type }),
       });
-      const data = await resp.json();
-      const text = data.content?.find(b => b.type === "text")?.text ?? "";
-      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+      const parsed = await resp.json();
       setAiResult(parsed);
       if (parsed.gross) setForm(f => ({ ...f, score: String(parsed.gross), date: parsed.date || f.date }));
     } catch (e) {
