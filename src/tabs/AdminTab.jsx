@@ -424,6 +424,11 @@ export default function AdminTab({
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <div className="pchip-name">{m.profile.name}</div>
                   {config.entryFee > 0 && <span className={`paid-badge ${m.paid ? "paid" : "unpaid"}`}>{m.paid ? "✓ Paid" : "✗ Unpaid"}</span>}
+                  {config.useHandicap && ((!m.profile.handicap && m.profile.handicap !== 0) || !/^\d{7,8}$/.test(String(m.profile.ghin ?? ""))) && (
+                    <span style={{ fontSize: ".6rem", padding: "2px 7px", borderRadius: 20, background: "rgba(224,92,92,.12)", border: "1px solid rgba(224,92,92,.3)", color: "#f09090", fontFamily: "var(--font-d)", letterSpacing: "1px", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                      ⚠ Profile Incomplete
+                    </span>
+                  )}
                 </div>
                 <div className="pchip-meta">
                   {m.profile.email} · Hcp {m.profile.handicap ?? "-"}

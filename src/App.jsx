@@ -49,6 +49,7 @@ export default function App() {
   const [profileModal, setProfileModal] = useState(false);
   const [profileDraft, setProfileDraft] = useState({});
   const [playersModal, setPlayersModal] = useState(false);
+  const [showProfileGate, setShowProfileGate] = useState(false);
 
   // ── Post score state ──
   const [form, setForm] = useState({ courseId: "", score: "", attesterId: "", date: new Date().toISOString().split("T")[0] });
@@ -134,6 +135,8 @@ export default function App() {
     setActiveLeague(league);
     setTab("leaderboard");
     loadLeagueData(league);
+    // Will check profile after data loads — gate triggered in main app render
+    setShowProfileGate(true);
   };
 
   const createLeague = async (newLeague) => {
@@ -249,6 +252,12 @@ export default function App() {
   const totalRequired = players.length * regularCourses.length * config.roundsPerCourse;
   const leaguePct = totalRequired ? Math.round(approvedCount / totalRequired * 100) : 0;
 
+  const isProfileIncomplete = config.useHandicap && (
+    (!profile?.handicap && profile?.handicap !== 0) ||
+    !/^\d{7,8}$/.test(String(profile?.ghin ?? ""))
+  );
+
+  // Show gate once per league entry if profile is incomplete
   const pendingForMe = rounds.filter(r => r.attester_id === session?.user.id && r.attest_status === "pending");
   const isAdmin = activeMembership?.role === "admin" || activeLeague?.owner_id === session?.user.id;
   const isOpen = isSeasonActive(config);
@@ -299,6 +308,53 @@ export default function App() {
   // ── Main App ──
   return (
     <>
+      {/* ── Profile Gate Modal — force completion for existing members ── */}
+      {showProfileGate && isProfileIncomplete && dataLoaded && (
+        <div className="modal-bg">
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">⚠ Profile Incomplete</div>
+            <p style={{ fontSize: ".9rem", color: "var(--cream-dim)", marginBottom: 18, lineHeight: 1.7 }}>
+              This league requires a <strong style={{ color: "var(--cream)" }}>handicap index</strong> and a valid <strong style={{ color: "var(--cream)" }}>GHIN number</strong> (7-8 digits) to participate. Please update your profile before continuing.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 13, marginBottom: 18 }}>
+              <div className="fg">
+                <label>Handicap Index</label>
+                <input type="number" step=".1" min={0} max={54} placeholder="e.g. 8.4"
+                  value={profileDraft.handicap ?? profile?.handicap ?? ""}
+                  onChange={e => setProfileDraft(d => ({ ...d, handicap: e.target.value }))} />
+              </div>
+              <div className="fg">
+                <label>GHIN #</label>
+                <input type="text" placeholder="e.g. 1234567"
+                  value={profileDraft.ghin ?? profile?.ghin ?? ""}
+                  onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))}
+                  style={{ borderColor: profileDraft.ghin && !/^\d{7,8}$/.test(String(profileDraft.ghin)) ? "var(--red)" : undefined }} />
+                {profileDraft.ghin && !/^\d{7,8}$/.test(String(profileDraft.ghin)) && (
+                  <span style={{ fontSize: ".72rem", color: "var(--red)", marginTop: 2 }}>⚠ Must be 7-8 digits</span>
+                )}
+                {profileDraft.ghin && /^\d{7,8}$/.test(String(profileDraft.ghin)) && (
+                  <span style={{ fontSize: ".72rem", color: "var(--green)", marginTop: 2 }}>✓ Valid format</span>
+                )}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                className="btn btn-gold"
+                disabled={
+                  (!profileDraft.handicap && profileDraft.handicap !== 0) ||
+                  !/^\d{7,8}$/.test(String(profileDraft.ghin ?? ""))
+                }
+                onClick={async () => {
+                  await saveProfile({ ...profile, ...profileDraft });
+                  setShowProfileGate(false);
+                }}
+              >Save & Continue</button>
+              <button className="btn btn-ghost" onClick={() => setShowProfileGate(false)}>Skip for Now</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Scorecard modal */}
       {viewCardModal && (
         <div className="modal-bg" onClick={() => setViewCardModal(null)}>
@@ -401,6 +457,17 @@ export default function App() {
         </div>
 
         <SeasonBar config={config} />
+
+        {/* Profile incomplete banner */}
+        {isProfileIncomplete && dataLoaded && (
+          <div className="alert-w" style={{ marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+            <span>⚠ Your profile is missing a handicap index or valid GHIN number — required by this league.</span>
+            <button className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }} onClick={() => {
+              setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin });
+              setProfileModal(true);
+            }}>Update Profile</button>
+          </div>
+        )}
 
         {/* Banner */}
         {dataLoaded && (
