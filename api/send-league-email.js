@@ -13,32 +13,31 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { leagueId, leagueName, subject, message, senderName } = req.body;
+  const { leagueId, leagueName, subject, message, senderName, recipients: explicitRecipients } = req.body;
 
   if (!leagueId || !subject || !message) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
-  // Fetch all member emails from Supabase
-  const membersRes = await fetch(
-    `${process.env.SUPABASE_URL}/rest/v1/league_members?league_id=eq.${leagueId}&select=user_id,profiles(name,email)`,
-    {
-      headers: {
-        apikey: process.env.SUPABASE_SERVICE_KEY,
-        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
-      },
+  let recipients = explicitRecipients;
+
+  // If no explicit recipients passed, fetch all members
+  if (!recipients || recipients.length === 0) {
+    const membersRes = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/league_members?league_id=eq.${leagueId}&select=user_id,profiles(name,email)`,
+      {
+        headers: {
+          apikey: process.env.SUPABASE_SERVICE_KEY,
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
+        },
+      }
+    );
+    const members = await membersRes.json();
+    if (!members || members.length === 0) {
+      return res.status(404).json({ error: "No members found" });
     }
-  );
-
-  const members = await membersRes.json();
-
-  if (!members || members.length === 0) {
-    return res.status(404).json({ error: "No members found" });
+    recipients = members.map(m => m.profiles?.email).filter(Boolean);
   }
-
-  const recipients = members
-    .map(m => m.profiles?.email)
-    .filter(Boolean);
 
   if (recipients.length === 0) {
     return res.status(404).json({ error: "No member emails found" });
@@ -73,7 +72,7 @@ export default async function handler(req, res) {
   <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
 
     <div style="text-align:center;margin-bottom:28px;">
-      <div style="font-size:2rem;margin-bottom:6px;">⛳</div>
+      <img src="https://ngesupnegqzoytucipii.supabase.co/storage/v1/object/public/assets/icon-512.png" width="64" height="64" alt="Greek Side Bunker" style="border-radius:50%;margin-bottom:8px;display:block;margin-left:auto;margin-right:auto;" />
       <div style="font-size:1.1rem;letter-spacing:3px;color:#faf9f6;font-weight:700;">GREEK SIDE BUNKER</div>
       <div style="font-size:.7rem;color:#c8bfa8;letter-spacing:2px;text-transform:uppercase;margin-top:4px;">${leagueName}</div>
     </div>

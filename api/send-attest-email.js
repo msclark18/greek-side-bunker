@@ -84,7 +84,7 @@ export default async function handler(req, res) {
 
     <!-- Header -->
     <div style="text-align:center;margin-bottom:32px;">
-      <div style="font-size:2.5rem;margin-bottom:8px;">⛳</div>
+      <img src="https://ngesupnegqzoytucipii.supabase.co/storage/v1/object/public/assets/icon-512.png" width="64" height="64" alt="Greek Side Bunker" style="border-radius:50%;margin-bottom:8px;display:block;margin-left:auto;margin-right:auto;" />
       <div style="font-family:'Georgia',serif;font-size:1.3rem;letter-spacing:3px;color:#faf9f6;font-weight:700;">GREEK SIDE BUNKER</div>
       <div style="font-size:.8rem;color:#c8bfa8;letter-spacing:2px;text-transform:uppercase;margin-top:4px;">${leagueName}</div>
     </div>

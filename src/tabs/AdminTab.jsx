@@ -24,6 +24,7 @@ export default function AdminTab({
   const [emailDraft, setEmailDraft] = useState({ subject: "", message: "" });
   const [emailSending, setEmailSending] = useState(false);
   const [emailMsg, setEmailMsg] = useState("");
+  const [emailSelected, setEmailSelected] = useState(null);
 
   // ── Config ──
   const saveConfig = async (newCfg) => {
@@ -125,6 +126,11 @@ export default function AdminTab({
 
   const sendLeagueEmail = async () => {
     if (!emailDraft.subject.trim() || !emailDraft.message.trim()) return;
+    const selected = emailSelected ?? members.map(m => m.user_id);
+    const recipients = members
+      .filter(m => selected.includes(m.user_id) && m.profile?.email)
+      .map(m => m.profile.email);
+    if (recipients.length === 0) { setEmailMsg("✗ No recipients selected."); return; }
     setEmailSending(true);
     setEmailMsg("");
     try {
@@ -138,12 +144,14 @@ export default function AdminTab({
           subject: emailDraft.subject,
           message: emailDraft.message,
           senderName: session?.user?.email,
+          recipients,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
       setEmailMsg(`✓ Email sent to ${data.sent} member${data.sent !== 1 ? "s" : ""}!`);
       setEmailDraft({ subject: "", message: "" });
+      setEmailSelected(null);
     } catch (e) {
       setEmailMsg("✗ Failed to send: " + e.message);
     }
@@ -609,41 +617,75 @@ export default function AdminTab({
           <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 18, lineHeight: 1.6 }}>
             Send a message to all {members.length} members in this league. Emails are sent from <strong style={{ color: "var(--cream)" }}>noreply@greeksidebunker.com</strong>.
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div className="fg">
-              <label>Subject</label>
-              <input
-                type="text"
-                placeholder="e.g. Season starts this Saturday!"
-                value={emailDraft.subject}
-                onChange={e => setEmailDraft(d => ({ ...d, subject: e.target.value }))}
-              />
-            </div>
-            <div className="fg">
-              <label>Message</label>
-              <textarea
-                rows={6}
-                placeholder="Type your message here..."
-                value={emailDraft.message}
-                onChange={e => setEmailDraft(d => ({ ...d, message: e.target.value }))}
-                style={{ resize: "vertical", fontFamily: "inherit", fontSize: ".9rem" }}
-              />
-            </div>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <button
-                className="btn btn-gold"
-                disabled={emailSending || !emailDraft.subject.trim() || !emailDraft.message.trim()}
-                onClick={sendLeagueEmail}
-              >
-                {emailSending ? "Sending..." : `📧 Send to All ${members.length} Members`}
-              </button>
-              {emailMsg && (
-                <span style={{ fontSize: ".85rem", color: emailMsg.startsWith("✓") ? "var(--green)" : "#f09090" }}>
-                  {emailMsg}
-                </span>
-              )}
-            </div>
-          </div>
+          {(() => {
+            const selected = emailSelected ?? members.map(m => m.user_id);
+            const allSelected = selected.length === members.length;
+            const toggle = (uid) => {
+              if (selected.includes(uid)) setEmailSelected(selected.filter(id => id !== uid));
+              else setEmailSelected([...selected, uid]);
+            };
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div className="fg">
+                  <label>Subject</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Season starts this Saturday!"
+                    value={emailDraft.subject}
+                    onChange={e => setEmailDraft(d => ({ ...d, subject: e.target.value }))}
+                  />
+                </div>
+                <div className="fg">
+                  <label>Message</label>
+                  <textarea
+                    rows={6}
+                    placeholder="Type your message here..."
+                    value={emailDraft.message}
+                    onChange={e => setEmailDraft(d => ({ ...d, message: e.target.value }))}
+                    style={{ resize: "vertical", fontFamily: "inherit", fontSize: ".9rem" }}
+                  />
+                </div>
+                <div className="fg">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <label style={{ marginBottom: 0 }}>Recipients ({selected.length} of {members.length})</label>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setEmailSelected(allSelected ? [] : members.map(m => m.user_id))}>
+                      {allSelected ? "Deselect All" : "Select All"}
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto", padding: "4px 0" }}>
+                    {members.map(m => (
+                      <label key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "6px 10px", borderRadius: 6, background: selected.includes(m.user_id) ? "rgba(212,168,67,.08)" : "transparent", border: "1px solid", borderColor: selected.includes(m.user_id) ? "rgba(212,168,67,.25)" : "transparent", transition: "all .15s" }}>
+                        <input
+                          type="checkbox"
+                          checked={selected.includes(m.user_id)}
+                          onChange={() => toggle(m.user_id)}
+                          style={{ accentColor: "var(--gold)", width: 15, height: 15, flexShrink: 0 }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: ".88rem", color: "var(--cream)" }}>{m.profile?.name}</div>
+                          <div style={{ fontSize: ".72rem", color: "var(--cream-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.profile?.email}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <button
+                    className="btn btn-gold"
+                    disabled={emailSending || !emailDraft.subject.trim() || !emailDraft.message.trim() || selected.length === 0}
+                    onClick={sendLeagueEmail}
+                  >
+                    {emailSending ? "Sending..." : `📧 Send to ${selected.length} Member${selected.length !== 1 ? "s" : ""}`}
+                  </button>
+                  {emailMsg && (
+                    <span style={{ fontSize: ".85rem", color: emailMsg.startsWith("✓") ? "var(--green)" : "#f09090" }}>
+                      {emailMsg}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
