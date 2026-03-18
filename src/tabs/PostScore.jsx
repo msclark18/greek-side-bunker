@@ -70,7 +70,7 @@ export default function PostScore({
       const resp = await fetch(`${apiUrl}/api/read-scorecard`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageData: b64, mediaType: file.type }),
+        body: JSON.stringify({ imageData: b64, mediaType: file.type, playerName: profile?.name }),
       });
       const parsed = await resp.json();
       setAiResult(parsed);
