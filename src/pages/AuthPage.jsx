@@ -1,4 +1,6 @@
+import { useState } from "react";
 import GSBLogo from "../components/GSBLogo.jsx";
+import HelpModal from "../components/HelpModal.jsx";
 
 function GoogleIcon() {
   return (
@@ -21,6 +23,8 @@ export default function AuthPage({
   authLoading,
   signInWithGoogle, signInWithEmail, signUpWithEmail, sendPasswordReset,
 }) {
+  const [showHelp, setShowHelp] = useState(false);
+
   const hk = (e) => {
     if (e.key !== "Enter") return;
     if (authMode === "signup") signUpWithEmail();
@@ -29,88 +33,100 @@ export default function AuthPage({
   };
 
   return (
-    <div className="auth-bg">
-      <div className="gp" />
-      <div className="auth-box au">
-        <div style={{ textAlign: "center", marginBottom: 22 }}>
-          <GSBLogo size={72} style={{ margin: "0 auto 12px", display: "block" }} />
-          <div className="auth-title">GREEK SIDE BUNKER</div>
-          <div className="auth-sub">Golf League · Season Tracker</div>
-          <div className="auth-divider" />
-        </div>
-
-        {authError && <div className="auth-error">{authError}</div>}
-        {authSuccess && <div className="auth-success">{authSuccess}</div>}
-
-        {authMode !== "forgot" && (
-          <button className="btn-google" onClick={signInWithGoogle}>
-            <GoogleIcon /> Continue with Google
-          </button>
-        )}
-        {authMode !== "forgot" && <div className="or-divider"><span>or</span></div>}
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {authMode === "signup" && (
-            <div className="fg">
-              <label>Your Name</label>
-              <input type="text" placeholder="Jane Smith" value={authName}
-                onChange={e => { setAuthName(e.target.value); setAuthError(""); }}
-                onKeyDown={hk} autoComplete="name" />
-            </div>
-          )}
-          <div className="fg">
-            <label>Email</label>
-            <input type="email" placeholder="you@example.com" value={authEmail}
-              onChange={e => { setAuthEmail(e.target.value); setAuthError(""); setAuthSuccess(""); }}
-              onKeyDown={hk} autoComplete="email" />
+    <>
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+      <div className="auth-bg">
+        <div className="gp" />
+        <div className="auth-box au">
+          <div style={{ textAlign: "center", marginBottom: 22 }}>
+            <GSBLogo size={72} style={{ margin: "0 auto 12px", display: "block" }} />
+            <div className="auth-title">GREEK SIDE BUNKER</div>
+            <div className="auth-sub">Golf League · Season Tracker</div>
+            <div className="auth-divider" />
           </div>
+
+          {authError && <div className="auth-error">{authError}</div>}
+          {authSuccess && <div className="auth-success">{authSuccess}</div>}
+
           {authMode !== "forgot" && (
-            <div className="fg">
-              <label>
-                Password{authMode === "signup" && (
-                  <span style={{ color: "var(--cream-dim)", fontFamily: "var(--font-b)", textTransform: "none", letterSpacing: 0 }}> (min 6 chars)</span>
-                )}
-              </label>
-              <input
-                type="password"
-                placeholder={authMode === "signup" ? "Create a password" : "Enter your password"}
-                value={authPassword}
-                onChange={e => { setAuthPassword(e.target.value); setAuthError(""); }}
-                onKeyDown={hk}
-                autoComplete={authMode === "signup" ? "new-password" : "current-password"}
-              />
-            </div>
-          )}
-          {authMode === "signin" && (
-            <button className="forgot-pw" onClick={() => { setAuthMode("forgot"); setAuthError(""); setAuthSuccess(""); }}>
-              Forgot password?
+            <button className="btn-google" onClick={signInWithGoogle}>
+              <GoogleIcon /> Continue with Google
             </button>
           )}
-        </div>
+          {authMode !== "forgot" && <div className="or-divider"><span>or</span></div>}
 
-        <button
-          className="btn btn-gold"
-          style={{ width: "100%", padding: "13px", marginTop: 18 }}
-          onClick={authMode === "signup" ? signUpWithEmail : authMode === "forgot" ? sendPasswordReset : signInWithEmail}
-          disabled={authLoading}
-        >
-          {authLoading
-            ? <span className="spinner" />
-            : authMode === "signup" ? "Create Account"
-            : authMode === "forgot" ? "Send Reset Email"
-            : "Sign In"}
-        </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {authMode === "signup" && (
+              <div className="fg">
+                <label>Your Name</label>
+                <input type="text" placeholder="Jane Smith" value={authName}
+                  onChange={e => { setAuthName(e.target.value); setAuthError(""); }}
+                  onKeyDown={hk} autoComplete="name" />
+              </div>
+            )}
+            <div className="fg">
+              <label>Email</label>
+              <input type="email" placeholder="you@example.com" value={authEmail}
+                onChange={e => { setAuthEmail(e.target.value); setAuthError(""); setAuthSuccess(""); }}
+                onKeyDown={hk} autoComplete="email" />
+            </div>
+            {authMode !== "forgot" && (
+              <div className="fg">
+                <label>
+                  Password{authMode === "signup" && (
+                    <span style={{ color: "var(--cream-dim)", fontFamily: "var(--font-b)", textTransform: "none", letterSpacing: 0 }}> (min 6 chars)</span>
+                  )}
+                </label>
+                <input
+                  type="password"
+                  placeholder={authMode === "signup" ? "Create a password" : "Enter your password"}
+                  value={authPassword}
+                  onChange={e => { setAuthPassword(e.target.value); setAuthError(""); }}
+                  onKeyDown={hk}
+                  autoComplete={authMode === "signup" ? "new-password" : "current-password"}
+                />
+              </div>
+            )}
+            {authMode === "signin" && (
+              <button className="forgot-pw" onClick={() => { setAuthMode("forgot"); setAuthError(""); setAuthSuccess(""); }}>
+                Forgot password?
+              </button>
+            )}
+          </div>
 
-        <div className="auth-toggle">
-          {authMode === "forgot" ? (
-            <span>Remembered it? <button onClick={() => { setAuthMode("signin"); setAuthError(""); setAuthSuccess(""); }}>Back to sign in</button></span>
-          ) : authMode === "signin" ? (
-            <span>New here? <button onClick={() => { setAuthMode("signup"); setAuthError(""); setAuthSuccess(""); }}>Create an account</button></span>
-          ) : (
-            <span>Already have one? <button onClick={() => { setAuthMode("signin"); setAuthError(""); setAuthSuccess(""); }}>Sign in</button></span>
-          )}
+          <button
+            className="btn btn-gold"
+            style={{ width: "100%", padding: "13px", marginTop: 18 }}
+            onClick={authMode === "signup" ? signUpWithEmail : authMode === "forgot" ? sendPasswordReset : signInWithEmail}
+            disabled={authLoading}
+          >
+            {authLoading
+              ? <span className="spinner" />
+              : authMode === "signup" ? "Create Account"
+              : authMode === "forgot" ? "Send Reset Email"
+              : "Sign In"}
+          </button>
+
+          <div className="auth-toggle">
+            {authMode === "forgot" ? (
+              <span>Remembered it? <button onClick={() => { setAuthMode("signin"); setAuthError(""); setAuthSuccess(""); }}>Back to sign in</button></span>
+            ) : authMode === "signin" ? (
+              <span>New here? <button onClick={() => { setAuthMode("signup"); setAuthError(""); setAuthSuccess(""); }}>Create an account</button></span>
+            ) : (
+              <span>Already have one? <button onClick={() => { setAuthMode("signin"); setAuthError(""); setAuthSuccess(""); }}>Sign in</button></span>
+            )}
+          </div>
+
+          <div style={{ textAlign: "center", marginTop: 16 }}>
+            <button
+              onClick={() => setShowHelp(true)}
+              style={{ background: "none", border: "none", color: "var(--cream-dim)", fontSize: ".82rem", cursor: "pointer", textDecoration: "underline", fontFamily: "inherit" }}
+            >
+              ? How to use Greek Side Bunker
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

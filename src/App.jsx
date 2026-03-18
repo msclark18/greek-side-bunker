@@ -11,6 +11,7 @@ import Leaderboard from "./tabs/Leaderboard.jsx";
 import PostScore from "./tabs/PostScore.jsx";
 import AttestTab from "./tabs/AttestTab.jsx";
 import AdminTab from "./tabs/AdminTab.jsx";
+import HelpModal from "./components/HelpModal.jsx";
 import "./styles/app.css";
 
 export default function App() {
@@ -50,6 +51,7 @@ export default function App() {
   const [profileDraft, setProfileDraft] = useState({});
   const [playersModal, setPlayersModal] = useState(false);
   const [showProfileGate, setShowProfileGate] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   // ── Post score state ──
   const [form, setForm] = useState({ courseId: "", score: "", attesterId: "", date: new Date().toISOString().split("T")[0] });
@@ -81,7 +83,7 @@ export default function App() {
   };
 
   // ── Auth actions ──
-  const signInWithGoogle = () => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: "https://greeksidebunker.com/" } });
+   const signInWithGoogle = () => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: "https://greeksidebunker.com/" } });
 
   const signInWithEmail = async () => {
     setAuthError(""); setAuthLoading(true);
@@ -308,6 +310,8 @@ export default function App() {
   // ── Main App ──
   return (
     <>
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+
       {/* ── Profile Gate Modal — force completion for existing members ── */}
       {showProfileGate && isProfileIncomplete && dataLoaded && (
         <div className="modal-bg">
@@ -452,6 +456,7 @@ export default function App() {
                 {config.useHandicap && <div style={{ fontSize: ".7rem", color: "var(--cream-dim)" }}>Hcp {profile?.handicap ?? "-"}</div>}
               </div>
             </div>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowHelp(true)}>? Help</button>
             <button className="btn btn-ghost btn-sm" onClick={signOut}>Sign Out</button>
           </div>
         </div>
