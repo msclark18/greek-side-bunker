@@ -83,7 +83,7 @@ export default function App() {
   };
 
   // ── Auth actions ──
-   const signInWithGoogle = () => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: "https://greeksidebunker.com/" } });
+  const signInWithGoogle = () => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: (import.meta.env.VITE_API_URL ?? window.location.origin) + "/" } });
 
   const signInWithEmail = async () => {
     setAuthError(""); setAuthLoading(true);
@@ -456,7 +456,6 @@ export default function App() {
                 {config.useHandicap && <div style={{ fontSize: ".7rem", color: "var(--cream-dim)" }}>Hcp {profile?.handicap ?? "-"}</div>}
               </div>
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowHelp(true)}>? Help</button>
             <button className="btn btn-ghost btn-sm" onClick={signOut}>Sign Out</button>
           </div>
         </div>
@@ -495,11 +494,12 @@ export default function App() {
               ["score", "✏️ Post Score", false],
               ...(config.attestRequired ? [["attest", "⏳ Attest", true]] : []),
               ...(isAdmin ? [["admin", "⚙ Admin", false]] : []),
+              ["help", "? Help", false],
             ].map(([k, l, isAttest]) => (
               <button
                 key={k}
                 className={`nav-tab${tab === k ? " active" : ""}${k === "admin" ? " admin-tab" : ""}${isAttest ? " attest-tab" : ""}`}
-                onClick={() => setTab(k)}
+                onClick={() => k === "help" ? setShowHelp(true) : setTab(k)}
               >
                 {l}
                 {isAttest && pendingForMe.length > 0 && <span className="nav-badge">{pendingForMe.length}</span>}
