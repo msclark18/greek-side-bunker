@@ -81,7 +81,7 @@ export default function App() {
   };
 
   // ── Auth actions ──
-  const signInWithGoogle = () => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: (import.meta.env.VITE_API_URL ?? window.location.origin) + "/" } });
+  const signInWithGoogle = () => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: "https://greeksidebunker.com/" } });
 
   const signInWithEmail = async () => {
     setAuthError(""); setAuthLoading(true);
