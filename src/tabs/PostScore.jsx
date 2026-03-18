@@ -129,6 +129,9 @@ export default function PostScore({
     if (config.attestRequired && attester) {
       try {
         const apiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
+        const commissionerEmails = config.ccCommissioner
+          ? members.filter(m => m.role === "admin" && m.profile?.email).map(m => m.profile.email)
+          : [];
         await fetch(`${apiUrl}/api/send-attest-email`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -142,6 +145,7 @@ export default function PostScore({
             leagueName: activeLeague.name,
             roundId: inserted.id,
             appUrl: window.location.origin,
+            ccEmails: commissionerEmails,
           }),
         });
       } catch (e) { console.warn("Email non-fatal:", e); }

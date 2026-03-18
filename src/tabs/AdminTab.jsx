@@ -281,6 +281,12 @@ export default function AdminTab({
                 <div><div className="cfg-label">Require attestation</div><div className="cfg-desc">Playing partner must approve each round by email</div></div>
                 <Toggle checked={d.attestRequired} onChange={v => set("attestRequired", v)} />
               </div>
+              {d.attestRequired && (
+                <div className="cfg-row">
+                  <div><div className="cfg-label">CC commissioner on attestations</div><div className="cfg-desc">Commissioner receives a copy of every attestation email</div></div>
+                  <Toggle checked={d.ccCommissioner ?? false} onChange={v => set("ccCommissioner", v)} />
+                </div>
+              )}
               <div className="cfg-row">
                 <div><div className="cfg-label">Require scorecard photo</div><div className="cfg-desc">Players must upload a photo with every submission</div></div>
                 <Toggle checked={d.scorecardRequired} onChange={v => set("scorecardRequired", v)} />

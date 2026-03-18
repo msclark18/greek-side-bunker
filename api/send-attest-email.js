@@ -26,6 +26,7 @@ export default async function handler(req, res) {
     leagueName,
     roundId,
     appUrl,
+    ccEmails,
   } = req.body;
 
   if (!attesterEmail || !playerName || !roundId) {
@@ -70,6 +71,7 @@ export default async function handler(req, res) {
     body: JSON.stringify({
       from: process.env.FROM_EMAIL,
       to: attesterEmail,
+      ...(ccEmails && ccEmails.length > 0 ? { cc: ccEmails } : {}),
       subject: `⛳ Attest ${playerName}'s round at ${courseName}`,
       html: `
 <!DOCTYPE html>
