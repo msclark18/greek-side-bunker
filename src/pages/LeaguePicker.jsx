@@ -45,7 +45,15 @@ export default function LeaguePicker({
                 </div>
                 <div className="fg">
                   <label>GHIN #</label>
-                  <input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""} onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))} />
+                  <input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""}
+                    onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))}
+                    style={{ borderColor: profileDraft.ghin && !/^\d{7,8}$/.test(String(profileDraft.ghin)) ? "var(--red)" : undefined }} />
+                  {profileDraft.ghin && !/^\d{7,8}$/.test(String(profileDraft.ghin)) && (
+                    <span style={{ fontSize: ".72rem", color: "var(--red)", marginTop: 2 }}>⚠ Must be 7-8 digits</span>
+                  )}
+                  {profileDraft.ghin && /^\d{7,8}$/.test(String(profileDraft.ghin)) && (
+                    <span style={{ fontSize: ".72rem", color: "var(--green)", marginTop: 2 }}>✓ Valid format</span>
+                  )}
                 </div>
               </div>
               {profileDraft.ghin && <GhinLink ghin={profileDraft.ghin} />}
@@ -145,9 +153,23 @@ export default function LeaguePicker({
             <button className="btn btn-ghost" onClick={joinLeague}>Join</button>
           </div>
           {joinMsg.text && (
-            <p className="note" style={{ color: joinMsg.ok ? "var(--green)" : "#f09090", marginTop: 8 }}>
-              {joinMsg.text}
-            </p>
+            <div style={{ marginTop: 8 }}>
+              <p className="note" style={{ color: joinMsg.ok ? "var(--green)" : "#f09090" }}>
+                {joinMsg.text}
+              </p>
+              {joinMsg.needsProfile && (
+                <button
+                  className="btn btn-gold btn-sm"
+                  style={{ marginTop: 8 }}
+                  onClick={() => {
+                    setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin });
+                    setProfileModal(true);
+                  }}
+                >
+                  ✏️ Update Profile
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>

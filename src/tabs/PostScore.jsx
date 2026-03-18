@@ -33,10 +33,14 @@ export default function PostScore({
     ? calcStableford(Number(form.score), autoHcp, selectedCourse.par)
     : null;
 
+  const isValidGhin = (ghin) => /^\d{7,8}$/.test(String(ghin ?? ""));
+  const missingProfile = config.useHandicap && (!profile?.handicap && profile?.handicap !== 0 || !isValidGhin(profile?.ghin));
+
   const canSubmit = () => {
     if (!isOpen || !form.courseId || !form.score) return false;
     if (config.attestRequired && !form.attesterId) return false;
     if (config.scorecardRequired && !cardFile) return false;
+    if (missingProfile) return false;
     return myApprovedOnCourse(Number(form.courseId)).length < config.roundsPerCourse;
   };
 
@@ -165,6 +169,13 @@ export default function PostScore({
       {!isOpen && (
         <div className="alert-d" style={{ marginBottom: 16 }}>
           ⛔ Season is not currently active — score submission is closed.
+        </div>
+      )}
+
+      {isOpen && missingProfile && (
+        <div className="alert-w" style={{ marginBottom: 16 }}>
+          ⚠ This league requires a handicap index and valid GHIN number (7-8 digits) to post scores.
+          Please update your profile before submitting a round.
         </div>
       )}
 

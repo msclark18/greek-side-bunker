@@ -45,6 +45,7 @@ export default function Leaderboard({
     ["scores", "📋 Scores"],
     ...(config.playoffEnabled !== false ? [["playoffs", "🏆 Playoffs"]] : []),
     ["payouts", "💰 Payouts"],
+    ...(config.bylawsUrl ? [["rules", "📋 Rules"]] : []),
   ];
 
   return (
@@ -652,6 +653,38 @@ export default function Leaderboard({
           </div>
         );
       })()}
+      {/* ── Rules ── */}
+      {leaderTab === "rules" && (
+        <div className="card">
+          <div className="card-hdr">📋 League Rules & Bylaws</div>
+          {config.bylawsUrl ? (
+            <div>
+              <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 16, lineHeight: 1.6 }}>
+                The official rules and bylaws for {config.bylawsName ?? "this league"}.
+              </p>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <a href={config.bylawsUrl} target="_blank" rel="noreferrer">
+                  <button className="btn btn-gold">📄 Open Bylaws PDF ↗</button>
+                </a>
+                <a href={config.bylawsUrl} download={config.bylawsName ?? "bylaws.pdf"}>
+                  <button className="btn btn-ghost">⬇ Download</button>
+                </a>
+              </div>
+              <div style={{ marginTop: 20, borderRadius: 8, overflow: "hidden", border: "1px solid var(--gold-border)", background: "var(--navy-card)" }}>
+                <iframe
+                  src={config.bylawsUrl}
+                  title="League Bylaws"
+                  width="100%"
+                  height="600px"
+                  style={{ display: "block", border: "none" }}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="empty">No bylaws uploaded yet.</div>
+          )}
+        </div>
+      )}
     </>
   );
 }

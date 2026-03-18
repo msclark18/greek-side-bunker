@@ -120,6 +120,21 @@ export default function AdminTab({
     URL.revokeObjectURL(url);
   };
 
+  const uploadBylaws = async (file) => {
+    if (!file || file.type !== "application/pdf") { alert("Please upload a PDF file."); return; }
+    if (file.size > 10 * 1024 * 1024) { alert("Max 10 MB"); return; }
+    setAddMsg("Uploading...");
+    const path = `bylaws/${activeLeague.id}.pdf`;
+    const { error } = await supabase.storage.from("bylaws").upload(path, file, { upsert: true, contentType: "application/pdf" });
+    if (error) { setAddMsg("Upload failed: " + error.message); return; }
+    const { data: urlData } = supabase.storage.from("bylaws").getPublicUrl(path);
+    const newCfg = { ...config, bylawsUrl: urlData.publicUrl, bylawsName: file.name };
+    await supabase.from("league_settings").upsert({ league_id: activeLeague.id, config: newCfg, payouts }, { onConflict: "league_id" });
+    setConfig(newCfg);
+    setAddMsg("✓ Bylaws uploaded!");
+    setTimeout(() => setAddMsg(""), 3000);
+  };
+
   const netEl = (net, par) => config.useHandicap
     ? <span className={`sb`}>{net}</span>
     : <span className="sb">{net}</span>;
@@ -169,6 +184,7 @@ export default function AdminTab({
             ["courses", "Courses"],
             ["rounds", "All Rounds"],
             ["export", "📊 Export"],
+            ["bylaws", "📋 Bylaws"],
             ["league", "League Info"],
           ].map(([k, l]) => (
             <button key={k} className={`stab${adminTab === k ? " active" : ""}`} onClick={() => setAdminTab(k)}>{l}</button>
@@ -546,6 +562,50 @@ export default function AdminTab({
               ⬇ Download Rounds CSV ({rounds.length} rounds)
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ── BYLAWS ── */}
+      {adminTab === "bylaws" && (
+        <div className="card">
+          <div className="card-hdr">📋 League Bylaws</div>
+          <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 18, lineHeight: 1.6 }}>
+            Upload a PDF of your league bylaws or rules. It will be visible to all members under the <strong style={{ color: "var(--cream)" }}>Rules</strong> tab.
+          </p>
+          {config.bylawsUrl && (
+            <div style={{ background: "rgba(76,175,125,.08)", border: "1px solid rgba(76,175,125,.25)", borderRadius: 8, padding: "14px 16px", marginBottom: 18, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "#6ee7a0", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 4 }}>Current Bylaws</div>
+                <div style={{ fontSize: ".88rem", color: "var(--cream)" }}>{config.bylawsName ?? "bylaws.pdf"}</div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <a href={config.bylawsUrl} target="_blank" rel="noreferrer">
+                  <button className="btn btn-ghost btn-sm">View ↗</button>
+                </a>
+                <button className="btn btn-danger" onClick={async () => {
+                  if (!window.confirm("Remove the current bylaws?")) return;
+                  const newCfg = { ...config, bylawsUrl: null, bylawsName: null };
+                  await supabase.from("league_settings").upsert({ league_id: activeLeague.id, config: newCfg, payouts }, { onConflict: "league_id" });
+                  setConfig(newCfg);
+                }}>Remove</button>
+              </div>
+            </div>
+          )}
+          <div className="fg">
+            <label>{config.bylawsUrl ? "Replace Bylaws PDF" : "Upload Bylaws PDF"}</label>
+            <div className="upload-zone"
+              onClick={() => document.getElementById("bylaws-upload").click()}
+              onDragOver={e => e.preventDefault()}
+              onDrop={async e => { e.preventDefault(); const file = e.dataTransfer.files[0]; if (file) await uploadBylaws(file); }}>
+              <div style={{ fontSize: "1.4rem", marginBottom: 4 }}>📄</div>
+              <div style={{ fontSize: ".85rem", color: "var(--cream-dim)" }}>
+                Drop PDF here or <strong style={{ color: "var(--gold)" }}>browse</strong> · PDF only · max 10 MB
+              </div>
+              <input id="bylaws-upload" type="file" accept="application/pdf" style={{ display: "none" }}
+                onChange={async e => { if (e.target.files[0]) await uploadBylaws(e.target.files[0]); }} />
+            </div>
+          </div>
+          {addMsg && <div className="alert-s" style={{ marginTop: 12 }}>{addMsg}</div>}
         </div>
       )}
 

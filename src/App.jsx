@@ -144,6 +144,8 @@ export default function App() {
     loadLeagues();
   };
 
+  const isValidGhin = (ghin) => /^\d{7,8}$/.test(String(ghin ?? ""));
+
   const joinLeague = async () => {
     if (!joinCode.trim()) return;
     const { data: league } = await supabase.from("leagues").select("*").eq("invite_code", joinCode.trim().toLowerCase()).single();
@@ -151,6 +153,21 @@ export default function App() {
     if (myMemberships.find(m => m.league_id === league.id)) { setJoinMsg({ text: "Already in this league.", ok: false }); return; }
     const { data: s } = await supabase.from("league_settings").select("config").eq("league_id", league.id).single();
     const cfg = { ...DEFAULT_CONFIG, ...(s?.config ?? {}) };
+
+    // ── GHIN gate ──
+    if (cfg.useHandicap) {
+      const missingHcp = !profile?.handicap && profile?.handicap !== 0;
+      const missingGhin = !isValidGhin(profile?.ghin);
+      if (missingHcp || missingGhin) {
+        setJoinMsg({
+          text: `This league requires a handicap index${missingGhin ? " and a valid GHIN number (7-8 digits)" : ""}. Please update your profile before joining.`,
+          ok: false,
+          needsProfile: true,
+        });
+        return;
+      }
+    }
+
     if (cfg.joinMode === "approval") {
       await supabase.from("league_join_requests").insert({ league_id: league.id, user_id: session.user.id });
       setJoinMsg({ text: "Request sent! Waiting for commissioner approval.", ok: true });
@@ -309,8 +326,12 @@ export default function App() {
                 <div className="fg"><label>Handicap Index</label><input type="number" step=".1" min={0} max={54} placeholder="e.g. 8.4" value={profileDraft.handicap ?? ""} onChange={e => setProfileDraft(d => ({ ...d, handicap: e.target.value }))} /></div>
                 <div className="fg"><label>GHIN #</label><input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""} onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))} /></div>
               </div>
-              {profileDraft.ghin && <GhinLink ghin={profileDraft.ghin} />}
-              <p className="note">Your GHIN # will be copied to clipboard when you click the link so you can paste it into the search box.</p>
+              {profileDraft.ghin && !/^\d{7,8}$/.test(String(profileDraft.ghin)) && (
+                <p style={{ fontSize: ".72rem", color: "var(--red)" }}>⚠ GHIN must be 7-8 digits</p>
+              )}
+              {profileDraft.ghin && /^\d{7,8}$/.test(String(profileDraft.ghin)) && (
+                <><GhinLink ghin={profileDraft.ghin} /><p className="note" style={{ marginTop: 4 }}>Your GHIN # will be copied to clipboard when you click the link.</p></>
+              )}
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn btn-gold" onClick={() => saveProfile(profileDraft)}>Save</button>
