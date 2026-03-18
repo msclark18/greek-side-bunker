@@ -466,11 +466,12 @@ export default function App() {
               {showMenu && (
                 <>
                   <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setShowMenu(false)} />
-                  <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", background: "var(--navy-card)", border: "1px solid var(--gold-border)", borderRadius: 10, minWidth: 180, zIndex: 100, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,.5)" }}>
+                  <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", background: "var(--navy-card)", border: "1px solid var(--gold-border)", borderRadius: 10, minWidth: 200, zIndex: 100, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,.6)", padding: "6px 0" }}>
                     <button className="menu-item" onClick={() => { setShowMenu(false); setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin }); setProfileModal(true); }}>Edit Profile</button>
                     <button className="menu-item" onClick={() => { setShowMenu(false); setShowHelp(true); }}>Guide</button>
-                    <div style={{ borderTop: "1px solid var(--navy-border)", margin: "4px 0" }} />
+                    <div style={{ borderTop: "1px solid var(--navy-border)", margin: "6px 0" }} />
                     <button className="menu-item" onClick={() => { setShowMenu(false); setActiveLeague(null); }}>Switch League</button>
+                    <div style={{ borderTop: "1px solid var(--navy-border)", margin: "6px 0" }} />
                     <button className="menu-item" style={{ color: "#f09090" }} onClick={() => { setShowMenu(false); signOut(); }}>Sign Out</button>
                   </div>
                 </>
