@@ -520,7 +520,7 @@ export default function App() {
 
         {tab === "score" && dataLoaded && (
           <PostScore
-            session={session} profile={profile} activeLeague={activeLeague}
+            session={session} profile={profile} setProfile={setProfile} activeLeague={activeLeague}
             courses={courses} members={members} rounds={rounds} config={config}
             isOpen={isOpen}
             form={form} setForm={setForm}

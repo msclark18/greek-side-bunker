@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { supabase } from "../supabase.js";
 import { calcCourseHcp, calcStableford, toPM, pmCls } from "../utils/golf.js";
 import { FORMAT_LABELS } from "../constants/config.js";
 
 export default function PostScore({
-  session, profile, activeLeague,
+  session, profile, setProfile, activeLeague,
   courses, members, rounds, config,
   isOpen,
   form, setForm,
@@ -15,6 +16,9 @@ export default function PostScore({
   setRounds,
   setViewCardModal,
 }) {
+  const [showHcpModal, setShowHcpModal] = useState(false);
+  const [hcpDraft, setHcpDraft] = useState("");
+
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const myApprovedOnCourse = (cid) =>
@@ -179,6 +183,8 @@ export default function PostScore({
         </div>
       )}
 
+
+
       <div className="card" style={{ opacity: isOpen ? 1 : .65, pointerEvents: isOpen ? "auto" : "none" }}>
         <div className="card-hdr">
           ✏️ Post Your Round
@@ -319,7 +325,11 @@ export default function PostScore({
         })()}
 
         <div style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <button className="btn btn-gold" onClick={submitRound} disabled={!canSubmit()}>Submit Round</button>
+          <button className="btn btn-gold" onClick={() => {
+            if (!canSubmit()) return;
+            setHcpDraft(String(profile?.handicap ?? ""));
+            setShowHcpModal(true);
+          }} disabled={!canSubmit()}>Submit Round</button>
           {formMsg.text && <div className={`alert-${formMsg.type}`}>{formMsg.text}</div>}
         </div>
         <p className="note" style={{ marginTop: 8 }}>
@@ -328,6 +338,78 @@ export default function PostScore({
             : "Rounds are automatically approved (no attestation required)."}
         </p>
       </div>
+
+      {/* ── Handicap Confirmation Modal ── */}
+      {showHcpModal && selectedCourse && (
+        <div className="modal-bg" onClick={() => setShowHcpModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Confirm Your Handicap</div>
+            <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 20, lineHeight: 1.7 }}>
+              Please confirm your current Handicap Index before submitting. Update it if it has changed since you last played.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
+              {/* Handicap Index — editable */}
+              <div className="fg">
+                <label>Your Handicap Index</label>
+                <input
+                  type="number" step=".1" min={0} max={54}
+                  placeholder="e.g. 8.4"
+                  value={hcpDraft}
+                  onChange={e => setHcpDraft(e.target.value)}
+                  style={{ fontSize: "1.1rem" }}
+                />
+                <span style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginTop: 3 }}>
+                  This is your total Handicap Index from GHIN or TheGrint
+                </span>
+              </div>
+
+              {/* Course handicap — read only, recalculates as they type */}
+              {hcpDraft && selectedCourse && (() => {
+                const previewHcp = calcCourseHcp(Number(hcpDraft), selectedCourse.slope, selectedCourse.par, selectedCourse.rating, config);
+                return (
+                  <div style={{ background: "var(--gold-dim)", border: "1px solid var(--gold-border)", borderRadius: 8, padding: "14px 16px" }}>
+                    <div style={{ fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)", marginBottom: 10 }}>Calculated for {selectedCourse.name}</div>
+                    <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                        <span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 4 }}>Course Handicap</span>
+                        <span style={{ fontFamily: "var(--font-d)", fontSize: "1.6rem", color: "var(--white)" }}>{previewHcp}</span>
+                        <span style={{ fontSize: ".68rem", color: "var(--cream-dim)", marginTop: 2 }}>read only</span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                        <span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 4 }}>Est. Net Score</span>
+                        <span style={{ fontFamily: "var(--font-d)", fontSize: "1.6rem", color: "var(--gold-light)" }}>
+                          {form.score ? Number(form.score) - previewHcp : "—"}
+                        </span>
+                        <span style={{ fontSize: ".68rem", color: "var(--cream-dim)", marginTop: 2 }}>gross {form.score} − {previewHcp}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                className="btn btn-gold"
+                disabled={!hcpDraft}
+                onClick={async () => {
+                  // Save updated handicap if it changed
+                  if (String(hcpDraft) !== String(profile?.handicap)) {
+                    await supabase.from("profiles").update({ handicap: Number(hcpDraft) }).eq("id", session.user.id);
+                    setProfile(p => ({ ...p, handicap: Number(hcpDraft) }));
+                  }
+                  setShowHcpModal(false);
+                  submitRound();
+                }}
+              >
+                ✓ Confirm & Submit
+              </button>
+              <button className="btn btn-ghost" onClick={() => setShowHcpModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* My Rounds */}
       {myRounds.length > 0 && (
