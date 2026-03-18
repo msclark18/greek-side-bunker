@@ -122,7 +122,7 @@ export default function AuthPage({
               onClick={() => setShowHelp(true)}
               style={{ background: "none", border: "none", color: "var(--cream-dim)", fontSize: ".82rem", cursor: "pointer", textDecoration: "underline", fontFamily: "inherit" }}
             >
-              How to use Greek Side Bunker?
+              Guide — How to use Greek Side Bunker
             </button>
           </div>
         </div>

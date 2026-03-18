@@ -1,5 +1,6 @@
 import { useState } from "react";
 import GSBLogo from "../components/GSBLogo.jsx";
+import HelpModal from "../components/HelpModal.jsx";
 import GhinLink from "../components/GhinLink.jsx";
 import { FORMAT_LABELS } from "../constants/config.js";
 import { ini } from "../utils/golf.js";
@@ -14,6 +15,7 @@ export default function LeaguePicker({
   const [profileModal, setProfileModal] = useState(false);
   const [profileDraft, setProfileDraft] = useState({});
   const [showCreateLeague, setShowCreateLeague] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [newLeague, setNewLeague] = useState({ name: "", description: "" });
 
   const handleSaveProfile = async () => {
@@ -29,6 +31,7 @@ export default function LeaguePicker({
 
   return (
     <div style={{ background: "var(--navy)", minHeight: "100vh" }}>
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
       {profileModal && (
         <div className="modal-bg" onClick={() => setProfileModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -89,6 +92,7 @@ export default function LeaguePicker({
               setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin });
               setProfileModal(true);
             }}>Edit Profile</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowHelp(true)}>Guide</button>
             <button className="btn btn-ghost btn-sm" onClick={signOut}>Sign Out</button>
           </div>
         </div>

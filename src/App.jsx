@@ -52,6 +52,7 @@ export default function App() {
   const [playersModal, setPlayersModal] = useState(false);
   const [showProfileGate, setShowProfileGate] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
 
   // ── Post score state ──
   const [form, setForm] = useState({ courseId: "", score: "", attesterId: "", date: new Date().toISOString().split("T")[0] });
@@ -83,7 +84,7 @@ export default function App() {
   };
 
   // ── Auth actions ──
-  const signInWithGoogle = () => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: (import.meta.env.VITE_API_URL ?? window.location.origin) + "/" } });
+  const signInWithGoogle = () => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: "https://greeksidebunker.com/" } });
 
   const signInWithEmail = async () => {
     setAuthError(""); setAuthLoading(true);
@@ -456,7 +457,25 @@ export default function App() {
                 {config.useHandicap && <div style={{ fontSize: ".7rem", color: "var(--cream-dim)" }}>Hcp {profile?.handicap ?? "-"}</div>}
               </div>
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={signOut}>Sign Out</button>
+            <div style={{ position: "relative" }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowMenu(m => !m)}
+                style={{ fontSize: "1.1rem", padding: "6px 10px" }}
+              >☰</button>
+              {showMenu && (
+                <>
+                  <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setShowMenu(false)} />
+                  <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", background: "var(--navy-card)", border: "1px solid var(--gold-border)", borderRadius: 10, minWidth: 180, zIndex: 100, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,.5)" }}>
+                    <button className="menu-item" onClick={() => { setShowMenu(false); setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin }); setProfileModal(true); }}>Edit Profile</button>
+                    <button className="menu-item" onClick={() => { setShowMenu(false); setShowHelp(true); }}>Guide</button>
+                    <div style={{ borderTop: "1px solid var(--navy-border)", margin: "4px 0" }} />
+                    <button className="menu-item" onClick={() => { setShowMenu(false); setActiveLeague(null); }}>Switch League</button>
+                    <button className="menu-item" style={{ color: "#f09090" }} onClick={() => { setShowMenu(false); signOut(); }}>Sign Out</button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -494,12 +513,11 @@ export default function App() {
               ["score", "✏️ Post Score", false],
               ...(config.attestRequired ? [["attest", "⏳ Attest", true]] : []),
               ...(isAdmin ? [["admin", "⚙ Admin", false]] : []),
-              ["help", "? Help", false],
             ].map(([k, l, isAttest]) => (
               <button
                 key={k}
                 className={`nav-tab${tab === k ? " active" : ""}${k === "admin" ? " admin-tab" : ""}${isAttest ? " attest-tab" : ""}`}
-                onClick={() => k === "help" ? setShowHelp(true) : setTab(k)}
+                onClick={() => setTab(k)}
               >
                 {l}
                 {isAttest && pendingForMe.length > 0 && <span className="nav-badge">{pendingForMe.length}</span>}
