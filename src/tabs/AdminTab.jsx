@@ -21,6 +21,9 @@ export default function AdminTab({
   const [newCourse, setNewCourse] = useState({ name: "", par: "", holes: "18", slope: "", rating: "" });
   const [showAddCourse, setShowAddCourse] = useState(false);
   const [editMemberHcp, setEditMemberHcp] = useState(null);
+  const [emailDraft, setEmailDraft] = useState({ subject: "", message: "" });
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailMsg, setEmailMsg] = useState("");
 
   // ── Config ──
   const saveConfig = async (newCfg) => {
@@ -120,6 +123,34 @@ export default function AdminTab({
     URL.revokeObjectURL(url);
   };
 
+  const sendLeagueEmail = async () => {
+    if (!emailDraft.subject.trim() || !emailDraft.message.trim()) return;
+    setEmailSending(true);
+    setEmailMsg("");
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
+      const res = await fetch(`${apiUrl}/api/send-league-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leagueId: activeLeague.id,
+          leagueName: activeLeague.name,
+          subject: emailDraft.subject,
+          message: emailDraft.message,
+          senderName: session?.user?.email,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      setEmailMsg(`✓ Email sent to ${data.sent} member${data.sent !== 1 ? "s" : ""}!`);
+      setEmailDraft({ subject: "", message: "" });
+    } catch (e) {
+      setEmailMsg("✗ Failed to send: " + e.message);
+    }
+    setEmailSending(false);
+    setTimeout(() => setEmailMsg(""), 5000);
+  };
+
   const uploadBylaws = async (file) => {
     if (!file || file.type !== "application/pdf") { alert("Please upload a PDF file."); return; }
     if (file.size > 10 * 1024 * 1024) { alert("Max 10 MB"); return; }
@@ -185,6 +216,7 @@ export default function AdminTab({
             ["rounds", "All Rounds"],
             ["export", "📊 Export"],
             ["bylaws", "📋 Bylaws"],
+            ["email", "📧 Email Members"],
             ["league", "League Info"],
           ].map(([k, l]) => (
             <button key={k} className={`stab${adminTab === k ? " active" : ""}`} onClick={() => setAdminTab(k)}>{l}</button>
@@ -566,6 +598,51 @@ export default function AdminTab({
             <button className="btn btn-gold" onClick={exportCSV} disabled={rounds.length === 0}>
               ⬇ Download Rounds CSV ({rounds.length} rounds)
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── EMAIL MEMBERS ── */}
+      {adminTab === "email" && (
+        <div className="card">
+          <div className="card-hdr">📧 Email Members</div>
+          <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 18, lineHeight: 1.6 }}>
+            Send a message to all {members.length} members in this league. Emails are sent from <strong style={{ color: "var(--cream)" }}>noreply@greeksidebunker.com</strong>.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div className="fg">
+              <label>Subject</label>
+              <input
+                type="text"
+                placeholder="e.g. Season starts this Saturday!"
+                value={emailDraft.subject}
+                onChange={e => setEmailDraft(d => ({ ...d, subject: e.target.value }))}
+              />
+            </div>
+            <div className="fg">
+              <label>Message</label>
+              <textarea
+                rows={6}
+                placeholder="Type your message here..."
+                value={emailDraft.message}
+                onChange={e => setEmailDraft(d => ({ ...d, message: e.target.value }))}
+                style={{ resize: "vertical", fontFamily: "inherit", fontSize: ".9rem" }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                className="btn btn-gold"
+                disabled={emailSending || !emailDraft.subject.trim() || !emailDraft.message.trim()}
+                onClick={sendLeagueEmail}
+              >
+                {emailSending ? "Sending..." : `📧 Send to All ${members.length} Members`}
+              </button>
+              {emailMsg && (
+                <span style={{ fontSize: ".85rem", color: emailMsg.startsWith("✓") ? "var(--green)" : "#f09090" }}>
+                  {emailMsg}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       )}
