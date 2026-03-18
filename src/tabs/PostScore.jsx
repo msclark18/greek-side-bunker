@@ -128,13 +128,21 @@ export default function PostScore({
 
     if (config.attestRequired && attester) {
       try {
-        await supabase.functions.invoke("attest-score-email", {
-          body: {
-            attesterEmail: attester.profile.email, attesterName: attester.profile.name,
-            playerName: profile.name, courseName: course.name,
-            gross, net, par: course.par, date: form.date,
-            leagueName: activeLeague.name, token: inserted.attest_token, appUrl: window.location.origin,
-          }
+        const apiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
+        await fetch(`${apiUrl}/api/send-attest-email`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            attesterEmail: attester.profile.email,
+            attesterName: attester.profile.name,
+            playerName: profile.name,
+            courseName: course.name,
+            gross, net, par: course.par,
+            date: form.date,
+            leagueName: activeLeague.name,
+            roundId: inserted.id,
+            appUrl: window.location.origin,
+          }),
         });
       } catch (e) { console.warn("Email non-fatal:", e); }
     }
