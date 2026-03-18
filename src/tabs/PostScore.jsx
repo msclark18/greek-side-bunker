@@ -74,7 +74,17 @@ export default function PostScore({
       });
       const parsed = await resp.json();
       setAiResult(parsed);
-      if (parsed.gross) setForm(f => ({ ...f, score: String(parsed.gross), date: parsed.date || f.date }));
+      if (parsed.gross) {
+        const updates = { score: String(parsed.gross), date: parsed.date || form.date };
+        if (parsed.course) {
+          const match = courses.find(c =>
+            c.name.toLowerCase().includes(parsed.course.toLowerCase()) ||
+            parsed.course.toLowerCase().includes(c.name.toLowerCase())
+          );
+          if (match) updates.courseId = String(match.id);
+        }
+        setForm(f => ({ ...f, ...updates }));
+      }
     } catch (e) {
       console.warn("AI scorecard read failed:", e);
       setAiResult({ error: true });
@@ -239,7 +249,7 @@ export default function PostScore({
                   {aiResult.error
                     ? "⚠ Couldn't read score — please enter manually."
                     : aiResult.gross
-                      ? `✓ Detected score: ${aiResult.gross}${aiResult.date ? ` · Date: ${aiResult.date}` : ""} — fields pre-filled!`
+                      ? `✓ Detected score: ${aiResult.gross}${aiResult.date ? ` · Date: ${aiResult.date}` : ""}${aiResult.course ? ` · Course: ${aiResult.course}` : ""} — fields pre-filled!`
                       : "Score not detected — please enter manually."}
                 </div>
               )}
