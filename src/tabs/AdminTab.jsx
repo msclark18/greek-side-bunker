@@ -148,7 +148,9 @@ setConfirmClear(false);
   };
 
   const sendLeagueEmail = async () => {
-    if (!emailDraft.subject.trim() || !(editorRef.current?.innerText?.trim() || emailDraft.message.replace(/<[^>]*>/g, "").trim())) return;
+    const message = editorRef.current?.innerHTML ?? "";
+    const hasContent = editorRef.current?.innerText?.trim();
+    if (!emailDraft.subject.trim() || !hasContent) return;
     const selected = emailSelected ?? members.map(m => m.user_id);
     const recipients = members
       .filter(m => selected.includes(m.user_id) && m.profile?.email)
@@ -165,7 +167,7 @@ setConfirmClear(false);
           leagueId: activeLeague.id,
           leagueName: activeLeague.name,
           subject: emailDraft.subject,
-          message: emailDraft.message,
+          message,
           senderName: session?.user?.email,
           recipients,
         }),
@@ -725,7 +727,6 @@ setConfirmClear(false);
                     ref={editorRef}
                     contentEditable
                     suppressContentEditableWarning
-                    onInput={e => setEmailDraft(d => ({ ...d, message: e.currentTarget.innerHTML }))}
                     style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: "0 0 8px 8px", padding: "10px 12px", color: "var(--cream)", fontFamily: "inherit", fontSize: ".9rem", minHeight: 160, outline: "none", lineHeight: 1.7 }}
                     data-placeholder="Type your message here..."
                   />
@@ -777,7 +778,7 @@ setConfirmClear(false);
                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                   <button
                     className="btn btn-gold"
-                    disabled={emailSending || !emailDraft.subject.trim() || !(editorRef.current?.innerText?.trim() || emailDraft.message.replace(/<[^>]*>/g, "").trim()) || selected.length === 0}
+                    disabled={emailSending || !emailDraft.subject.trim() || selected.length === 0}
                     onClick={sendLeagueEmail}
                   >
                     {emailSending ? "Sending..." : `📧 Send to ${selected.length} Member${selected.length !== 1 ? "s" : ""}`}
