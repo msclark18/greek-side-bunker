@@ -1,7 +1,12 @@
+import { useState } from "react";
 import { supabase } from "../supabase.js";
 import { toPM, pmCls } from "../utils/golf.js";
 
 export default function AttestTab({ pendingForMe, config, setRounds, setViewCardModal }) {
+  const [attestMsg, setAttestMsg] = useState({ id: null, text: "", ok: true });
+  const [rejectModal, setRejectModal] = useState(null);
+  const [rejectNote, setRejectNote] = useState("");
+
   const netEl = (net, par) => config.useHandicap
     ? <span className={`sb ${pmCls(net, par)}`}>{net} <span style={{ fontSize: ".72rem", opacity: .7 }}>({toPM(net, par)})</span></span>
     : <span className="sb">{net}</span>;
@@ -10,17 +15,19 @@ export default function AttestTab({ pendingForMe, config, setRounds, setViewCard
     const { error } = await supabase.from("rounds")
       .update({ attest_status: "approved", attest_at: new Date().toISOString() })
       .eq("id", r.id);
-    if (error) { alert("Error: " + error.message); return; }
+    if (error) { setAttestMsg({ id: r.id, text: "Error approving round. Please try again.", ok: false }); return; }
     setRounds(p => p.map(x => x.id === r.id ? { ...x, attest_status: "approved" } : x));
   };
 
-  const rejectRound = async (r) => {
-    const note = window.prompt("Reason for rejection (optional):") || "";
+  const rejectRound = async () => {
+    if (!rejectModal) return;
     const { error } = await supabase.from("rounds")
-      .update({ attest_status: "rejected", attest_note: note, attest_at: new Date().toISOString() })
-      .eq("id", r.id);
-    if (error) { alert("Error: " + error.message); return; }
-    setRounds(p => p.map(x => x.id === r.id ? { ...x, attest_status: "rejected", attest_note: note } : x));
+      .update({ attest_status: "rejected", attest_note: rejectNote, attest_at: new Date().toISOString() })
+      .eq("id", rejectModal.id);
+    if (error) { setAttestMsg({ id: rejectModal.id, text: "Error rejecting round. Please try again.", ok: false }); return; }
+    setRounds(p => p.map(x => x.id === rejectModal.id ? { ...x, attest_status: "rejected", attest_note: rejectNote } : x));
+    setRejectModal(null);
+    setRejectNote("");
   };
 
   return (
@@ -73,10 +80,31 @@ export default function AttestTab({ pendingForMe, config, setRounds, setViewCard
 
             <div className="attest-actions">
               <button className="btn btn-gold btn-sm" onClick={() => approveRound(r)}>✓ Approve Round</button>
-              <button className="btn btn-danger" onClick={() => rejectRound(r)}>✗ Reject</button>
+              <button className="btn btn-danger" onClick={() => { setRejectModal(r); setRejectNote(""); }}>✗ Reject</button>
             </div>
           </div>
         ))
+      )}
+      {/* Reject modal */}
+      {rejectModal && (
+        <div className="modal-bg" onClick={() => setRejectModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Reject Round</div>
+            <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 16, lineHeight: 1.6 }}>
+              Rejecting <strong style={{ color: "var(--cream)" }}>{rejectModal.player_name}</strong>'s round at {rejectModal.course_name}. Add a note to let them know why (optional).
+            </p>
+            <div className="fg" style={{ marginBottom: 16 }}>
+              <label>Reason (optional)</label>
+              <input type="text" placeholder="e.g. Score doesn't match what I recorded"
+                value={rejectNote} onChange={e => setRejectNote(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && rejectRound()} />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-danger" onClick={rejectRound}>Confirm Rejection</button>
+              <button className="btn btn-ghost" onClick={() => setRejectModal(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

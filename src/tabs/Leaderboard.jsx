@@ -375,7 +375,7 @@ export default function Leaderboard({
 
         const thirdPlaceMatch = config.thirdPlaceMatch ?? null;
         const setThirdPlaceWinner = (winner) => saveBracket(config.playoffBracket ?? [], { ...thirdPlaceMatch, winner });
-        const resetBracket = () => { if (window.confirm("Reset the entire bracket?")) saveBracket([], null); };
+        const resetBracket = () => saveBracket([], null);
 
         return (
           <>

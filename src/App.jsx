@@ -12,6 +12,7 @@ import PostScore from "./tabs/PostScore.jsx";
 import AttestTab from "./tabs/AttestTab.jsx";
 import AdminTab from "./tabs/AdminTab.jsx";
 import HelpModal from "./components/HelpModal.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import "./styles/app.css";
 
 export default function App() {
@@ -53,6 +54,7 @@ export default function App() {
   const [showProfileGate, setShowProfileGate] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [dbError, setDbError] = useState(null);
 
   // ── Post score state ──
   const [form, setForm] = useState({ courseId: "", score: "", attesterId: "", date: new Date().toISOString().split("T")[0] });
@@ -71,7 +73,7 @@ export default function App() {
 
   useEffect(() => {
     if (!session?.user?.id) return;
-    supabase.from("profiles").select("*").eq("id", session.user.id).single().then(({ data }) => setProfile(data));
+    supabase.from("profiles").select("*").eq("id", session.user.id).single().then(({ data, error }) => { if (!error && data) setProfile(data); });
     loadLeagues();
   }, [session]);
 
@@ -119,17 +121,28 @@ export default function App() {
   // ── League actions ──
   const loadLeagueData = useCallback(async (league) => {
     setDataLoaded(false);
-    const [{ data: c }, { data: r }, { data: m }, { data: s }, { data: pj }] = await Promise.all([
-      supabase.from("courses").select("*").eq("league_id", league.id).order("name"),
-      supabase.from("rounds").select("*").eq("league_id", league.id).order("created_at", { ascending: false }),
-      supabase.from("league_members").select("*, profile:profiles(*)").eq("league_id", league.id),
-      supabase.from("league_settings").select("*").eq("league_id", league.id).single(),
-      supabase.from("league_join_requests").select("*, profile:profiles(*)").eq("league_id", league.id).eq("status", "pending"),
-    ]);
-    setCourses(c ?? []); setRounds(r ?? []); setMembers(m ?? []);
-    const cfg = { ...DEFAULT_CONFIG, ...(s?.config ?? {}) };
-    setConfig(cfg); setPayouts(s?.payouts ?? {}); setPendingJoins(pj ?? []);
-    setSelCourse((c ?? [])[0]?.id ?? null);
+    setDbError(null);
+    try {
+      const [{ data: c, error: ce }, { data: r, error: re }, { data: m, error: me }, { data: s }, { data: pj }] = await Promise.all([
+        supabase.from("courses").select("*").eq("league_id", league.id).order("name"),
+        supabase.from("rounds").select("*").eq("league_id", league.id).order("created_at", { ascending: false }),
+        supabase.from("league_members").select("*, profile:profiles(*)").eq("league_id", league.id),
+        supabase.from("league_settings").select("*").eq("league_id", league.id).single(),
+        supabase.from("league_join_requests").select("*, profile:profiles(*)").eq("league_id", league.id).eq("status", "pending"),
+      ]);
+      if (ce || re || me) {
+        setDbError("Unable to load league data. Please refresh.");
+        setDataLoaded(true);
+        return;
+      }
+      setCourses(c ?? []); setRounds(r ?? []); setMembers(m ?? []);
+      const cfg = { ...DEFAULT_CONFIG, ...(s?.config ?? {}) };
+      setConfig(cfg); setPayouts(s?.payouts ?? {}); setPendingJoins(pj ?? []);
+      setSelCourse((c ?? [])[0]?.id ?? null);
+    } catch (e) {
+      console.error("loadLeagueData error:", e);
+      setDbError("Connection error. Please check your internet and refresh.");
+    }
     setDataLoaded(true);
   }, []);
 
@@ -143,9 +156,9 @@ export default function App() {
   };
 
   const createLeague = async (newLeague) => {
-    if (!newLeague.name.trim()) return alert("League name required");
+    if (!newLeague.name.trim()) { setJoinMsg({ text: "League name is required.", ok: false }); return; }
     const { data: league, error } = await supabase.from("leagues").insert({ name: newLeague.name.trim(), description: newLeague.description, owner_id: session.user.id }).select().single();
-    if (error) return alert(error.message);
+    if (error) { setJoinMsg({ text: error.message, ok: false }); return; }
     await supabase.from("league_members").insert({ league_id: league.id, user_id: session.user.id, role: "admin" });
     loadLeagues();
   };
@@ -194,7 +207,7 @@ export default function App() {
   };
 
   // ── Leaderboard computations ──
-  const players = members.map(m => ({ ...m.profile, role: m.role }));
+  const players = members.filter(m => m.profile).map(m => ({ ...m.profile, role: m.role }));
   const scored = rounds.filter(r => !config.attestRequired || r.attest_status === "approved");
   const myHasSubmitted = scored.some(r => r.player_id === session?.user.id);
   const visible = (config.hideScores && !myHasSubmitted) ? scored.filter(r => r.player_id === session?.user.id) : scored;
@@ -209,13 +222,13 @@ export default function App() {
     const pr = visible.filter(r => r.player_id === p.id); if (!pr.length) return null;
     const counting = applyBestN(pr, config.scoresToCount, config.scoringFormat);
     if (config.scoringFormat === "stableford") { const total = counting.reduce((s, r) => s + (r.stableford_pts ?? 0), 0); return { ...p, pr, counting, primary: total, label: `${total} pts`, totalRounds: pr.length, countingRounds: counting.length }; }
-    const avg = counting.reduce((s, r) => s + r.net, 0) / counting.length;
+    const avg = counting.reduce((s, r) => s + (r.net ?? 0), 0) / counting.length;
     return { ...p, pr, counting, primary: avg, label: avg.toFixed(1), totalRounds: pr.length, countingRounds: counting.length };
   }).filter(Boolean).sort((a, b) => config.scoringFormat === "stableford" ? b.primary - a.primary : a.primary - b.primary), [players, visible, config]);
 
   const grossLB = useMemo(() => players.map(p => {
     const pr = visible.filter(r => r.player_id === p.id); if (!pr.length) return null;
-    return { ...p, pr, avg: pr.reduce((s, r) => s + r.gross, 0) / pr.length, totalRounds: pr.length };
+    return { ...p, pr, avg: pr.reduce((s, r) => s + (r.gross ?? 0), 0) / pr.length, totalRounds: pr.length };
   }).filter(Boolean).sort((a, b) => a.avg - b.avg), [players, visible]);
 
   const courseLB = useMemo(() => {
@@ -230,7 +243,7 @@ export default function App() {
 
   const bestNetLB = useMemo(() => players.map(p => {
     const pr = visible.filter(r => r.player_id === p.id); if (!pr.length) return null;
-    return { ...p, best: pr.reduce((b, r) => r.net < b.net ? r : b) };
+    return { ...p, best: pr.reduce((b, r) => (r.net ?? 999) < (b.net ?? 999) ? r : b) };
   }).filter(Boolean).sort((a, b) => a.best.net - b.best.net), [players, visible]);
 
   const bestGrossLB = useMemo(() => players.map(p => {
@@ -468,7 +481,6 @@ export default function App() {
                   <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setShowMenu(false)} />
                   <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", background: "var(--navy-card)", border: "1px solid var(--gold-border)", borderRadius: 10, minWidth: 200, zIndex: 100, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,.6)", padding: "6px 0" }}>
                     <button className="menu-item" onClick={() => { setShowMenu(false); setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin }); setProfileModal(true); }}>Edit Profile</button>
-                    <div style={{ borderTop: "1px solid var(--navy-border)", margin: "6px 0" }} />
                     <button className="menu-item" onClick={() => { setShowMenu(false); setShowHelp(true); }}>Guide</button>
                     <div style={{ borderTop: "1px solid var(--navy-border)", margin: "6px 0" }} />
                     <button className="menu-item" onClick={() => { setShowMenu(false); setActiveLeague(null); }}>Switch League</button>
@@ -483,7 +495,15 @@ export default function App() {
 
         <SeasonBar config={config} />
 
-        {/* Profile incomplete banner */}
+        {/* DB error banner */}
+        {dbError && (
+          <div className="alert-d" style={{ marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+            <span>{dbError}</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => window.location.reload()}>Refresh</button>
+          </div>
+        )}
+
+        {/* Profile incomplete banner */}}
         {isProfileIncomplete && dataLoaded && (
           <div className="alert-w" style={{ marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
             <span>⚠ Your profile is missing a handicap index or valid GHIN number — required by this league.</span>

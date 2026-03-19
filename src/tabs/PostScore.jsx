@@ -94,7 +94,7 @@ export default function PostScore({
 
   const handleCardFile = (file) => {
     if (!file || !file.type.startsWith("image/")) return;
-    if (file.size > 10 * 1024 * 1024) { alert("Max 10 MB"); return; }
+    if (file.size > 10 * 1024 * 1024) { setFormMsg({ type: "d", text: "File is too large — max 10 MB." }); return; }
     setCardFile(file);
     setCardPreview(URL.createObjectURL(file));
     readScorecardWithAI(file);
@@ -107,7 +107,7 @@ export default function PostScore({
     const gross = Number(form.score);
     const net = gross - hcp;
     const pts = config.scoringFormat === "stableford" ? calcStableford(gross, hcp, course.par) : null;
-    const attester = config.attestRequired ? members.find(m => m.user_id === form.attesterId) : null;
+    const attester = config.attestRequired ? members.find(m => m.user_id === form.attesterId && m.profile) : null;
 
     const { data: inserted, error } = await supabase.from("rounds").insert({
       league_id: activeLeague.id, player_id: session.user.id, player_name: profile.name,
@@ -147,7 +147,7 @@ export default function PostScore({
             date: form.date,
             leagueName: activeLeague.name,
             roundId: inserted.id,
-            appUrl: window.location.origin,
+            appUrl: import.meta.env.VITE_API_URL ?? window.location.origin,
             ccEmails: commissionerEmails,
           }),
         });
@@ -466,7 +466,7 @@ export default function PostScore({
                         <div style={{ display: "flex", gap: 5 }}>
                           <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}>📋</button>
                           <button className="sc-btn" style={{ borderColor: "rgba(224,92,92,.3)", background: "rgba(224,92,92,.1)", color: "#f09090" }}
-                            onClick={() => { if (window.confirm("Delete scorecard?")) deleteScorecard(r); }}>✕</button>
+                            onClick={() => deleteScorecard(r)}>✕</button>
                         </div>
                       ) : (
                         <label className="sc-btn" style={{ background: "rgba(255,255,255,.04)", borderColor: "rgba(255,255,255,.1)", color: "var(--cream-dim)", cursor: "pointer" }}>

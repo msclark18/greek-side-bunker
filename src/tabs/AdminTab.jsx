@@ -25,12 +25,14 @@ export default function AdminTab({
   const [emailSending, setEmailSending] = useState(false);
   const [emailMsg, setEmailMsg] = useState("");
   const [emailSelected, setEmailSelected] = useState(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmRemoveBylaws, setConfirmRemoveBylaws] = useState(false);
 
   // ── Config ──
   const saveConfig = async (newCfg) => {
     const cats = newCfg.payoutCategories ?? [];
     const totalPct = cats.reduce((s, c) => s + (Number(c.pct) || 0), 0);
-    if (totalPct > 100) { alert("Payout percentages exceed 100%. Please fix before saving."); return; }
+    if (totalPct > 100) { setAddMsg("Payout percentages exceed 100%. Please fix before saving."); return; }
     await supabase.from("league_settings").upsert({ league_id: activeLeague.id, config: newCfg, payouts }, { onConflict: "league_id" });
     setConfig(newCfg);
     setConfigDraft(null);
@@ -108,7 +110,8 @@ export default function AdminTab({
   };
 
   const clearAllRounds = async () => {
-    if (!window.confirm("Clear ALL rounds?")) return;
+    if (!confirmClear) { setConfirmClear(true); setTimeout(() => setConfirmClear(false), 5000); return; }
+setConfirmClear(false);
     await supabase.from("rounds").delete().eq("league_id", activeLeague.id);
     setRounds([]);
   };
@@ -129,7 +132,7 @@ export default function AdminTab({
     const selected = emailSelected ?? members.map(m => m.user_id);
     const recipients = members
       .filter(m => selected.includes(m.user_id) && m.profile?.email)
-      .map(m => m.profile.email);
+      .map(m => m.profile?.email);
     if (recipients.length === 0) { setEmailMsg("✗ No recipients selected."); return; }
     setEmailSending(true);
     setEmailMsg("");
@@ -160,8 +163,8 @@ export default function AdminTab({
   };
 
   const uploadBylaws = async (file) => {
-    if (!file || file.type !== "application/pdf") { alert("Please upload a PDF file."); return; }
-    if (file.size > 10 * 1024 * 1024) { alert("Max 10 MB"); return; }
+    if (!file || file.type !== "application/pdf") { setAddMsg("Please upload a PDF file."); return; }
+    if (file.size > 10 * 1024 * 1024) { setAddMsg("File is too large — max 10 MB."); return; }
     setAddMsg("Uploading...");
     const path = `bylaws/${activeLeague.id}.pdf`;
     const { error } = await supabase.storage.from("bylaws").upload(path, file, { upsert: true, contentType: "application/pdf" });
@@ -465,10 +468,10 @@ export default function AdminTab({
 
           {members.map(m => (
             <div key={m.user_id} className="pchip" style={{ borderColor: config.entryFee > 0 ? (m.paid ? "rgba(76,175,125,.2)" : "rgba(224,92,92,.15)") : undefined }}>
-              <div className="avatar lg">{m.profile.avatar_url ? <img src={m.profile.avatar_url} alt="" /> : m.profile.name?.[0]?.toUpperCase()}</div>
+              <div className="avatar lg">{m.profile?.avatar_url ? <img src={m.profile.avatar_url} alt="" /> : m.profile?.name?.[0]?.toUpperCase()}</div>
               <div className="pchip-info">
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <div className="pchip-name">{m.profile.name}</div>
+                  <div className="pchip-name">{m.profile?.name ?? "Unknown"}</div>
                   {config.entryFee > 0 && <span className={`paid-badge ${m.paid ? "paid" : "unpaid"}`}>{m.paid ? "✓ Paid" : "✗ Unpaid"}</span>}
                   {config.useHandicap && ((!m.profile.handicap && m.profile.handicap !== 0) || !/^\d{7,8}$/.test(String(m.profile.ghin ?? ""))) && (
                     <span style={{ fontSize: ".6rem", padding: "2px 7px", borderRadius: 20, background: "rgba(224,92,92,.12)", border: "1px solid rgba(224,92,92,.3)", color: "#f09090", fontFamily: "var(--font-d)", letterSpacing: "1px", textTransform: "uppercase", whiteSpace: "nowrap" }}>
@@ -477,7 +480,7 @@ export default function AdminTab({
                   )}
                 </div>
                 <div className="pchip-meta">
-                  {m.profile.email} · Hcp {m.profile.handicap ?? "-"}
+                  {m.profile?.email ?? "-"} · Hcp {m.profile?.handicap ?? "-"}
                   {m.profile.ghin && <> · <GhinLink ghin={m.profile.ghin} style={{ fontSize: ".68rem" }} /></>}
                   {" · "}{rounds.filter(r => r.player_id === m.user_id).length} rounds
                 </div>
@@ -493,7 +496,7 @@ export default function AdminTab({
               <div className="pchip-actions">
                 <span className={`lrole ${m.role}`}>{m.role === "admin" ? "Commissioner" : "Player"}</span>
                 {config.entryFee > 0 && <button className={`btn btn-sm ${m.paid ? "btn-danger" : "btn-gold"}`} onClick={() => togglePaid(m.user_id, m.paid)}>{m.paid ? "Mark Unpaid" : "✓ Mark Paid"}</button>}
-                <button className="btn btn-ghost btn-sm" onClick={() => setEditMemberHcp({ uid: m.user_id, name: m.profile.name, handicap: m.profile.handicap, ghin: m.profile.ghin })}>Edit Hcp</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setEditMemberHcp({ uid: m.user_id, name: m.profile?.name, handicap: m.profile?.handicap, ghin: m.profile?.ghin })}>Edit Hcp</button>
                 {m.user_id !== session.user.id && <button className="btn btn-ghost btn-sm" onClick={() => toggleRole(m.user_id, m.role)}>{m.role === "admin" ? "→ Player" : "→ Commissioner"}</button>}
                 {m.user_id !== session.user.id && <button className="btn btn-danger" onClick={() => removeMember(m.user_id)}>Remove</button>}
               </div>
@@ -713,7 +716,8 @@ export default function AdminTab({
                   <button className="btn btn-ghost btn-sm">View ↗</button>
                 </a>
                 <button className="btn btn-danger" onClick={async () => {
-                  if (!window.confirm("Remove the current bylaws?")) return;
+                  if (!confirmRemoveBylaws) { setConfirmRemoveBylaws(true); setTimeout(() => setConfirmRemoveBylaws(false), 5000); return; }
+setConfirmRemoveBylaws(false);
                   const newCfg = { ...config, bylawsUrl: null, bylawsName: null };
                   await supabase.from("league_settings").upsert({ league_id: activeLeague.id, config: newCfg, payouts }, { onConflict: "league_id" });
                   setConfig(newCfg);
