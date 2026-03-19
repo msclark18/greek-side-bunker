@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./supabase.js";
 import { DEFAULT_CONFIG, FORMAT_LABELS } from "./constants/config.js";
 import { calcCourseHcp, calcStableford, isSeasonActive, ini } from "./utils/golf.js";
@@ -55,6 +55,7 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [dbError, setDbError] = useState(null);
+  const creatingLeague = useRef(false);
 
   // ── Post score state ──
   const [form, setForm] = useState({ courseId: "", score: "", attesterId: "", date: new Date().toISOString().split("T")[0] });
@@ -156,11 +157,20 @@ export default function App() {
   };
 
   const createLeague = async (newLeague) => {
+    if (creatingLeague.current) return;
     if (!newLeague.name.trim()) { setJoinMsg({ text: "League name is required.", ok: false }); return; }
-    const { data: league, error } = await supabase.from("leagues").insert({ name: newLeague.name.trim(), description: newLeague.description, owner_id: session.user.id }).select().single();
-    if (error) { setJoinMsg({ text: error.message, ok: false }); return; }
-    await supabase.from("league_members").upsert({ league_id: league.id, user_id: session.user.id, role: "admin" }, { onConflict: "league_id,user_id" });
-    loadLeagues();
+    creatingLeague.current = true;
+    try {
+      const { data: league, error } = await supabase.from("leagues").insert({ name: newLeague.name.trim(), description: newLeague.description, owner_id: session.user.id }).select().single();
+      if (error) { setJoinMsg({ text: error.message, ok: false }); return; }
+      const { error: memberError } = await supabase.from("league_members").insert({ league_id: league.id, user_id: session.user.id, role: "admin" });
+      if (memberError && memberError.code !== "23505") {
+        setJoinMsg({ text: memberError.message, ok: false }); return;
+      }
+      loadLeagues();
+    } finally {
+      creatingLeague.current = false;
+    }
   };
 
   const isValidGhin = (ghin) => /^\d{7,8}$/.test(String(ghin ?? ""));
@@ -503,7 +513,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Profile incomplete banner */}}
+        {/* Profile incomplete banner */}
         {isProfileIncomplete && dataLoaded && (
           <div className="alert-w" style={{ marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
             <span>⚠ Your profile is missing a handicap index or valid GHIN number — required by this league.</span>
