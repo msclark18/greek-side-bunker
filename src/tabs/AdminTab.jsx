@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { supabase } from "../supabase.js";
 import { DEFAULT_CONFIG, FORMAT_LABELS } from "../constants/config.js";
 import { calcCourseHcp } from "../utils/golf.js";
@@ -28,6 +28,7 @@ export default function AdminTab({
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmRemoveBylaws, setConfirmRemoveBylaws] = useState(false);
   const [linkModal, setLinkModal] = useState(false);
+  const editorRef = useRef(null);
   const [linkUrl, setLinkUrl] = useState("");
   const [savedRange, setSavedRange] = useState(null);
 
@@ -157,6 +158,7 @@ setConfirmClear(false);
       if (!res.ok) throw new Error(data.error ?? "Failed");
       setEmailMsg(`✓ Email sent to ${data.sent} member${data.sent !== 1 ? "s" : ""}!`);
       setEmailDraft({ subject: "", message: "" });
+      if (editorRef.current) editorRef.current.innerHTML = "";
       setEmailSelected(null);
     } catch (e) {
       setEmailMsg("✗ Failed to send: " + e.message);
@@ -688,9 +690,10 @@ setConfirmClear(false);
                     </button>
                   </div>
                   <div
+                    ref={editorRef}
                     contentEditable
                     suppressContentEditableWarning
-                    onInput={e => setEmailDraft(d => ({ ...d, message: e.currentTarget.innerHTML }))}
+                    onInput={() => setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }))}
                     style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: "0 0 8px 8px", padding: "10px 12px", color: "var(--cream)", fontFamily: "inherit", fontSize: ".9rem", minHeight: 140, outline: "none", lineHeight: 1.7 }}
                     data-placeholder="Type your message here..."
                   />
