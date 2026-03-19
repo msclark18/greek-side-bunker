@@ -48,6 +48,8 @@ input[type=password]{
   font-size:.92rem !important;
   width:100% !important;
   -webkit-appearance:none !important;
+  appearance:none !important;
+  appearance:none !important;
   -webkit-text-fill-color:var(--cream) !important;
   caret-color:var(--gold) !important;
 }
@@ -136,7 +138,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 @media(max-width:560px){.fgrid,.bg2{grid-template-columns:1fr}.bstat{min-width:50%;border-right:none;border-bottom:1px solid var(--navy-border)}}
 .fg{display:flex;flex-direction:column;gap:5px}
 .fg label{font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:var(--gold);font-family:var(--font-d);font-weight:400}
-input[type=text],input[type=email],input[type=number],input[type=date],input[type=url],textarea,select{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px 12px;color:var(--cream);font-family:var(--font-b);font-size:.92rem;transition:border-color .2s;width:100%;-webkit-appearance:none}
+input[type=text],input[type=email],input[type=number],input[type=date],input[type=url],textarea,select{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px 12px;color:var(--cream);font-family:var(--font-b);font-size:.92rem;transition:border-color .2s;width:100%;-webkit-appearance:none;appearance:none}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold)}
 select option{background:#161d2e;color:var(--cream)}
 textarea{resize:vertical;min-height:60px}
@@ -327,3 +329,26 @@ textarea{resize:vertical;min-height:60px}
   letter-spacing: .3px;
 }
 .menu-item:hover { background: rgba(255,255,255,.06); }
+
+/* ── Rich text editor placeholder ── */
+[contenteditable]:empty:before {
+  content: attr(data-placeholder);
+  color: var(--cream-dim);
+  pointer-events: none;
+}
+[contenteditable]:focus { border-color: var(--gold) !important; }
+
+/* ── Rich text email editor ── */
+[contenteditable]:empty:before {
+  content: attr(data-placeholder);
+  color: var(--cream-dim);
+  pointer-events: none;
+}
+[contenteditable]:focus { border-color: rgba(212,168,67,.4) !important; }
+
+/* Rich text editor placeholder */
+[contenteditable][data-placeholder]:empty:before {
+  content: attr(data-placeholder);
+  color: var(--cream-dim);
+  pointer-events: none;
+}

@@ -25,6 +25,7 @@ export default function AdminTab({
   const [emailSending, setEmailSending] = useState(false);
   const editorRef = useRef(null);
   const [activeFormats, setActiveFormats] = useState({ bold: false, italic: false, underline: false });
+  const [savedRange, setSavedRange] = useState(null);
   const [linkModal, setLinkModal] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
@@ -132,23 +133,22 @@ setConfirmClear(false);
   };
 
   const insertLink = () => {
-    const el = editorRef.current;
-    if (!el || !linkUrl) { setLinkModal(false); return; }
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const selected = el.value.substring(start, end) || linkUrl;
-    const before = el.value.substring(0, start);
-    const after = el.value.substring(end);
+    if (!linkUrl) { setLinkModal(false); return; }
     const url = linkUrl.startsWith("http") ? linkUrl : "https://" + linkUrl;
-    const newVal = before + `<a href="${url}">${selected}</a>` + after;
-    setEmailDraft(d => ({ ...d, message: newVal }));
+    editorRef.current?.focus();
+    if (savedRange) {
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+    }
+    document.execCommand("createLink", false, url);
+    setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
     setLinkModal(false);
     setLinkUrl("");
-    setTimeout(() => el.focus(), 0);
   };
 
   const sendLeagueEmail = async () => {
-    if (!emailDraft.subject.trim() || !emailDraft.message.trim()) return;
+    if (!emailDraft.subject.trim() || !(editorRef.current?.innerText?.trim() || emailDraft.message.replace(/<[^>]*>/g, "").trim())) return;
     const selected = emailSelected ?? members.map(m => m.user_id);
     const recipients = members
       .filter(m => selected.includes(m.user_id) && m.profile?.email)
@@ -670,29 +670,18 @@ setConfirmClear(false);
                   {/* Toolbar */}
                   <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderBottom: "none", borderRadius: "8px 8px 0 0", padding: "6px 8px" }}>
                     {[
-                      { key: "bold", label: "B", tag: "b", style: { fontWeight: 700 } },
-                      { key: "italic", label: "I", tag: "i", style: { fontStyle: "italic" } },
-                      { key: "underline", label: "U", tag: "u", style: { textDecoration: "underline" } },
-                    ].map(({ key, label, tag, style }) => (
+                      { key: "bold", label: "B", cmd: "bold", style: { fontWeight: 700 } },
+                      { key: "italic", label: "I", cmd: "italic", style: { fontStyle: "italic" } },
+                      { key: "underline", label: "U", cmd: "underline", style: { textDecoration: "underline" } },
+                    ].map(({ key, label, cmd, style }) => (
                       <button key={key} type="button"
                         onMouseDown={e => {
                           e.preventDefault();
-                          const el = editorRef.current;
-                          if (!el) return;
-                          const start = el.selectionStart;
-                          const end = el.selectionEnd;
-                          const selected = el.value.substring(start, end);
-                          const before = el.value.substring(0, start);
-                          const after = el.value.substring(end);
-                          const wrapped = `<${tag}>${selected}</${tag}>`;
-                          const newVal = before + wrapped + after;
-                          setEmailDraft(d => ({ ...d, message: newVal }));
-                          setActiveFormats(f => ({ ...f, [key]: !f[key] }));
-                          setTimeout(() => {
-                            el.selectionStart = start + `<${tag}>`.length;
-                            el.selectionEnd = start + `<${tag}>`.length + selected.length;
-                            el.focus();
-                          }, 0);
+                          editorRef.current?.focus();
+                          document.execCommand(cmd);
+                          const active = document.queryCommandState(cmd);
+                          setActiveFormats(f => ({ ...f, [key]: active }));
+                          setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
                         }}
                         style={{ background: activeFormats[key] ? "rgba(212,168,67,.2)" : "rgba(255,255,255,.06)", border: activeFormats[key] ? "1px solid rgba(212,168,67,.5)" : "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: activeFormats[key] ? "var(--gold)" : "var(--cream)", padding: "3px 10px", cursor: "pointer", fontSize: ".85rem", minWidth: 28, textAlign: "center", ...style }}>
                         {label}
@@ -702,16 +691,9 @@ setConfirmClear(false);
                     <button type="button"
                       onMouseDown={e => {
                         e.preventDefault();
-                        const el = editorRef.current;
-                        if (!el) return;
-                        const start = el.selectionStart;
-                        const end = el.selectionEnd;
-                        const selected = el.value.substring(start, end);
-                        const before = el.value.substring(0, start);
-                        const after = el.value.substring(end);
-                        const newVal = before + `<ul><li>${selected}</li></ul>` + after;
-                        setEmailDraft(d => ({ ...d, message: newVal }));
-                        setTimeout(() => el.focus(), 0);
+                        editorRef.current?.focus();
+                        document.execCommand("insertUnorderedList");
+                        setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
                       }}
                       style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 10px", cursor: "pointer", fontSize: ".82rem" }}>
                       • List
@@ -719,16 +701,9 @@ setConfirmClear(false);
                     <button type="button"
                       onMouseDown={e => {
                         e.preventDefault();
-                        const el = editorRef.current;
-                        if (!el) return;
-                        const start = el.selectionStart;
-                        const end = el.selectionEnd;
-                        const selected = el.value.substring(start, end);
-                        const before = el.value.substring(0, start);
-                        const after = el.value.substring(end);
-                        const newVal = before + `<ol><li>${selected}</li></ol>` + after;
-                        setEmailDraft(d => ({ ...d, message: newVal }));
-                        setTimeout(() => el.focus(), 0);
+                        editorRef.current?.focus();
+                        document.execCommand("insertOrderedList");
+                        setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
                       }}
                       style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 10px", cursor: "pointer", fontSize: ".82rem" }}>
                       1. List
@@ -737,6 +712,8 @@ setConfirmClear(false);
                     <button type="button"
                       onMouseDown={e => {
                         e.preventDefault();
+                        const sel = window.getSelection();
+                        if (sel?.rangeCount > 0) setSavedRange(sel.getRangeAt(0).cloneRange());
                         setLinkUrl("");
                         setLinkModal(true);
                       }}
@@ -744,14 +721,14 @@ setConfirmClear(false);
                       Link
                     </button>
                   </div>
-                  <textarea
+                  <div
                     ref={editorRef}
-                    rows={8}
-                    placeholder="Type your message here... Select text then click B, I, U to format."
-                    value={emailDraft.message}
-                    onChange={e => setEmailDraft(d => ({ ...d, message: e.target.value }))}
-                    style={{ resize: "vertical", fontFamily: "inherit", fontSize: ".9rem", borderRadius: "0 0 8px 8px" }}
-                  ></textarea>
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={e => setEmailDraft(d => ({ ...d, message: e.currentTarget.innerHTML }))}
+                    style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: "0 0 8px 8px", padding: "10px 12px", color: "var(--cream)", fontFamily: "inherit", fontSize: ".9rem", minHeight: 160, outline: "none", lineHeight: 1.7 }}
+                    data-placeholder="Type your message here..."
+                  />
                 </div>
 
 
@@ -800,7 +777,7 @@ setConfirmClear(false);
                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                   <button
                     className="btn btn-gold"
-                    disabled={emailSending || !emailDraft.subject.trim() || !emailDraft.message.trim() || selected.length === 0}
+                    disabled={emailSending || !emailDraft.subject.trim() || !(editorRef.current?.innerText?.trim() || emailDraft.message.replace(/<[^>]*>/g, "").trim()) || selected.length === 0}
                     onClick={sendLeagueEmail}
                   >
                     {emailSending ? "Sending..." : `📧 Send to ${selected.length} Member${selected.length !== 1 ? "s" : ""}`}
