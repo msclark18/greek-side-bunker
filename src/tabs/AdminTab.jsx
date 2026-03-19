@@ -655,15 +655,21 @@ setConfirmClear(false);
                   {/* Rich text toolbar */}
                   <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderBottom: "none", borderRadius: "8px 8px 0 0", padding: "6px 8px" }}>
                     {[
-                      { tag: "strong", label: "B", style: { fontWeight: 700 } },
-                      { tag: "em", label: "I", style: { fontStyle: "italic" } },
-                      { tag: "u", label: "U", style: { textDecoration: "underline" } },
-                    ].map(({ tag, label, style }) => (
-                      <button key={tag} type="button"
+                      { cmd: "bold", label: "B", style: { fontWeight: 700 } },
+                      { cmd: "italic", label: "I", style: { fontStyle: "italic" } },
+                      { cmd: "underline", label: "U", style: { textDecoration: "underline" } },
+                    ].map(({ cmd, label, style }) => (
+                      <button key={cmd} type="button"
                         onMouseDown={e => {
                           e.preventDefault();
                           editorRef.current?.focus();
-                          document.execCommand(tag === "strong" ? "bold" : tag === "em" ? "italic" : "underline");
+                          if (savedRange) {
+                            const sel = window.getSelection();
+                            sel.removeAllRanges();
+                            sel.addRange(savedRange);
+                          }
+                          document.execCommand(cmd);
+                          setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
                         }}
                         style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 10px", cursor: "pointer", fontSize: ".85rem", minWidth: 28, textAlign: "center", ...style }}>
                         {label}
@@ -679,7 +685,9 @@ setConfirmClear(false);
                         onMouseDown={e => {
                           e.preventDefault();
                           editorRef.current?.focus();
+                          if (savedRange) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(savedRange); }
                           document.execCommand("fontSize", false, size);
+                          setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
                         }}
                         style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 8px", cursor: "pointer", fontSize: label === "S" ? ".72rem" : label === "M" ? ".85rem" : "1rem", minWidth: 28, textAlign: "center" }}>
                         {label}
@@ -691,7 +699,9 @@ setConfirmClear(false);
                       onMouseDown={e => {
                         e.preventDefault();
                         editorRef.current?.focus();
+                        if (savedRange) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(savedRange); }
                         document.execCommand("insertUnorderedList");
+                        setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
                       }}
                       style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 10px", cursor: "pointer", fontSize: ".82rem" }}>
                       • List
@@ -700,7 +710,9 @@ setConfirmClear(false);
                       onMouseDown={e => {
                         e.preventDefault();
                         editorRef.current?.focus();
+                        if (savedRange) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(savedRange); }
                         document.execCommand("insertOrderedList");
+                        setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
                       }}
                       style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 10px", cursor: "pointer", fontSize: ".82rem" }}>
                       1. List
@@ -711,8 +723,6 @@ setConfirmClear(false);
                       <button type="button"
                         onMouseDown={e => {
                           e.preventDefault();
-                          const sel = window.getSelection();
-                          if (sel && sel.rangeCount > 0) setSavedRange(sel.getRangeAt(0).cloneRange());
                           setColorModal(c => !c);
                         }}
                         style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 10px", cursor: "pointer", fontSize: ".82rem" }}>
@@ -742,9 +752,6 @@ setConfirmClear(false);
                     <button type="button"
                       onMouseDown={e => {
                         e.preventDefault();
-                        editorRef.current?.focus();
-                        const sel = window.getSelection();
-                        if (sel && sel.rangeCount > 0) setSavedRange(sel.getRangeAt(0).cloneRange());
                         setLinkUrl("");
                         setLinkModal(true);
                       }}
@@ -757,6 +764,10 @@ setConfirmClear(false);
                     contentEditable
                     suppressContentEditableWarning
                     onInput={() => setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }))}
+                    onBlur={() => {
+                      const sel = window.getSelection();
+                      if (sel && sel.rangeCount > 0) setSavedRange(sel.getRangeAt(0).cloneRange());
+                    }}
                     style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: "0 0 8px 8px", padding: "10px 12px", color: "var(--cream)", fontFamily: "inherit", fontSize: ".9rem", minHeight: 140, outline: "none", lineHeight: 1.7 }}
                     data-placeholder="Type your message here..."
                   />
