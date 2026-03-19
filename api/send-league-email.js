@@ -43,11 +43,9 @@ export default async function handler(req, res) {
     return res.status(404).json({ error: "No member emails found" });
   }
 
-  // Format message with line breaks
-  const htmlMessage = message
-    .split("\n")
-    .map(line => `<p style="margin:0 0 10px;font-size:.95rem;color:#f0ead8;line-height:1.7;">${line || "&nbsp;"}</p>`)
-    .join("");
+  // Message is already HTML from rich text editor
+  // Wrap in a styled div to apply email-safe styling
+  const htmlMessage = `<div style="font-size:.95rem;color:#f0ead8;line-height:1.7;">${message}</div>`;
 
   // Send via Resend — one email to all recipients using bcc
   const emailRes = await fetch("https://api.resend.com/emails", {
@@ -81,7 +79,8 @@ export default async function handler(req, res) {
       <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#d4a843;margin-bottom:6px;">League Message</div>
       <div style="font-size:1rem;color:#faf9f6;font-weight:700;margin-bottom:16px;">${subject}</div>
       <div style="border-top:1px solid rgba(255,255,255,0.07);padding-top:16px;">
-        ${htmlMessage}
+        <style>a { color: #d4a843; }</style>
+      ${htmlMessage}
       </div>
     </div>
 

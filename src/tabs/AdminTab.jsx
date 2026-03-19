@@ -27,6 +27,9 @@ export default function AdminTab({
   const [emailSelected, setEmailSelected] = useState(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmRemoveBylaws, setConfirmRemoveBylaws] = useState(false);
+  const [linkModal, setLinkModal] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [savedRange, setSavedRange] = useState(null);
 
   // ── Config ──
   const saveConfig = async (newCfg) => {
@@ -128,7 +131,7 @@ setConfirmClear(false);
   };
 
   const sendLeagueEmail = async () => {
-    if (!emailDraft.subject.trim() || !emailDraft.message.trim()) return;
+    if (!emailDraft.subject.trim() || !emailDraft.message.replace(/<[^>]*>/g, "").trim()) return;
     const selected = emailSelected ?? members.map(m => m.user_id);
     const recipients = members
       .filter(m => selected.includes(m.user_id) && m.profile?.email)
@@ -646,12 +649,50 @@ setConfirmClear(false);
                 </div>
                 <div className="fg">
                   <label>Message</label>
-                  <textarea
-                    rows={6}
-                    placeholder="Type your message here..."
-                    value={emailDraft.message}
-                    onChange={e => setEmailDraft(d => ({ ...d, message: e.target.value }))}
-                    style={{ resize: "vertical", fontFamily: "inherit", fontSize: ".9rem" }}
+                  {/* Rich text toolbar */}
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderBottom: "none", borderRadius: "8px 8px 0 0", padding: "6px 8px" }}>
+                    {[
+                      { cmd: "bold", label: "B", style: { fontWeight: 700 } },
+                      { cmd: "italic", label: "I", style: { fontStyle: "italic" } },
+                      { cmd: "underline", label: "U", style: { textDecoration: "underline" } },
+                    ].map(({ cmd, label, style }) => (
+                      <button key={cmd} type="button"
+                        onMouseDown={e => { e.preventDefault(); document.execCommand(cmd); }}
+                        style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "2px 8px", cursor: "pointer", fontSize: ".82rem", ...style }}>
+                        {label}
+                      </button>
+                    ))}
+                    <div style={{ width: 1, background: "rgba(255,255,255,.1)", margin: "0 4px" }} />
+                    {[
+                      { cmd: "fontSize", val: "2", label: "S" },
+                      { cmd: "fontSize", val: "3", label: "M" },
+                      { cmd: "fontSize", val: "5", label: "L" },
+                    ].map(({ cmd, val, label }) => (
+                      <button key={val} type="button"
+                        onMouseDown={e => { e.preventDefault(); document.execCommand(cmd, false, val); }}
+                        style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "2px 8px", cursor: "pointer", fontSize: ".82rem" }}>
+                        {label}
+                      </button>
+                    ))}
+                    <div style={{ width: 1, background: "rgba(255,255,255,.1)", margin: "0 4px" }} />
+                    <button type="button"
+                      onMouseDown={e => {
+                        e.preventDefault();
+                        const sel = window.getSelection();
+                        if (sel && sel.rangeCount > 0) setSavedRange(sel.getRangeAt(0).cloneRange());
+                        setLinkUrl("");
+                        setLinkModal(true);
+                      }}
+                      style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--gold)", padding: "2px 8px", cursor: "pointer", fontSize: ".82rem" }}>
+                      Link
+                    </button>
+                  </div>
+                  <div
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={e => setEmailDraft(d => ({ ...d, message: e.currentTarget.innerHTML }))}
+                    style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: "0 0 8px 8px", padding: "10px 12px", color: "var(--cream)", fontFamily: "inherit", fontSize: ".9rem", minHeight: 140, outline: "none", lineHeight: 1.7 }}
+                    data-placeholder="Type your message here..."
                   />
                 </div>
                 <div className="fg">
@@ -681,7 +722,7 @@ setConfirmClear(false);
                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                   <button
                     className="btn btn-gold"
-                    disabled={emailSending || !emailDraft.subject.trim() || !emailDraft.message.trim() || selected.length === 0}
+                    disabled={emailSending || !emailDraft.subject.trim() || !emailDraft.message.replace(/<[^>]*>/g, "").trim() || selected.length === 0}
                     onClick={sendLeagueEmail}
                   >
                     {emailSending ? "Sending..." : `📧 Send to ${selected.length} Member${selected.length !== 1 ? "s" : ""}`}
