@@ -15,6 +15,7 @@ export default function LeaguePicker({
   const [profileModal, setProfileModal] = useState(false);
   const [profileDraft, setProfileDraft] = useState({});
   const [showCreateLeague, setShowCreateLeague] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [newLeague, setNewLeague] = useState({ name: "", description: "" });
 
@@ -24,9 +25,12 @@ export default function LeaguePicker({
   };
 
   const handleCreateLeague = async () => {
+    if (creating) return;
+    setCreating(true);
     await createLeague(newLeague);
     setShowCreateLeague(false);
     setNewLeague({ name: "", description: "" });
+    setCreating(false);
   };
 
   return (
@@ -140,7 +144,7 @@ export default function LeaguePicker({
                 </div>
               </div>
               <div style={{ display: "flex", gap: 10 }}>
-                <button className="btn btn-gold" onClick={handleCreateLeague} disabled={!newLeague.name.trim()}>Create</button>
+                <button className="btn btn-gold" onClick={handleCreateLeague} disabled={!newLeague.name.trim() || creating}>{creating ? "Creating..." : "Create"}</button>
                 <button className="btn btn-ghost" onClick={() => setShowCreateLeague(false)}>Cancel</button>
               </div>
             </div>
