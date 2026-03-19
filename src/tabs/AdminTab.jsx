@@ -664,6 +664,7 @@ setConfirmClear(false);
                     value={emailDraft.subject}
                     onChange={e => setEmailDraft(d => ({ ...d, subject: e.target.value }))}
                   />
+                </div>
                 <div className="fg">
                   <label>Message</label>
                   {/* Toolbar */}
