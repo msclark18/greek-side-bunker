@@ -753,7 +753,7 @@ setConfirmClear(false);
                   />
                 </div>
 
-                {/* Link modal */}
+
                 {linkModal && (
                   <div className="modal-bg" onClick={() => setLinkModal(false)}>
                     <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
@@ -772,10 +772,6 @@ setConfirmClear(false);
                     </div>
                   </div>
                 )}
-
-
-
-
                 <div className="fg">
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                     <label style={{ marginBottom: 0 }}>Recipients ({selected.length} of {members.length})</label>
