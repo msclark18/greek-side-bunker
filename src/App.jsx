@@ -481,6 +481,7 @@ export default function App() {
                   <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setShowMenu(false)} />
                   <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", background: "var(--navy-card)", border: "1px solid var(--gold-border)", borderRadius: 10, minWidth: 200, zIndex: 100, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,.6)", padding: "6px 0" }}>
                     <button className="menu-item" onClick={() => { setShowMenu(false); setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin }); setProfileModal(true); }}>Edit Profile</button>
+                    <div style={{ borderTop: "1px solid var(--navy-border)", margin: "6px 0" }} />
                     <button className="menu-item" onClick={() => { setShowMenu(false); setShowHelp(true); }}>Guide</button>
                     <div style={{ borderTop: "1px solid var(--navy-border)", margin: "6px 0" }} />
                     <button className="menu-item" onClick={() => { setShowMenu(false); setActiveLeague(null); }}>Switch League</button>
