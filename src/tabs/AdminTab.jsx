@@ -159,7 +159,7 @@ setConfirmClear(false);
       if (!res.ok) throw new Error(data.error ?? "Failed");
       setEmailMsg(`✓ Email sent to ${data.sent} member${data.sent !== 1 ? "s" : ""}!`);
       setEmailDraft({ subject: "", message: "" });
-      if (editorRef.current) editorRef.current.innerHTML = "";
+      const doc = editorRef.current?.contentDocument; if (doc) doc.body.innerHTML = "";
       setEmailSelected(null);
     } catch (e) {
       setEmailMsg("✗ Failed to send: " + e.message);
@@ -652,126 +652,77 @@ setConfirmClear(false);
                 </div>
                 <div className="fg">
                   <label>Message</label>
-                  {/* Rich text toolbar */}
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderBottom: "none", borderRadius: "8px 8px 0 0", padding: "6px 8px" }}>
-                    {[
-                      { cmd: "bold", label: "B", style: { fontWeight: 700 } },
-                      { cmd: "italic", label: "I", style: { fontStyle: "italic" } },
-                      { cmd: "underline", label: "U", style: { textDecoration: "underline" } },
-                    ].map(({ cmd, label, style }) => (
-                      <button key={cmd} type="button"
-                        onMouseDown={e => {
-                          e.preventDefault();
-                          editorRef.current?.focus();
-                          if (savedRange) {
-                            const sel = window.getSelection();
-                            sel.removeAllRanges();
-                            sel.addRange(savedRange);
-                          }
-                          document.execCommand(cmd);
-                          setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
-                        }}
-                        style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 10px", cursor: "pointer", fontSize: ".85rem", minWidth: 28, textAlign: "center", ...style }}>
-                        {label}
-                      </button>
-                    ))}
-                    <div style={{ width: 1, height: 20, background: "rgba(255,255,255,.15)", margin: "0 4px" }} />
-                    {[
-                      { size: "1", label: "S" },
-                      { size: "3", label: "M" },
-                      { size: "5", label: "L" },
-                    ].map(({ size, label }) => (
-                      <button key={size} type="button"
-                        onMouseDown={e => {
-                          e.preventDefault();
-                          editorRef.current?.focus();
-                          if (savedRange) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(savedRange); }
-                          document.execCommand("fontSize", false, size);
-                          setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
-                        }}
-                        style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 8px", cursor: "pointer", fontSize: label === "S" ? ".72rem" : label === "M" ? ".85rem" : "1rem", minWidth: 28, textAlign: "center" }}>
-                        {label}
-                      </button>
-                    ))}
-                    <div style={{ width: 1, height: 20, background: "rgba(255,255,255,.15)", margin: "0 4px" }} />
-                    <div style={{ width: 1, height: 20, background: "rgba(255,255,255,.15)", margin: "0 4px" }} />
-                    <button type="button"
-                      onMouseDown={e => {
-                        e.preventDefault();
-                        editorRef.current?.focus();
-                        if (savedRange) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(savedRange); }
-                        document.execCommand("insertUnorderedList");
-                        setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
-                      }}
-                      style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 10px", cursor: "pointer", fontSize: ".82rem" }}>
-                      • List
-                    </button>
-                    <button type="button"
-                      onMouseDown={e => {
-                        e.preventDefault();
-                        editorRef.current?.focus();
-                        if (savedRange) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(savedRange); }
-                        document.execCommand("insertOrderedList");
-                        setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
-                      }}
-                      style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 10px", cursor: "pointer", fontSize: ".82rem" }}>
-                      1. List
-                    </button>
-                    <div style={{ width: 1, height: 20, background: "rgba(255,255,255,.15)", margin: "0 4px" }} />
-                    {/* Color picker */}
-                    <div style={{ position: "relative" }}>
+                  <div style={{ border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, overflow: "hidden" }}>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", background: "rgba(255,255,255,.04)", borderBottom: "1px solid rgba(255,255,255,.1)", padding: "6px 8px" }}>
+                      {[
+                        { cmd: "bold", label: "B", style: { fontWeight: 700 } },
+                        { cmd: "italic", label: "I", style: { fontStyle: "italic" } },
+                        { cmd: "underline", label: "U", style: { textDecoration: "underline" } },
+                      ].map(({ cmd, label, style }) => (
+                        <button key={cmd} type="button"
+                          onClick={() => { const d = editorRef.current?.contentDocument; if (!d) return; d.execCommand(cmd); setEmailDraft(p => ({ ...p, message: d.body.innerHTML })); }}
+                          style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 10px", cursor: "pointer", fontSize: ".85rem", minWidth: 28, textAlign: "center", ...style }}>
+                          {label}
+                        </button>
+                      ))}
+                      <div style={{ width: 1, height: 20, background: "rgba(255,255,255,.15)", margin: "0 4px" }} />
+                      {[{ size: "1", label: "S" }, { size: "3", label: "M" }, { size: "5", label: "L" }].map(({ size, label }) => (
+                        <button key={size} type="button"
+                          onClick={() => { const d = editorRef.current?.contentDocument; if (!d) return; d.execCommand("fontSize", false, size); setEmailDraft(p => ({ ...p, message: d.body.innerHTML })); }}
+                          style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 8px", cursor: "pointer", fontSize: label === "S" ? ".72rem" : label === "M" ? ".85rem" : "1rem", minWidth: 28, textAlign: "center" }}>
+                          {label}
+                        </button>
+                      ))}
+                      <div style={{ width: 1, height: 20, background: "rgba(255,255,255,.15)", margin: "0 4px" }} />
                       <button type="button"
-                        onMouseDown={e => {
-                          e.preventDefault();
-                          setColorModal(c => !c);
-                        }}
+                        onClick={() => { const d = editorRef.current?.contentDocument; if (!d) return; d.execCommand("insertUnorderedList"); setEmailDraft(p => ({ ...p, message: d.body.innerHTML })); }}
                         style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 10px", cursor: "pointer", fontSize: ".82rem" }}>
-                        Color
+                        • List
                       </button>
-                      {colorModal && (
-                        <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, background: "var(--navy-card)", border: "1px solid var(--gold-border)", borderRadius: 8, padding: 8, zIndex: 50, display: "flex", gap: 6, flexWrap: "wrap", width: 150 }}>
-                          {["#f0ead8","#d4a843","#f0c96a","#4caf7d","#f09090","#89b4e8","#c8bfa8","#ffffff"].map(color => (
-                            <button key={color} type="button"
-                              onMouseDown={e => {
-                                e.preventDefault();
-                                editorRef.current?.focus();
-                                if (savedRange) {
-                                  const sel = window.getSelection();
-                                  sel.removeAllRanges();
-                                  sel.addRange(savedRange);
-                                }
-                                document.execCommand("foreColor", false, color);
-                                setColorModal(false);
-                              }}
-                              style={{ width: 24, height: 24, borderRadius: 4, background: color, border: color === "#ffffff" ? "1px solid rgba(255,255,255,.2)" : "none", cursor: "pointer" }} />
-                          ))}
-                        </div>
-                      )}
+                      <button type="button"
+                        onClick={() => { const d = editorRef.current?.contentDocument; if (!d) return; d.execCommand("insertOrderedList"); setEmailDraft(p => ({ ...p, message: d.body.innerHTML })); }}
+                        style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 10px", cursor: "pointer", fontSize: ".82rem" }}>
+                        1. List
+                      </button>
+                      <div style={{ width: 1, height: 20, background: "rgba(255,255,255,.15)", margin: "0 4px" }} />
+                      <div style={{ position: "relative" }}>
+                        <button type="button" onClick={() => setColorModal(c => !c)}
+                          style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 4, color: "var(--cream)", padding: "3px 10px", cursor: "pointer", fontSize: ".82rem" }}>
+                          Color
+                        </button>
+                        {colorModal && (
+                          <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, background: "var(--navy-card)", border: "1px solid var(--gold-border)", borderRadius: 8, padding: 8, zIndex: 50, display: "flex", gap: 6, flexWrap: "wrap", width: 150 }}>
+                            {["#f0ead8","#d4a843","#f0c96a","#4caf7d","#f09090","#89b4e8","#c8bfa8","#ffffff"].map(color => (
+                              <button key={color} type="button"
+                                onClick={() => { const d = editorRef.current?.contentDocument; if (!d) return; d.execCommand("foreColor", false, color); setEmailDraft(p => ({ ...p, message: d.body.innerHTML })); setColorModal(false); }}
+                                style={{ width: 24, height: 24, borderRadius: 4, background: color, border: color === "#ffffff" ? "1px solid rgba(255,255,255,.2)" : "none", cursor: "pointer" }} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ width: 1, height: 20, background: "rgba(255,255,255,.15)", margin: "0 4px" }} />
+                      <button type="button"
+                        onClick={() => { setLinkUrl(""); setLinkModal(true); }}
+                        style={{ background: "rgba(212,168,67,.1)", border: "1px solid rgba(212,168,67,.3)", borderRadius: 4, color: "var(--gold)", padding: "3px 10px", cursor: "pointer", fontSize: ".82rem" }}>
+                        Link
+                      </button>
                     </div>
-                    <div style={{ width: 1, height: 20, background: "rgba(255,255,255,.15)", margin: "0 4px" }} />
-                    <button type="button"
-                      onMouseDown={e => {
-                        e.preventDefault();
-                        setLinkUrl("");
-                        setLinkModal(true);
+                    <iframe
+                      ref={editorRef}
+                      title="email-editor"
+                      style={{ width: "100%", minHeight: 160, border: "none", background: "rgba(255,255,255,.04)", display: "block" }}
+                      onLoad={e => {
+                        const doc = e.target.contentDocument;
+                        doc.designMode = "on";
+                        doc.body.style.cssText = "margin:0;padding:10px 12px;color:#f0ead8;font-family:Georgia,serif;font-size:.9rem;line-height:1.7;min-height:140px;outline:none;background:transparent;";
+                        doc.addEventListener("input", () => {
+                          setEmailDraft(p => ({ ...p, message: doc.body.innerHTML }));
+                        });
                       }}
-                      style={{ background: "rgba(212,168,67,.1)", border: "1px solid rgba(212,168,67,.3)", borderRadius: 4, color: "var(--gold)", padding: "3px 10px", cursor: "pointer", fontSize: ".82rem" }}>
-                      Link
-                    </button>
+                    />
                   </div>
-                  <div
-                    ref={editorRef}
-                    contentEditable
-                    suppressContentEditableWarning
-                    onInput={() => setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }))}
-                    onBlur={() => {
-                      const sel = window.getSelection();
-                      if (sel && sel.rangeCount > 0) setSavedRange(sel.getRangeAt(0).cloneRange());
-                    }}
-                    style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: "0 0 8px 8px", padding: "10px 12px", color: "var(--cream)", fontFamily: "inherit", fontSize: ".9rem", minHeight: 140, outline: "none", lineHeight: 1.7 }}
-                    data-placeholder="Type your message here..."
-                  />
                 </div>
+
                 <div className="fg">
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                     <label style={{ marginBottom: 0 }}>Recipients ({selected.length} of {members.length})</label>
