@@ -43,9 +43,12 @@ export default async function handler(req, res) {
     return res.status(404).json({ error: "No member emails found" });
   }
 
-  // Message is already HTML from rich text editor
-  // Wrap in a styled div to apply email-safe styling
-  const htmlMessage = `<div style="font-size:.95rem;color:#f0ead8;line-height:1.7;">${message}</div>`;
+  // Message contains HTML tags from the editor toolbar
+  // Wrap in email-safe styles and handle line breaks
+  const htmlMessage = message
+    .split("\n")
+    .map(line => line.trim() ? `<p style="margin:0 0 10px;font-size:.95rem;color:#f0ead8;line-height:1.7;">${line}</p>` : "<br/>")
+    .join("");
 
   // Send via Resend — one email to all recipients using bcc
   const emailRes = await fetch("https://api.resend.com/emails", {
