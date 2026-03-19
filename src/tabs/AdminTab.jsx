@@ -750,7 +750,7 @@ setConfirmClear(false);
                     value={emailDraft.message}
                     onChange={e => setEmailDraft(d => ({ ...d, message: e.target.value }))}
                     style={{ resize: "vertical", fontFamily: "inherit", fontSize: ".9rem", borderRadius: "0 0 8px 8px" }}
-                  />
+                  ></textarea>
                 </div>
 
 
