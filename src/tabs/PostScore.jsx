@@ -38,7 +38,7 @@ export default function PostScore({
     : null;
 
   const isValidGhin = (ghin) => /^\d{7,8}$/.test(String(ghin ?? ""));
-  const missingProfile = config.useHandicap && (!profile?.handicap && profile?.handicap !== 0 || !isValidGhin(profile?.ghin));
+  const missingProfile = config.useHandicap && ((!profile?.handicap && profile?.handicap !== 0) || !isValidGhin(profile?.ghin));
 
   const canSubmit = () => {
     if (!isOpen || !form.courseId || !form.score) return false;
@@ -428,6 +428,65 @@ export default function PostScore({
           </div>
         </div>
       )}
+
+      {/* My Stats */}
+      {myRounds.length > 0 && (() => {
+        const approved = myRounds.filter(r => r.attest_status !== "rejected");
+        if (approved.length === 0) return null;
+        const avgGross = (approved.reduce((s, r) => s + r.gross, 0) / approved.length).toFixed(1);
+        const avgNet = config.useHandicap ? (approved.reduce((s, r) => s + r.net, 0) / approved.length).toFixed(1) : null;
+        const bestNet = config.useHandicap ? Math.min(...approved.map(r => r.net)) : null;
+        const regularCourses = courses.filter(c => !c.playoff_only);
+        return (
+          <div className="card">
+            <div className="card-hdr">📊 My Stats</div>
+            <div style={{ display: "flex", gap: 0, flexWrap: "wrap", background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 10, marginBottom: 18, overflow: "hidden" }}>
+              <div className="bstat">
+                <div className="bstat-n">{approved.length}</div>
+                <div className="bstat-l">Rounds</div>
+              </div>
+              <div className="bstat">
+                <div className="bstat-n">{avgGross}</div>
+                <div className="bstat-l">Avg Gross</div>
+              </div>
+              {avgNet && <div className="bstat">
+                <div className="bstat-n">{avgNet}</div>
+                <div className="bstat-l">Avg Net</div>
+              </div>}
+              {bestNet !== null && <div className="bstat">
+                <div className="bstat-n">{bestNet}</div>
+                <div className="bstat-l">Best Net</div>
+              </div>}
+            </div>
+            {regularCourses.length > 1 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ fontSize: ".66rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--cream-dim)", marginBottom: 4 }}>Per Course</div>
+                {regularCourses.map(c => {
+                  const cr = approved.filter(r => r.course_id === c.id);
+                  if (cr.length === 0) return (
+                    <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "rgba(255,255,255,.02)", border: "1px solid var(--navy-border)", borderRadius: 8, opacity: .5 }}>
+                      <span style={{ fontSize: ".85rem", color: "var(--cream-dim)" }}>{c.name}</span>
+                      <span style={{ fontSize: ".75rem", color: "#4b5563", fontStyle: "italic" }}>Not played</span>
+                    </div>
+                  );
+                  const cAvgG = (cr.reduce((s, r) => s + r.gross, 0) / cr.length).toFixed(1);
+                  const cAvgN = config.useHandicap ? (cr.reduce((s, r) => s + r.net, 0) / cr.length).toFixed(1) : null;
+                  return (
+                    <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8 }}>
+                      <span style={{ fontSize: ".85rem", color: "var(--cream)" }}>{c.name}</span>
+                      <div style={{ display: "flex", gap: 16, fontSize: ".8rem", color: "var(--cream-dim)" }}>
+                        <span>Gross <strong style={{ color: "var(--cream)" }}>{cAvgG}</strong></span>
+                        {cAvgN && <span>Net <strong style={{ color: "var(--gold)" }}>{cAvgN}</strong></span>}
+                        <span style={{ color: "#4b5563" }}>{cr.length}/{config.roundsPerCourse}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* My Rounds */}
       {myRounds.length > 0 && (

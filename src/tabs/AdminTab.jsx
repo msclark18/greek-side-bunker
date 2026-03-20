@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { supabase } from "../supabase.js";
 import { DEFAULT_CONFIG, FORMAT_LABELS } from "../constants/config.js";
-import { calcCourseHcp } from "../utils/golf.js";
+import { calcCourseHcp, calcStableford } from "../utils/golf.js";
 import Toggle from "../components/Toggle.jsx";
 import GhinLink from "../components/GhinLink.jsx";
 
@@ -34,6 +34,9 @@ export default function AdminTab({
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmRemoveBylaws, setConfirmRemoveBylaws] = useState(false);
   const [confirmDeleteRound, setConfirmDeleteRound] = useState(null);
+  const [editRound, setEditRound] = useState(null);
+  const [editRoundDraft, setEditRoundDraft] = useState({});
+  const [reminderSending, setReminderSending] = useState(false);
 
   // ── Config ──
   const saveConfig = async (newCfg) => {
@@ -111,6 +114,63 @@ export default function AdminTab({
   };
 
   // ── Rounds ──
+  const adminApproveRound = async (r) => {
+    await supabase.from("rounds").update({ attest_status: "approved", attest_at: new Date().toISOString() }).eq("id", r.id);
+    setRounds(p => p.map(x => x.id === r.id ? { ...x, attest_status: "approved" } : x));
+  };
+
+  const adminRejectRound = async (r) => {
+    await supabase.from("rounds").update({ attest_status: "rejected", attest_at: new Date().toISOString() }).eq("id", r.id);
+    setRounds(p => p.map(x => x.id === r.id ? { ...x, attest_status: "rejected" } : x));
+  };
+
+  const saveEditRound = async () => {
+    if (!editRound) return;
+    const gross = Number(editRoundDraft.gross);
+    if (!gross) return;
+    const net = gross - editRound.course_handicap;
+    const pts = config.scoringFormat === "stableford" ? calcStableford(gross, editRound.course_handicap, editRound.par) : null;
+    const update = { gross, net, date: editRoundDraft.date, ...(pts !== null ? { stableford_pts: pts } : {}) };
+    await supabase.from("rounds").update(update).eq("id", editRound.id);
+    setRounds(p => p.map(r => r.id === editRound.id ? { ...r, ...update } : r));
+    setEditRound(null);
+  };
+
+  const sendRoundReminders = async () => {
+    const regularCourses = courses.filter(c => !c.playoff_only);
+    const total = regularCourses.length * config.roundsPerCourse;
+    const incomplete = members.filter(m => {
+      const played = rounds.filter(r => r.player_id === m.user_id && regularCourses.some(c => c.id === r.course_id) && r.attest_status !== "rejected").length;
+      return played < total && m.profile?.email;
+    });
+    if (incomplete.length === 0) { setEmailMsg("✓ All members have completed their rounds!"); return; }
+    setReminderSending(true);
+    setEmailMsg("");
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
+      await Promise.all(incomplete.map(async m => {
+        const played = rounds.filter(r => r.player_id === m.user_id && regularCourses.some(c => c.id === r.course_id) && r.attest_status !== "rejected").length;
+        const remaining = total - played;
+        await fetch(`${apiUrl}/api/send-league-email`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            leagueId: activeLeague.id, leagueName: activeLeague.name,
+            subject: `Reminder: ${remaining} round${remaining !== 1 ? "s" : ""} still needed in ${activeLeague.name}`,
+            message: `Hi ${m.profile.name},<br><br>This is a friendly reminder that you have <strong>${remaining} round${remaining !== 1 ? "s" : ""} remaining</strong> to post in <strong>${activeLeague.name}</strong>.<br><br>You've completed <strong>${played} of ${total}</strong> required rounds. Make sure to post your remaining rounds before the season ends!<br><br><em>Courses: ${regularCourses.map(c => c.name).join(", ")}</em>`,
+            senderName: session?.user?.email,
+            recipients: [m.profile.email],
+          }),
+        });
+      }));
+      setEmailMsg(`✓ Reminders sent to ${incomplete.length} member${incomplete.length !== 1 ? "s" : ""}!`);
+    } catch (e) {
+      setEmailMsg("✗ Failed to send reminders: " + e.message);
+    }
+    setReminderSending(false);
+    setTimeout(() => setEmailMsg(""), 5000);
+  };
+
   const deleteRound = async (round) => {
     if (round.scorecard_url) {
       const storagePath = round.scorecard_url.split("/public/scorecards/")[1];
@@ -185,7 +245,7 @@ setConfirmClear(false);
       if (!res.ok) throw new Error(data.error ?? "Failed");
       setEmailMsg(`✓ Email sent to ${data.sent} member${data.sent !== 1 ? "s" : ""}!`);
       setEmailDraft({ subject: "", message: "" });
-      
+      if (editorRef.current) editorRef.current.innerHTML = "";
       setEmailSelected(null);
     } catch (e) {
       setEmailMsg("✗ Failed to send: " + e.message);
@@ -219,6 +279,41 @@ setConfirmClear(false);
 
   return (
     <>
+      {/* Edit Round Modal */}
+      {editRound && (
+        <div className="modal-bg" onClick={() => setEditRound(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Edit Round</div>
+            <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid var(--navy-border)", borderRadius: 8, padding: "12px 16px", marginBottom: 16, fontSize: ".85rem" }}>
+              <div style={{ color: "var(--cream)", fontWeight: 600, marginBottom: 2 }}>{editRound.player_name}</div>
+              <div style={{ color: "var(--cream-dim)" }}>{editRound.course_name}</div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
+              <div className="fg">
+                <label>Gross Score</label>
+                <input type="number" value={editRoundDraft.gross}
+                  onChange={e => setEditRoundDraft(d => ({ ...d, gross: e.target.value }))} autoFocus />
+              </div>
+              <div className="fg">
+                <label>Date</label>
+                <input type="date" value={editRoundDraft.date}
+                  onChange={e => setEditRoundDraft(d => ({ ...d, date: e.target.value }))} />
+              </div>
+              {config.useHandicap && editRoundDraft.gross && (
+                <div style={{ background: "var(--gold-dim)", border: "1px solid var(--gold-border)", borderRadius: 8, padding: "10px 14px", fontSize: ".85rem", color: "var(--cream-dim)" }}>
+                  Course Hcp: <strong style={{ color: "var(--cream)" }}>{editRound.course_handicap}</strong>
+                  {" · "}Est. Net: <strong style={{ color: "var(--gold)" }}>{Number(editRoundDraft.gross) - editRound.course_handicap}</strong>
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-gold" onClick={saveEditRound} disabled={!editRoundDraft.gross}>Save Changes</button>
+              <button className="btn btn-ghost" onClick={() => setEditRound(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Confirm Delete Round Modal */}
       {confirmDeleteRound && (
         <div className="modal-bg" onClick={() => setConfirmDeleteRound(null)}>
@@ -629,7 +724,16 @@ setConfirmClear(false);
                   <td>{attestBadge(r.attest_status)}</td>
                   <td style={{ fontSize: ".76rem", color: "var(--cream-dim)" }}>{r.date}</td>
                   <td>{r.scorecard_url ? <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}>📋</button> : <span style={{ color: "#4b5563" }}>—</span>}</td>
-                  <td><button className="btn btn-danger btn-sm" onClick={() => setConfirmDeleteRound(r)}>✕</button></td>
+                  <td>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "nowrap" }}>
+                      {config.attestRequired && r.attest_status === "pending" && (<>
+                        <button className="btn btn-gold btn-sm" title="Approve" onClick={() => adminApproveRound(r)}>✓</button>
+                        <button className="btn btn-danger btn-sm" title="Reject" onClick={() => adminRejectRound(r)}>✗</button>
+                      </>)}
+                      <button className="btn btn-ghost btn-sm" title="Edit" onClick={() => { setEditRound(r); setEditRoundDraft({ gross: String(r.gross), date: r.date }); }}>✎</button>
+                      <button className="btn btn-danger btn-sm" title="Delete" onClick={() => setConfirmDeleteRound(r)}>✕</button>
+                    </div>
+                  </td>
                 </tr>
               ))}</tbody>
             </table></div>
@@ -817,6 +921,14 @@ setConfirmClear(false);
                     onClick={sendLeagueEmail}
                   >
                     {emailSending ? "Sending..." : `📧 Send to ${selected.length} Member${selected.length !== 1 ? "s" : ""}`}
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    disabled={reminderSending || emailSending}
+                    onClick={sendRoundReminders}
+                    title="Send a round-completion reminder to all members who haven't finished their required rounds"
+                  >
+                    {reminderSending ? "Sending..." : "⏰ Send Round Reminders"}
                   </button>
                   {emailMsg && (
                     <span style={{ fontSize: ".85rem", color: emailMsg.startsWith("✓") ? "var(--green)" : "#f09090" }}>

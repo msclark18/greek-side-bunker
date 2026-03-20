@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 
   // Look up the round by token
   const lookupRes = await fetch(
-    `${process.env.SUPABASE_URL}/rest/v1/rounds?attest_token=eq.${token}&select=id,player_name,course_name,gross,net,attest_status`,
+    `${process.env.SUPABASE_URL}/rest/v1/rounds?attest_token=eq.${token}&select=id,player_id,player_name,course_name,gross,net,par,date,attest_status`,
     {
       headers: {
         apikey: process.env.SUPABASE_SERVICE_KEY,
@@ -61,6 +61,72 @@ export default async function handler(req, res) {
   }
 
   const appUrl = process.env.APP_URL ?? "";
+
+  // Notify the player — non-blocking, never fail the request over this
+  try {
+    const profileRes = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/profiles?id=eq.${round.player_id}&select=email`,
+      { headers: { apikey: process.env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}` } }
+    );
+    const profiles = await profileRes.json();
+    const playerEmail = profiles?.[0]?.email;
+    if (playerEmail && process.env.RESEND_API_KEY) {
+      const approved = action === "approved";
+      const netDisplay = round.net < round.par ? `${round.net} (${round.net - round.par})` : round.net === round.par ? `${round.net} (E)` : `${round.net} (+${round.net - round.par})`;
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+        body: JSON.stringify({
+          from: process.env.FROM_EMAIL,
+          to: playerEmail,
+          subject: approved ? `✅ Your round at ${round.course_name} was approved` : `❌ Your round at ${round.course_name} was rejected`,
+          html: `
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#0a0e1a;font-family:Georgia,serif;color:#f0ead8;">
+  <div style="max-width:520px;margin:0 auto;padding:32px 16px;">
+    <div style="text-align:center;margin-bottom:28px;">
+      <img src="https://ngesupnegqzoytucipii.supabase.co/storage/v1/object/public/assets/icon-512.png" width="56" height="56" alt="GSB" style="border-radius:50%;display:block;margin:0 auto 8px;" />
+      <div style="font-size:1.1rem;letter-spacing:3px;color:#faf9f6;font-weight:700;">GREEK SIDE BUNKER</div>
+    </div>
+    <div style="background:#161d2e;border:1px solid ${approved ? "rgba(76,175,125,0.35)" : "rgba(224,92,92,0.35)"};border-radius:12px;padding:28px;margin-bottom:20px;">
+      <div style="font-size:2rem;text-align:center;margin-bottom:12px;">${approved ? "✅" : "❌"}</div>
+      <div style="font-size:1.1rem;color:#faf9f6;margin-bottom:16px;text-align:center;">
+        Your round was <strong style="color:${approved ? "#6ee7a0" : "#f09090"}">${approved ? "approved" : "rejected"}</strong>
+      </div>
+      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:14px 16px;margin-bottom:${approved ? "0" : "16px"};">
+        <div style="margin-bottom:10px;">
+          <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Date</div>
+          <div style="color:#faf9f6;margin-top:2px;">${round.date}</div>
+        </div>
+        <div style="margin-bottom:14px;">
+          <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Course</div>
+          <div style="color:#faf9f6;margin-top:2px;">${round.course_name}</div>
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;">
+          <div style="text-align:center;background:rgba(212,168,67,0.1);border:1px solid rgba(212,168,67,0.25);border-radius:8px;padding:8px 18px;">
+            <div style="font-size:.58rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Gross</div>
+            <div style="font-size:1.6rem;font-family:Georgia,serif;color:#faf9f6;font-weight:700;">${round.gross}</div>
+          </div>
+          <div style="text-align:center;background:rgba(212,168,67,0.1);border:1px solid rgba(212,168,67,0.25);border-radius:8px;padding:8px 18px;">
+            <div style="font-size:.58rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Net</div>
+            <div style="font-size:1.6rem;font-family:Georgia,serif;color:#f0c96a;font-weight:700;">${netDisplay}</div>
+          </div>
+        </div>
+      </div>
+      ${!approved ? `<div style="font-size:.85rem;color:#c8bfa8;">You can resubmit your round from the app. If you have questions, contact your commissioner.</div>` : ""}
+    </div>
+    <div style="text-align:center;font-size:.72rem;color:#4b5563;">
+      <a href="${appUrl}" style="color:#d4a843;">Open League App</a>
+    </div>
+  </div>
+</body></html>`
+        }),
+      });
+    }
+  } catch (e) {
+    console.warn("Player notification failed (non-fatal):", e);
+  }
+
   return res.status(200).send(successPage(round, action, appUrl));
 }
 
