@@ -21,11 +21,11 @@ export default function PostScore({
 
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  const myApprovedOnCourse = (cid) =>
+  const myActiveOnCourse = (cid) =>
     rounds.filter(r =>
       r.player_id === session?.user.id &&
       r.course_id === cid &&
-      (config.attestRequired ? r.attest_status === "approved" : true)
+      r.attest_status !== "rejected"
     );
 
   const selectedCourse = courses.find(c => c.id === Number(form.courseId));
@@ -48,7 +48,7 @@ export default function PostScore({
     const today = new Date();
     const localToday = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
     if (form.date > localToday) return false;
-    return myApprovedOnCourse(Number(form.courseId)).length < config.roundsPerCourse;
+    return myActiveOnCourse(Number(form.courseId)).length < config.roundsPerCourse;
   };
 
   const netEl = (net, par) => config.useHandicap
@@ -267,7 +267,7 @@ export default function PostScore({
             <select value={form.courseId} onChange={setF("courseId")}>
               <option value="">Select course…</option>
               {courses.filter(c => !c.playoff_only).map(c => {
-                const played = myApprovedOnCourse(c.id).length;
+                const played = myActiveOnCourse(c.id).length;
                 const full = played >= config.roundsPerCourse;
                 return (
                   <option key={c.id} value={c.id} disabled={full}>
