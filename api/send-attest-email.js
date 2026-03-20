@@ -99,15 +99,13 @@ export default async function handler(req, res) {
 
       <!-- Score details -->
       <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:16px;margin-bottom:20px;">
-        <div style="display:flex;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-          <div>
-            <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Course</div>
-            <div style="font-size:1rem;color:#faf9f6;margin-top:2px;">${courseName}</div>
-          </div>
-          <div>
-            <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Date</div>
-            <div style="font-size:1rem;color:#faf9f6;margin-top:2px;">${date}</div>
-          </div>
+        <div style="margin-bottom:14px;">
+          <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Date</div>
+          <div style="font-size:1rem;color:#faf9f6;margin-top:2px;">${date}</div>
+        </div>
+        <div style="margin-bottom:14px;">
+          <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Course</div>
+          <div style="font-size:1rem;color:#faf9f6;margin-top:2px;">${courseName}</div>
         </div>
         <div style="display:flex;gap:20px;flex-wrap:wrap;">
           <div style="text-align:center;background:rgba(212,168,67,0.1);border:1px solid rgba(212,168,67,0.25);border-radius:8px;padding:10px 20px;">
@@ -184,15 +182,13 @@ export default async function handler(req, res) {
         <strong>${playerName}</strong> submitted a round at <strong>${courseName}</strong> and listed <strong>${attesterName}</strong> as their playing partner.
       </div>
       <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:16px;margin-bottom:16px;">
-        <div style="display:flex;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-          <div>
-            <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Course</div>
-            <div style="font-size:1rem;color:#faf9f6;margin-top:2px;">${courseName}</div>
-          </div>
-          <div>
-            <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Date</div>
-            <div style="font-size:1rem;color:#faf9f6;margin-top:2px;">${date}</div>
-          </div>
+        <div style="margin-bottom:14px;">
+          <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Date</div>
+          <div style="font-size:1rem;color:#faf9f6;margin-top:2px;">${date}</div>
+        </div>
+        <div style="margin-bottom:14px;">
+          <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Course</div>
+          <div style="font-size:1rem;color:#faf9f6;margin-top:2px;">${courseName}</div>
         </div>
         <div style="display:flex;gap:20px;flex-wrap:wrap;">
           <div style="text-align:center;background:rgba(212,168,67,0.1);border:1px solid rgba(212,168,67,0.25);border-radius:8px;padding:10px 20px;">
