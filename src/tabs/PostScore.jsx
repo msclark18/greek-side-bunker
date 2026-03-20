@@ -45,6 +45,7 @@ export default function PostScore({
     if (config.attestRequired && !form.attesterId) return false;
     if (config.scorecardRequired && !cardFile) return false;
     if (missingProfile) return false;
+    if (form.date > new Date().toISOString().split("T")[0]) return false;
     return myApprovedOnCourse(Number(form.courseId)).length < config.roundsPerCourse;
   };
 
@@ -294,7 +295,7 @@ export default function PostScore({
 
           <div className="fg">
             <label>Date Played</label>
-            <input type="date" value={form.date} onChange={setF("date")} />
+            <input type="date" value={form.date} onChange={setF("date")} max={new Date().toISOString().split("T")[0]} />
           </div>
         </div>
 

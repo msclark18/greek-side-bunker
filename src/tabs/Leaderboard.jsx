@@ -55,11 +55,7 @@ export default function Leaderboard({
     <>
       {/* Rounds detail modal */}
       {roundsModal && (() => {
-        const sortedRounds = [...roundsModal.pr].sort((a, b) => new Date(b.date) - new Date(a.date));
-        const courseCompletion = regularCourses.map(c => {
-          const played = roundsModal.pr.filter(r => r.course_id === c.id).length;
-          return { ...c, played, done: played >= config.roundsPerCourse };
-        });
+        const playerRounds = [...roundsModal.pr].sort((a, b) => new Date(b.date) - new Date(a.date));
         return (
           <div className="modal-bg" onClick={() => setRoundsModal(null)}>
             <div className="modal" style={{ maxWidth: 660 }} onClick={e => e.stopPropagation()}>
@@ -67,34 +63,32 @@ export default function Leaderboard({
                 <div className="modal-title" style={{ marginBottom: 0 }}>{roundsModal.name}'s Rounds</div>
                 <button className="btn btn-ghost btn-sm" onClick={() => setRoundsModal(null)}>Close</button>
               </div>
-
-              {/* Course completion summary */}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 18 }}>
-                {courseCompletion.map(c => (
-                  <span key={c.id} className={`dpill ${c.done ? "done" : c.played > 0 ? "part" : "none"}`}>
-                    {c.done ? "✓" : `${c.played}/${config.roundsPerCourse}`} {c.name}
-                  </span>
-                ))}
-              </div>
-
-              {sortedRounds.length === 0 ? (
-                <div className="empty">No approved rounds yet.</div>
-              ) : (
-                <div className="tw">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Course</th>
-                        <th>Date</th>
-                        <th>Gross</th>
-                        {config.useHandicap && <th>Crs Hcp</th>}
-                        {config.useHandicap && <th>Net</th>}
-                        {config.scoringFormat === "stableford" && <th>Pts</th>}
-                        {config.attestRequired && <th>Status</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sortedRounds.map(r => (
+              <div className="tw">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Course</th>
+                      <th>Date</th>
+                      <th>Gross</th>
+                      {config.useHandicap && <th>Crs Hcp</th>}
+                      {config.useHandicap && <th>Net</th>}
+                      {config.scoringFormat === "stableford" && <th>Pts</th>}
+                      {config.attestRequired && <th>Status</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {regularCourses.map(c => {
+                      const courseRounds = playerRounds.filter(r => r.course_id === c.id);
+                      if (courseRounds.length === 0) {
+                        return (
+                          <tr key={`inc-${c.id}`} style={{ opacity: 0.45 }}>
+                            <td style={{ fontSize: ".82rem", color: "var(--cream-dim)" }}>{c.name}</td>
+                            <td colSpan={2 + (config.useHandicap ? 2 : 0) + (config.scoringFormat === "stableford" ? 1 : 0) + (config.attestRequired ? 1 : 0)}
+                              style={{ fontSize: ".78rem", color: "#4b5563", fontStyle: "italic" }}>Incomplete</td>
+                          </tr>
+                        );
+                      }
+                      return courseRounds.map(r => (
                         <tr key={r.id}>
                           <td style={{ fontSize: ".82rem", color: "var(--cream-dim)" }}>{r.course_name}</td>
                           <td style={{ fontSize: ".76rem", color: "var(--cream-dim)", whiteSpace: "nowrap" }}>{r.date}</td>
@@ -104,11 +98,11 @@ export default function Leaderboard({
                           {config.scoringFormat === "stableford" && <td style={{ color: "var(--purple)", fontFamily: "var(--font-d)" }}>{r.stableford_pts ?? "-"}</td>}
                           {config.attestRequired && <td><span className={`ab ${r.attest_status}`}>{r.attest_status === "approved" ? "✓" : r.attest_status === "rejected" ? "✗" : "⏳"}</span></td>}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      ));
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         );
