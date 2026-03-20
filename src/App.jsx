@@ -431,7 +431,7 @@ export default function App() {
           <div className="modal" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>
             <div className="modal-title">👥 League Players</div>
             <div className="player-card-grid">
-              {members.map(m => {
+              {members.filter(m => m.profile).map(m => {
                 const courseHcps = courses.map(c => ({ ...c, ch: calcCourseHcp(m.profile.handicap ?? 0, c.slope, c.par, c.rating, config) }));
                 return (
                   <div key={m.user_id} className="player-card">

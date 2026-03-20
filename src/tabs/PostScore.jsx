@@ -176,7 +176,7 @@ export default function PostScore({
 
   const deleteScorecard = async (round) => {
     const path = round.scorecard_url?.split("/scorecards/")[1];
-    if (path) await supabase.storage.from("scorecards").remove([`scorecards/${path}`]);
+    if (path) await supabase.storage.from("scorecards").remove([path]);
     await supabase.from("rounds").update({ scorecard_url: null }).eq("id", round.id);
     setRounds(p => p.map(r => r.id === round.id ? { ...r, scorecard_url: null } : r));
   };
@@ -280,7 +280,7 @@ export default function PostScore({
               <label>Attested By</label>
               <select value={form.attesterId} onChange={setF("attesterId")}>
                 <option value="">Select playing partner…</option>
-                {members.filter(m => m.user_id !== session.user.id).map(m => (
+                {members.filter(m => m.user_id !== session.user.id && m.profile).map(m => (
                   <option key={m.user_id} value={m.user_id}>{m.profile.name}</option>
                 ))}
               </select>

@@ -32,6 +32,7 @@ export default function AdminTab({
   const [emailSelected, setEmailSelected] = useState(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmRemoveBylaws, setConfirmRemoveBylaws] = useState(false);
+  const [confirmDeleteRound, setConfirmDeleteRound] = useState(null);
 
   // ── Config ──
   const saveConfig = async (newCfg) => {
@@ -210,6 +211,27 @@ setConfirmClear(false);
 
   return (
     <>
+      {/* Confirm Delete Round Modal */}
+      {confirmDeleteRound && (
+        <div className="modal-bg" onClick={() => setConfirmDeleteRound(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Delete Round?</div>
+            <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 16, lineHeight: 1.7 }}>
+              Are you sure you want to permanently delete this round? This cannot be undone.
+            </p>
+            <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid var(--navy-border)", borderRadius: 8, padding: "12px 16px", marginBottom: 20, fontSize: ".85rem" }}>
+              <div style={{ color: "var(--cream)", fontWeight: 600, marginBottom: 4 }}>{confirmDeleteRound.player_name}</div>
+              <div style={{ color: "var(--cream-dim)" }}>{confirmDeleteRound.course_name} · {confirmDeleteRound.date}</div>
+              <div style={{ color: "var(--cream-dim)", marginTop: 2 }}>Gross {confirmDeleteRound.gross}{config.useHandicap ? ` · Net ${confirmDeleteRound.net}` : ""}</div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-danger" onClick={() => { deleteRound(confirmDeleteRound.id); setConfirmDeleteRound(null); }}>Delete</button>
+              <button className="btn btn-ghost" onClick={() => setConfirmDeleteRound(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Edit Hcp Modal */}
       {editMemberHcp && (
         <div className="modal-bg" onClick={() => setEditMemberHcp(null)}>
@@ -599,7 +621,7 @@ setConfirmClear(false);
                   <td>{attestBadge(r.attest_status)}</td>
                   <td style={{ fontSize: ".76rem", color: "var(--cream-dim)" }}>{r.date}</td>
                   <td>{r.scorecard_url ? <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}>📋</button> : <span style={{ color: "#4b5563" }}>—</span>}</td>
-                  <td><button className="btn btn-danger btn-sm" onClick={() => deleteRound(r.id)}>✕</button></td>
+                  <td><button className="btn btn-danger btn-sm" onClick={() => setConfirmDeleteRound(r)}>✕</button></td>
                 </tr>
               ))}</tbody>
             </table></div>

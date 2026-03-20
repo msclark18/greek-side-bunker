@@ -15,6 +15,7 @@ export default function Leaderboard({
   const [leaderTab, setLeaderTab] = useState("overall");
   const [scoresFilterPlayer, setScoresFilterPlayer] = useState("all");
   const [scoresFilterCourse, setScoresFilterCourse] = useState("all");
+  const [roundsModal, setRoundsModal] = useState(null);
 
   const rankEl = (i) => (
     <td className={`rc ${i === 0 ? "r1" : i === 1 ? "r2" : i === 2 ? "r3" : ""}`}>
@@ -48,8 +49,71 @@ export default function Leaderboard({
     ...(config.bylawsUrl ? [["rules", "📋 Rules"]] : []),
   ];
 
+  const regularCourses = courses.filter(c => !c.playoff_only);
+
   return (
     <>
+      {/* Rounds detail modal */}
+      {roundsModal && (() => {
+        const sortedRounds = [...roundsModal.pr].sort((a, b) => new Date(b.date) - new Date(a.date));
+        const courseCompletion = regularCourses.map(c => {
+          const played = roundsModal.pr.filter(r => r.course_id === c.id).length;
+          return { ...c, played, done: played >= config.roundsPerCourse };
+        });
+        return (
+          <div className="modal-bg" onClick={() => setRoundsModal(null)}>
+            <div className="modal" style={{ maxWidth: 660 }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div className="modal-title" style={{ marginBottom: 0 }}>{roundsModal.name}'s Rounds</div>
+                <button className="btn btn-ghost btn-sm" onClick={() => setRoundsModal(null)}>Close</button>
+              </div>
+
+              {/* Course completion summary */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 18 }}>
+                {courseCompletion.map(c => (
+                  <span key={c.id} className={`dpill ${c.done ? "done" : c.played > 0 ? "part" : "none"}`}>
+                    {c.done ? "✓" : `${c.played}/${config.roundsPerCourse}`} {c.name}
+                  </span>
+                ))}
+              </div>
+
+              {sortedRounds.length === 0 ? (
+                <div className="empty">No approved rounds yet.</div>
+              ) : (
+                <div className="tw">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Course</th>
+                        <th>Date</th>
+                        <th>Gross</th>
+                        {config.useHandicap && <th>Crs Hcp</th>}
+                        {config.useHandicap && <th>Net</th>}
+                        {config.scoringFormat === "stableford" && <th>Pts</th>}
+                        {config.attestRequired && <th>Status</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedRounds.map(r => (
+                        <tr key={r.id}>
+                          <td style={{ fontSize: ".82rem", color: "var(--cream-dim)" }}>{r.course_name}</td>
+                          <td style={{ fontSize: ".76rem", color: "var(--cream-dim)", whiteSpace: "nowrap" }}>{r.date}</td>
+                          <td><span style={{ fontFamily: "var(--font-d)" }}>{r.gross}</span></td>
+                          {config.useHandicap && <td><span className="hcp-badge" style={{ fontSize: ".66rem" }}>{r.course_handicap}</span></td>}
+                          {config.useHandicap && <td>{netEl(r.net, r.par)}</td>}
+                          {config.scoringFormat === "stableford" && <td style={{ color: "var(--purple)", fontFamily: "var(--font-d)" }}>{r.stableford_pts ?? "-"}</td>}
+                          {config.attestRequired && <td><span className={`ab ${r.attest_status}`}>{r.attest_status === "approved" ? "✓" : r.attest_status === "rejected" ? "✗" : "⏳"}</span></td>}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Sub-tabs */}
       <div className="stabs-wrap">
         <div className="stabs">
@@ -85,7 +149,7 @@ export default function Leaderboard({
                     {p.ghin && <GhinLink ghin={p.ghin} style={{ marginLeft: 7, fontSize: ".62rem" }} />}
                   </td>
                   {config.useHandicap && <td style={{ color: "var(--cream-dim)" }}>{p.handicap}</td>}
-                  <td>{p.totalRounds}</td>
+                  <td><button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: ".8rem" }} onClick={() => setRoundsModal(p)}>{p.totalRounds}</button></td>
                   {config.scoresToCount && <td style={{ color: "var(--gold-light)", fontSize: ".8rem" }}>{p.countingRounds}</td>}
                   <td><span className="sb" style={{ color: "var(--gold-light)" }}>{p.label}</span></td>
                 </tr>
@@ -106,7 +170,7 @@ export default function Leaderboard({
                 <tr key={p.id}>
                   {rankEl(i)}
                   <td><span className="pname">{p.name}</span></td>
-                  <td>{p.totalRounds}</td>
+                  <td><button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: ".8rem" }} onClick={() => setRoundsModal(p)}>{p.totalRounds}</button></td>
                   <td><span className="sb" style={{ color: "var(--gold-light)" }}>{p.avg.toFixed(1)}</span></td>
                   <td style={{ color: "var(--cream-dim)" }}>{Math.min(...p.pr.map(r => r.gross))}</td>
                 </tr>
@@ -217,7 +281,7 @@ export default function Leaderboard({
 
       {/* ── Scores ── */}
       {leaderTab === "scores" && (() => {
-        const allRounds = rounds.filter(r => !config.hideScores || myHasSubmitted || r.player_id === session?.user.id);
+        const allRounds = scored.filter(r => !config.hideScores || myHasSubmitted || r.player_id === session?.user.id);
         const filteredRounds = allRounds
           .filter(r => scoresFilterPlayer === "all" || r.player_id === scoresFilterPlayer)
           .filter(r => scoresFilterCourse === "all" || r.course_id === Number(scoresFilterCourse))
@@ -306,7 +370,7 @@ export default function Leaderboard({
         else if (seedingBy === "stableford") seedList = [...overallLB].slice(0, n).map(p => ({ ...p, seedStat: p.label, seedLabel: "pts" }));
         else seedList = [...overallLB].slice(0, n).map(p => ({ ...p, seedStat: p.label, seedLabel: "avg net" }));
 
-        const numRounds = Math.log2(n);
+        const numRounds = Math.round(Math.log2(Math.max(n, 2)));
         const roundLabels = { 1: ["Final"], 2: ["Semifinals", "Final"], 3: ["Quarterfinals", "Semifinals", "Final"], 4: ["Round of 16", "Quarterfinals", "Semifinals", "Final"] }[numRounds] ?? Array.from({ length: numRounds }, (_, i) => `Round ${i + 1}`);
 
         const initMatchups = () => {
@@ -396,7 +460,7 @@ export default function Leaderboard({
                   const fullPool = fee * members.length;
                   const collectedPool = fee * paidCount;
                   const cats = config.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
-                  const positionPayout = [cats.find(c => c.id === "champion"), cats.find(c => c.id === "runnerUp"), cats.find(c => c.id === "thirdPlace"), cats.find(c => c.id === "thirdPlace")];
+                  const positionPayout = [cats.find(c => c.id === "champion"), cats.find(c => c.id === "runnerUp"), cats.find(c => c.id === "thirdPlace"), null];
                   return seedList.map((p, i) => {
                     const memberRecord = members.find(m => m.user_id === p.id);
                     const isPaid = memberRecord?.paid ?? false;
