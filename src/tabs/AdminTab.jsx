@@ -28,6 +28,7 @@ export default function AdminTab({
   const [savedRange, setSavedRange] = useState(null);
   const [linkModal, setLinkModal] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
+  const [linkText, setLinkText] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
   const [emailSelected, setEmailSelected] = useState(null);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -110,9 +111,13 @@ export default function AdminTab({
   };
 
   // ── Rounds ──
-  const deleteRound = async (id) => {
-    await supabase.from("rounds").delete().eq("id", id);
-    setRounds(p => p.filter(r => r.id !== id));
+  const deleteRound = async (round) => {
+    if (round.scorecard_url) {
+      const storagePath = round.scorecard_url.split("/public/scorecards/")[1];
+      if (storagePath) await supabase.storage.from("scorecards").remove([storagePath]);
+    }
+    await supabase.from("rounds").delete().eq("id", round.id);
+    setRounds(p => p.filter(r => r.id !== round.id));
   };
 
   const clearAllRounds = async () => {
@@ -136,16 +141,19 @@ setConfirmClear(false);
   const insertLink = () => {
     if (!linkUrl) { setLinkModal(false); return; }
     const url = linkUrl.startsWith("http") ? linkUrl : "https://" + linkUrl;
+    const display = linkText.trim() || url;
     editorRef.current?.focus();
     if (savedRange) {
       const sel = window.getSelection();
       sel.removeAllRanges();
       sel.addRange(savedRange);
     }
-    document.execCommand("createLink", false, url);
+    const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    document.execCommand("insertHTML", false, `<a href="${esc(url)}" style="color:var(--gold)">${esc(display)}</a>`);
     setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
     setLinkModal(false);
     setLinkUrl("");
+    setLinkText("");
   };
 
   const sendLeagueEmail = async () => {
@@ -225,7 +233,7 @@ setConfirmClear(false);
               <div style={{ color: "var(--cream-dim)", marginTop: 2 }}>Gross {confirmDeleteRound.gross}{config.useHandicap ? ` · Net ${confirmDeleteRound.net}` : ""}</div>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <button className="btn btn-danger" onClick={() => { deleteRound(confirmDeleteRound.id); setConfirmDeleteRound(null); }}>Delete</button>
+              <button className="btn btn-danger" onClick={() => { deleteRound(confirmDeleteRound); setConfirmDeleteRound(null); }}>Delete</button>
               <button className="btn btn-ghost" onClick={() => setConfirmDeleteRound(null)}>Cancel</button>
             </div>
           </div>
@@ -701,7 +709,6 @@ setConfirmClear(false);
                       <button key={key} type="button"
                         onMouseDown={e => {
                           e.preventDefault();
-                          editorRef.current?.focus();
                           document.execCommand(cmd);
                           const active = document.queryCommandState(cmd);
                           setActiveFormats(f => ({ ...f, [key]: active }));
@@ -715,7 +722,6 @@ setConfirmClear(false);
                     <button type="button"
                       onMouseDown={e => {
                         e.preventDefault();
-                        editorRef.current?.focus();
                         document.execCommand("insertUnorderedList");
                         setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
                       }}
@@ -725,7 +731,6 @@ setConfirmClear(false);
                     <button type="button"
                       onMouseDown={e => {
                         e.preventDefault();
-                        editorRef.current?.focus();
                         document.execCommand("insertOrderedList");
                         setEmailDraft(d => ({ ...d, message: editorRef.current?.innerHTML ?? "" }));
                       }}
@@ -737,7 +742,10 @@ setConfirmClear(false);
                       onMouseDown={e => {
                         e.preventDefault();
                         const sel = window.getSelection();
-                        if (sel?.rangeCount > 0) setSavedRange(sel.getRangeAt(0).cloneRange());
+                        if (sel?.rangeCount > 0) {
+                          setSavedRange(sel.getRangeAt(0).cloneRange());
+                          setLinkText(sel.toString());
+                        }
                         setLinkUrl("");
                         setLinkModal(true);
                       }}
@@ -749,7 +757,7 @@ setConfirmClear(false);
                     ref={editorRef}
                     contentEditable
                     suppressContentEditableWarning
-                    style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: "0 0 8px 8px", padding: "10px 12px", color: "var(--cream)", fontFamily: "inherit", fontSize: ".9rem", minHeight: 160, outline: "none", lineHeight: 1.7 }}
+                    style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: "0 0 8px 8px", padding: "10px 12px 10px 28px", color: "var(--cream)", fontFamily: "inherit", fontSize: ".9rem", minHeight: 160, outline: "none", lineHeight: 1.7, overflowWrap: "break-word", wordBreak: "break-word" }}
                     data-placeholder="Type your message here..."
                   />
                 </div>
@@ -759,12 +767,17 @@ setConfirmClear(false);
                   <div className="modal-bg" onClick={() => setLinkModal(false)}>
                     <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
                       <div className="modal-title">Insert Link</div>
+                      <div className="fg" style={{ marginBottom: 12 }}>
+                        <label>Display Text</label>
+                        <input type="text" placeholder="Click here" value={linkText}
+                          onChange={e => setLinkText(e.target.value)}
+                          autoFocus />
+                      </div>
                       <div className="fg" style={{ marginBottom: 16 }}>
                         <label>URL</label>
                         <input type="url" placeholder="https://..." value={linkUrl}
                           onChange={e => setLinkUrl(e.target.value)}
-                          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); insertLink(); } }}
-                          autoFocus />
+                          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); insertLink(); } }} />
                       </div>
                       <div style={{ display: "flex", gap: 10 }}>
                         <button className="btn btn-gold" onClick={insertLink}>Insert</button>

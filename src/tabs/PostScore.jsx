@@ -45,7 +45,9 @@ export default function PostScore({
     if (config.attestRequired && !form.attesterId) return false;
     if (config.scorecardRequired && !cardFile) return false;
     if (missingProfile) return false;
-    if (form.date > new Date().toISOString().split("T")[0]) return false;
+    const today = new Date();
+    const localToday = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    if (form.date > localToday) return false;
     return myApprovedOnCourse(Number(form.courseId)).length < config.roundsPerCourse;
   };
 
