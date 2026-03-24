@@ -5,12 +5,21 @@ export const DEFAULT_CONFIG = {
   googleSheetUrl: null,
   scoresToCount: null,
   entryFee: null,
+  exclusiveWinners: false,
+  exclusivePrecedence: "gross",
+  // Scramble teams
+  scrambleTeamSize: 2,
+  scrambleTeams: [],
+  teamsFixed: true,
+  // Tournament mode
+  tournamentMode: false,
+  tournamentRounds: [],
   payoutCategories: [
-    { id: "champion",      label: "Champion (Playoff Winner)",     pct: 50 },
-    { id: "runnerUp",      label: "Runner-Up",                      pct: 20 },
-    { id: "thirdPlace",    label: "Third Place",                    pct: 10 },
-    { id: "regularNet",    label: "Regular Season NET Winner",      pct: 10 },
-    { id: "regularGross",  label: "Regular Season GROSS Winner",    pct: 10 },
+    { id: "champion",      label: "Champion",                       pct: 50, mapTo: "playoff", mapRank: 1 },
+    { id: "runnerUp",      label: "Runner-Up",                      pct: 20, mapTo: "playoff", mapRank: 2 },
+    { id: "thirdPlace",    label: "Third Place",                    pct: 10, mapTo: "playoff", mapRank: 3 },
+    { id: "regularNet",    label: "Regular Season — Net 1st",       pct: 10, mapTo: "net",     mapRank: 1 },
+    { id: "regularGross",  label: "Regular Season — Gross 1st",     pct: 10, mapTo: "gross",   mapRank: 1 },
   ],
   playoffEnabled: true,
   playoffFormat: "match",
@@ -26,4 +35,6 @@ export const FORMAT_LABELS = {
   stableford: "Stableford",
   match: "Match Play",
   scramble: "Scramble",
+  texas_scramble: "Texas Scramble",
+  best_ball: "Best Ball",
 };

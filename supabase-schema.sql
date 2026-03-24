@@ -214,6 +214,24 @@ DO $$ BEGIN
 END $$;
 
 
+-- ── LEAGUE INVITES ───────────────────────────────────────────
+-- Stores pending invitations for users who don't have an account yet.
+-- Consumed by consumePendingInvites() in App.jsx on first login.
+CREATE TABLE IF NOT EXISTS league_invites (
+  id          bigserial PRIMARY KEY,
+  league_id   bigint NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+  email       text NOT NULL,
+  name        text NOT NULL,
+  handicap    numeric(4,1),
+  ghin        text,
+  invited_by  text,                          -- email of the commissioner who sent it
+  invited_at  timestamptz DEFAULT now(),
+  UNIQUE (league_id, email)
+);
+
+CREATE INDEX IF NOT EXISTS idx_league_invites_email ON league_invites(email);
+
+
 -- ── INDEXES ──────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_league_members_league_id ON league_members(league_id);
 CREATE INDEX IF NOT EXISTS idx_league_members_user_id ON league_members(user_id);

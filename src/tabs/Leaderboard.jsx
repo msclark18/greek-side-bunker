@@ -2,6 +2,7 @@ import { useState } from "react";
 import { supabase } from "../supabase.js";
 import { calcCourseHcp, toPM, pmCls, ini } from "../utils/golf.js";
 import { DEFAULT_CONFIG, FORMAT_LABELS } from "../constants/config.js";
+import { resolveCatMap, resolvePayouts } from "../utils/payouts.js";
 import GhinLink from "../components/GhinLink.jsx";
 import { Trophy, Star, ClipboardList, FileText, BarChart2, Flag, DollarSign, MapPin, AlertTriangle, Clock } from "lucide-react";
 
@@ -9,11 +10,12 @@ export default function Leaderboard({
   config, courses, members, rounds, payouts,
   session, activeLeague, isAdmin,
   overallLB, grossLB, courseLB, bestNetLB, bestGrossLB,
+  teamLB, tournamentRoundLB, tournamentOverallLB,
   completionData, scored, myHasSubmitted,
   selCourse, setSelCourse,
   setConfig, setViewCardModal,
 }) {
-  const [leaderTab, setLeaderTab] = useState("overall");
+  const [leaderTab, setLeaderTab] = useState(() => config.tournamentMode ? "tournament" : "overall");
   const [scoresFilterPlayer, setScoresFilterPlayer] = useState("all");
   const [scoresFilterCourse, setScoresFilterCourse] = useState("all");
   const [roundsModal, setRoundsModal] = useState(null);
@@ -38,14 +40,52 @@ export default function Leaderboard({
     setConfig(newCfg);
   };
 
+  const TEAM_FORMATS = ["scramble", "texas_scramble", "best_ball"];
+  const hasTeams = (config.scrambleTeams ?? []).length > 0 && TEAM_FORMATS.includes(config.scoringFormat);
+
+  // Resolve player display names — team.players may store UUIDs (from seed/API) or name strings
+  const memberNameById = Object.fromEntries(members.filter(m => m.profile).map(m => [m.user_id, m.profile.name]));
+  const rpn = (nameOrId) => memberNameById[nameOrId] ?? nameOrId;
+
+  // Team-derived standings for scramble (non-tournament) leagues
+  const teamGrossLB = hasTeams
+    ? (config.scrambleTeams ?? []).map(team => {
+        const tr = scored.filter(r => String(r.team_id) === String(team.id));
+        if (!tr.length) return null;
+        const avg = tr.reduce((s, r) => s + r.gross, 0) / tr.length;
+        return { ...team, avg, label: avg.toFixed(1), totalRounds: tr.length, pr: tr };
+      }).filter(Boolean).sort((a, b) => a.avg - b.avg)
+    : [];
+  const teamBestNetLB = hasTeams
+    ? (config.scrambleTeams ?? []).map(team => {
+        const tr = scored.filter(r => String(r.team_id) === String(team.id) && r.net != null);
+        if (!tr.length) return null;
+        const best = tr.reduce((m, r) => r.net < m.net ? r : m);
+        return { ...team, best };
+      }).filter(Boolean).sort((a, b) => a.best.net - b.best.net)
+    : [];
+  const teamBestGrossLB = hasTeams
+    ? (config.scrambleTeams ?? []).map(team => {
+        const tr = scored.filter(r => String(r.team_id) === String(team.id));
+        if (!tr.length) return null;
+        const best = tr.reduce((m, r) => r.gross < m.gross ? r : m);
+        return { ...team, best };
+      }).filter(Boolean).sort((a, b) => a.best.gross - b.best.gross)
+    : [];
+
+  const [tournamentRoundTab, setTournamentRoundTab] = useState("overall");
+  const [tournamentNetGross, setTournamentNetGross] = useState("net");
+  const [roundNetGross, setRoundNetGross] = useState("net");
+
   const subTabs = [
-    ["overall", config.scoringFormat === "stableford" ? <><Star size={13} />Stableford</> : <><Trophy size={13} />Net Standings</>],
-    ["gross", "Gross"],
-    ...(config.scoringFormat !== "match" && config.scoringFormat !== "scramble" ? [["course", <><MapPin size={13} />By Course</>]] : []),
-    ["best", <><Star size={13} />Best Rounds</>],
+    ...(config.tournamentMode ? [["tournament", <><Trophy size={13} />Tournament</>]] : []),
+    ...(!config.tournamentMode ? [["overall", config.scoringFormat === "stableford" ? <><Star size={13} />Stableford</> : hasTeams ? <><Flag size={13} />Net Standings</> : <><Trophy size={13} />Net Standings</>]] : []),
+    ...(!config.tournamentMode ? [["gross", "Gross"]] : []),
+    ...(!config.tournamentMode && config.scoringFormat !== "match" && !TEAM_FORMATS.includes(config.scoringFormat) ? [["course", <><MapPin size={13} />By Course</>]] : []),
+    ...(!config.tournamentMode ? [["best", <><Star size={13} />Best Rounds</>]] : []),
     ["completion", <><ClipboardList size={13} />Completion</>],
     ["scores", <><FileText size={13} />Scores</>],
-    ...(config.playoffEnabled !== false ? [["playoffs", <><Trophy size={13} />Playoffs</>]] : []),
+    ...(config.playoffEnabled !== false && !config.tournamentMode ? [["playoffs", <><Trophy size={13} />Playoffs</>]] : []),
     ["payouts", <><DollarSign size={13} />Payouts</>],
     ...(config.bylawsUrl ? [["rules", <><FileText size={13} />Rules</>]] : []),
   ];
@@ -132,29 +172,46 @@ export default function Leaderboard({
           </div>
           {config.hideScores && !myHasSubmitted && <div className="alert-w" style={{ marginBottom: 14 }}>Scores are hidden until you post your own round.</div>}
           {config.scoresToCount && <div className="alert-w" style={{ marginBottom: 14 }}><BarChart2 size={14} /> Best {config.scoresToCount} of all submitted scores count toward standings.</div>}
-          {overallLB.length === 0 ? <div className="empty">No {config.attestRequired ? "approved " : ""}rounds yet.</div> : (
-            <div className="tw"><table>
-              <thead><tr>
-                <th>#</th><th>Player</th>
-                {config.useHandicap && <th>Hcp</th>}
-                <th>Rounds</th>
-                {config.scoresToCount && <th>Counting</th>}
-                <th>{config.scoringFormat === "stableford" ? "Total Pts" : "Avg Net"}</th>
-              </tr></thead>
-              <tbody>{overallLB.map((p, i) => (
-                <tr key={p.id}>
-                  {rankEl(i)}
-                  <td>
-                    <span className="pname">{p.name}</span>
-                    {p.ghin && <GhinLink ghin={p.ghin} style={{ marginLeft: 7, fontSize: ".62rem" }} />}
-                  </td>
-                  {config.useHandicap && <td style={{ color: "var(--cream-dim)" }}>{p.handicap}</td>}
-                  <td><button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: ".8rem" }} onClick={() => setRoundsModal(p)}>{p.totalRounds}</button></td>
-                  {config.scoresToCount && <td style={{ color: "var(--gold-light)", fontSize: ".8rem" }}>{p.countingRounds}</td>}
-                  <td><span className="sb" style={{ color: "var(--gold-light)" }}>{p.label}</span></td>
-                </tr>
-              ))}</tbody>
-            </table></div>
+          {hasTeams ? (
+            teamLB.length === 0 ? <div className="empty">No {config.attestRequired ? "approved " : ""}rounds yet.</div> : (
+              <div className="tw"><table>
+                <thead><tr><th>#</th><th>Team</th><th>Players</th><th>Rounds</th><th>Avg Net</th></tr></thead>
+                <tbody>{teamLB.map((t, i) => (
+                  <tr key={t.id}>
+                    {rankEl(i)}
+                    <td style={{ fontWeight: 600, color: "var(--cream)" }}>{t.name}</td>
+                    <td style={{ fontSize: ".8rem", color: "var(--cream-dim)" }}>{(t.players ?? []).map(rpn).join(", ") || "—"}</td>
+                    <td style={{ color: "var(--cream-dim)" }}>{t.totalRounds}</td>
+                    <td><span className="sb" style={{ color: "var(--gold-light)" }}>{t.label}</span></td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+            )
+          ) : (
+            overallLB.length === 0 ? <div className="empty">No {config.attestRequired ? "approved " : ""}rounds yet.</div> : (
+              <div className="tw"><table>
+                <thead><tr>
+                  <th>#</th><th>Player</th>
+                  {config.useHandicap && <th>Hcp</th>}
+                  <th>Rounds</th>
+                  {config.scoresToCount && <th>Counting</th>}
+                  <th>{config.scoringFormat === "stableford" ? "Total Pts" : "Avg Net"}</th>
+                </tr></thead>
+                <tbody>{overallLB.map((p, i) => (
+                  <tr key={p.id}>
+                    {rankEl(i)}
+                    <td>
+                      <span className="pname">{p.name}</span>
+                      {p.ghin && <GhinLink ghin={p.ghin} style={{ marginLeft: 7, fontSize: ".62rem" }} />}
+                    </td>
+                    {config.useHandicap && <td style={{ color: "var(--cream-dim)" }}>{p.handicap}</td>}
+                    <td><button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: ".8rem" }} onClick={() => setRoundsModal(p)}>{p.totalRounds}</button></td>
+                    {config.scoresToCount && <td style={{ color: "var(--gold-light)", fontSize: ".8rem" }}>{p.countingRounds}</td>}
+                    <td><span className="sb" style={{ color: "var(--gold-light)" }}>{p.label}</span></td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+            )
           )}
         </div>
       )}
@@ -163,19 +220,37 @@ export default function Leaderboard({
       {leaderTab === "gross" && (
         <div className="card">
           <div className="card-hdr">Gross Standings</div>
-          {grossLB.length === 0 ? <div className="empty">No rounds yet.</div> : (
-            <div className="tw"><table>
-              <thead><tr><th>#</th><th>Player</th><th>Rounds</th><th>Avg Gross</th><th>Best</th></tr></thead>
-              <tbody>{grossLB.map((p, i) => (
-                <tr key={p.id}>
-                  {rankEl(i)}
-                  <td><span className="pname">{p.name}</span></td>
-                  <td><button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: ".8rem" }} onClick={() => setRoundsModal(p)}>{p.totalRounds}</button></td>
-                  <td><span className="sb" style={{ color: "var(--gold-light)" }}>{p.avg.toFixed(1)}</span></td>
-                  <td style={{ color: "var(--cream-dim)" }}>{Math.min(...p.pr.map(r => r.gross))}</td>
-                </tr>
-              ))}</tbody>
-            </table></div>
+          {hasTeams ? (
+            teamGrossLB.length === 0 ? <div className="empty">No rounds yet.</div> : (
+              <div className="tw"><table>
+                <thead><tr><th>#</th><th>Team</th><th>Players</th><th>Rounds</th><th>Avg Gross</th><th>Best</th></tr></thead>
+                <tbody>{teamGrossLB.map((t, i) => (
+                  <tr key={t.id}>
+                    {rankEl(i)}
+                    <td style={{ fontWeight: 600, color: "var(--cream)" }}>{t.name}</td>
+                    <td style={{ fontSize: ".8rem", color: "var(--cream-dim)" }}>{(t.players ?? []).map(rpn).join(", ") || "—"}</td>
+                    <td style={{ color: "var(--cream-dim)" }}>{t.totalRounds}</td>
+                    <td><span className="sb" style={{ color: "var(--gold-light)" }}>{t.avg.toFixed(1)}</span></td>
+                    <td style={{ color: "var(--cream-dim)" }}>{Math.min(...t.pr.map(r => r.gross))}</td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+            )
+          ) : (
+            grossLB.length === 0 ? <div className="empty">No rounds yet.</div> : (
+              <div className="tw"><table>
+                <thead><tr><th>#</th><th>Player</th><th>Rounds</th><th>Avg Gross</th><th>Best</th></tr></thead>
+                <tbody>{grossLB.map((p, i) => (
+                  <tr key={p.id}>
+                    {rankEl(i)}
+                    <td><span className="pname">{p.name}</span></td>
+                    <td><button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: ".8rem" }} onClick={() => setRoundsModal(p)}>{p.totalRounds}</button></td>
+                    <td><span className="sb" style={{ color: "var(--gold-light)" }}>{p.avg.toFixed(1)}</span></td>
+                    <td style={{ color: "var(--cream-dim)" }}>{Math.min(...p.pr.map(r => r.gross))}</td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+            )
           )}
         </div>
       )}
@@ -223,24 +298,46 @@ export default function Leaderboard({
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
             <div>
               <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "var(--gold)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 8 }}>Best Net</div>
-              {bestNetLB.length === 0 ? <div className="empty" style={{ padding: "16px 0" }}>—</div> : (
-                <div className="tw"><table>
-                  <thead><tr><th>#</th><th>Player</th><th>Course</th><th>Net</th></tr></thead>
-                  <tbody>{bestNetLB.map((p, i) => (
-                    <tr key={p.id}>{rankEl(i)}<td><span className="pname" style={{ fontSize: ".84rem" }}>{p.name}</span></td><td style={{ fontSize: ".74rem", color: "var(--cream-dim)" }}>{p.best.course_name}</td><td>{netEl(p.best.net, p.best.par)}</td></tr>
-                  ))}</tbody>
-                </table></div>
+              {hasTeams ? (
+                teamBestNetLB.length === 0 ? <div className="empty" style={{ padding: "16px 0" }}>—</div> : (
+                  <div className="tw"><table>
+                    <thead><tr><th>#</th><th>Team</th><th>Course</th><th>Net</th></tr></thead>
+                    <tbody>{teamBestNetLB.map((t, i) => (
+                      <tr key={t.id}>{rankEl(i)}<td style={{ fontWeight: 600, color: "var(--cream)", fontSize: ".84rem" }}>{t.name}</td><td style={{ fontSize: ".74rem", color: "var(--cream-dim)" }}>{t.best.course_name}</td><td>{netEl(t.best.net, t.best.par)}</td></tr>
+                    ))}</tbody>
+                  </table></div>
+                )
+              ) : (
+                bestNetLB.length === 0 ? <div className="empty" style={{ padding: "16px 0" }}>—</div> : (
+                  <div className="tw"><table>
+                    <thead><tr><th>#</th><th>Player</th><th>Course</th><th>Net</th></tr></thead>
+                    <tbody>{bestNetLB.map((p, i) => (
+                      <tr key={p.id}>{rankEl(i)}<td><span className="pname" style={{ fontSize: ".84rem" }}>{p.name}</span></td><td style={{ fontSize: ".74rem", color: "var(--cream-dim)" }}>{p.best.course_name}</td><td>{netEl(p.best.net, p.best.par)}</td></tr>
+                    ))}</tbody>
+                  </table></div>
+                )
               )}
             </div>
             <div>
               <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "var(--blue)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 8 }}>Best Gross</div>
-              {bestGrossLB.length === 0 ? <div className="empty" style={{ padding: "16px 0" }}>—</div> : (
-                <div className="tw"><table>
-                  <thead><tr><th>#</th><th>Player</th><th>Course</th><th>Gross</th></tr></thead>
-                  <tbody>{bestGrossLB.map((p, i) => (
-                    <tr key={p.id}>{rankEl(i)}<td><span className="pname" style={{ fontSize: ".84rem" }}>{p.name}</span></td><td style={{ fontSize: ".74rem", color: "var(--cream-dim)" }}>{p.best.course_name}</td><td><span className="sb" style={{ color: "var(--blue)" }}>{p.best.gross}</span></td></tr>
-                  ))}</tbody>
-                </table></div>
+              {hasTeams ? (
+                teamBestGrossLB.length === 0 ? <div className="empty" style={{ padding: "16px 0" }}>—</div> : (
+                  <div className="tw"><table>
+                    <thead><tr><th>#</th><th>Team</th><th>Course</th><th>Gross</th></tr></thead>
+                    <tbody>{teamBestGrossLB.map((t, i) => (
+                      <tr key={t.id}>{rankEl(i)}<td style={{ fontWeight: 600, color: "var(--cream)", fontSize: ".84rem" }}>{t.name}</td><td style={{ fontSize: ".74rem", color: "var(--cream-dim)" }}>{t.best.course_name}</td><td><span className="sb" style={{ color: "var(--blue)" }}>{t.best.gross}</span></td></tr>
+                    ))}</tbody>
+                  </table></div>
+                )
+              ) : (
+                bestGrossLB.length === 0 ? <div className="empty" style={{ padding: "16px 0" }}>—</div> : (
+                  <div className="tw"><table>
+                    <thead><tr><th>#</th><th>Player</th><th>Course</th><th>Gross</th></tr></thead>
+                    <tbody>{bestGrossLB.map((p, i) => (
+                      <tr key={p.id}>{rankEl(i)}<td><span className="pname" style={{ fontSize: ".84rem" }}>{p.name}</span></td><td style={{ fontSize: ".74rem", color: "var(--cream-dim)" }}>{p.best.course_name}</td><td><span className="sb" style={{ color: "var(--blue)" }}>{p.best.gross}</span></td></tr>
+                    ))}</tbody>
+                  </table></div>
+                )
               )}
             </div>
           </div>
@@ -248,47 +345,173 @@ export default function Leaderboard({
       )}
 
       {/* ── Completion ── */}
-      {leaderTab === "completion" && (
-        <div className="card">
-          <div className="card-hdr"><ClipboardList size={15} />Completion Tracker</div>
-          <p className="note" style={{ marginBottom: 14 }}>
-            {config.roundsPerCourse} {config.attestRequired ? "approved " : ""}round{config.roundsPerCourse > 1 ? "s" : ""} per course · {courses.length * config.roundsPerCourse} total required.
-          </p>
-          {completionData.map(p => (
-            <div key={p.id} style={{ marginBottom: 18 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div className="avatar">{p.avatar_url ? <img src={p.avatar_url} alt="" /> : ini(p.name)}</div>
-                  <span className="pname">{p.name}</span>
-                  {config.useHandicap && <span className="hcp-badge">Hcp {p.handicap ?? "-"}</span>}
+      {leaderTab === "completion" && (() => {
+        if (config.tournamentMode) {
+          const tRounds = config.tournamentRounds ?? [];
+          const teams = config.scrambleTeams ?? [];
+          const allTeamFmt = tRounds.length > 0 && tRounds.every(tr => TEAM_FORMATS.includes(tr.format));
+          const isTeamTournament = allTeamFmt && teams.length > 0;
+
+          const entries = isTeamTournament
+            ? teams.map(team => {
+                const cs = tRounds.map(tr => {
+                  const played = scored.some(r => r.team_id === team.id && r.tournament_round_id === tr.id);
+                  return { id: tr.id, name: tr.label, done: played };
+                });
+                const done = cs.filter(c => c.done).length;
+                return { id: team.id, name: team.name, sub: (team.players ?? []).map(rpn).join(", "), cs, done, total: tRounds.length, pct: tRounds.length ? Math.round(done / tRounds.length * 100) : 0 };
+              })
+            : completionData.map(p => {
+                const cs = tRounds.map(tr => {
+                  const played = scored.some(r => r.player_id === p.id && r.tournament_round_id === tr.id);
+                  return { id: tr.id, name: tr.label, done: played };
+                });
+                const done = cs.filter(c => c.done).length;
+                return { ...p, cs, done, total: tRounds.length, pct: tRounds.length ? Math.round(done / tRounds.length * 100) : 0 };
+              });
+
+          return (
+            <div className="card">
+              <div className="card-hdr"><ClipboardList size={15} />Tournament Completion</div>
+              <p className="note" style={{ marginBottom: 14 }}>
+                {tRounds.length} tournament round{tRounds.length !== 1 ? "s" : ""} · {isTeamTournament ? "per team" : "per player"}.
+              </p>
+              {entries.map(e => (
+                <div key={e.id} style={{ marginBottom: 18 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {!isTeamTournament && <div className="avatar">{e.avatar_url ? <img src={e.avatar_url} alt="" /> : ini(e.name)}</div>}
+                      <div>
+                        <span className="pname">{e.name}</span>
+                        {e.sub && <div style={{ fontSize: ".72rem", color: "var(--cream-dim)" }}>{e.sub}</div>}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: ".78rem", color: e.pct === 100 ? "var(--green)" : "var(--cream-dim)" }}>
+                      {e.done}/{e.total}{e.pct === 100 ? " ✓" : ""}
+                    </span>
+                  </div>
+                  <div className="pw" style={{ marginBottom: 5 }}><div className="pf" style={{ width: `${e.pct}%` }} /></div>
+                  <div>
+                    {e.cs.map(c => (
+                      <span key={c.id} className={`dpill ${c.done ? "done" : "none"}`}>
+                        {c.done ? "✓" : "—"} {c.name}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <span style={{ fontSize: ".78rem", color: p.pct === 100 ? "var(--green)" : "var(--cream-dim)" }}>
-                  {p.done}/{p.total}{p.pct === 100 ? " ✓" : ""}
-                </span>
-              </div>
-              <div className="pw" style={{ marginBottom: 5 }}><div className="pf" style={{ width: `${p.pct}%` }} /></div>
-              <div>
-                {p.cs.map(c => (
-                  <span key={c.id} className={`dpill ${c.done ? "done" : c.played > 0 ? "part" : "none"}`}>
-                    {c.done ? "✓" : `${c.played}/${config.roundsPerCourse}`} {c.name}
-                  </span>
-                ))}
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          );
+        }
+
+        // Season completion — team or individual
+        if (hasTeams) {
+          const teams = config.scrambleTeams ?? [];
+          const rpc = config.roundsPerCourse ?? 1;
+          const teamCompletion = teams.map(team => {
+            const cs = regularCourses.map(c => {
+              const tr = scored.filter(r => String(r.team_id) === String(team.id) && r.course_id === c.id);
+              const played = tr.length;
+              const done = played >= rpc;
+              return { id: c.id, name: c.name, played, done };
+            });
+            const done = cs.filter(c => c.done).length;
+            const total = regularCourses.length;
+            const pct = total ? Math.round(done / total * 100) : 0;
+            return { ...team, cs, done, total, pct };
+          });
+          return (
+            <div className="card">
+              <div className="card-hdr"><ClipboardList size={15} />Completion Tracker</div>
+              <p className="note" style={{ marginBottom: 14 }}>
+                {rpc} {config.attestRequired ? "approved " : ""}round{rpc > 1 ? "s" : ""} per course · {regularCourses.length * rpc} total required · per team.
+              </p>
+              {teamCompletion.map(t => (
+                <div key={t.id} style={{ marginBottom: 18 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <div>
+                      <span className="pname">{t.name}</span>
+                      <div style={{ fontSize: ".72rem", color: "var(--cream-dim)" }}>{(t.players ?? []).map(rpn).join(", ")}</div>
+                    </div>
+                    <span style={{ fontSize: ".78rem", color: t.pct === 100 ? "var(--green)" : "var(--cream-dim)" }}>
+                      {t.done}/{t.total}{t.pct === 100 ? " ✓" : ""}
+                    </span>
+                  </div>
+                  <div className="pw" style={{ marginBottom: 5 }}><div className="pf" style={{ width: `${t.pct}%` }} /></div>
+                  <div>
+                    {t.cs.map(c => (
+                      <span key={c.id} className={`dpill ${c.done ? "done" : c.played > 0 ? "part" : "none"}`}>
+                        {c.done ? "✓" : `${c.played}/${rpc}`} {c.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+
+        return (
+          <div className="card">
+            <div className="card-hdr"><ClipboardList size={15} />Completion Tracker</div>
+            <p className="note" style={{ marginBottom: 14 }}>
+              {config.roundsPerCourse} {config.attestRequired ? "approved " : ""}round{config.roundsPerCourse > 1 ? "s" : ""} per course · {courses.length * config.roundsPerCourse} total required.
+            </p>
+            {completionData.map(p => (
+              <div key={p.id} style={{ marginBottom: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div className="avatar">{p.avatar_url ? <img src={p.avatar_url} alt="" /> : ini(p.name)}</div>
+                    <span className="pname">{p.name}</span>
+                    {config.useHandicap && <span className="hcp-badge">Hcp {p.handicap ?? "-"}</span>}
+                  </div>
+                  <span style={{ fontSize: ".78rem", color: p.pct === 100 ? "var(--green)" : "var(--cream-dim)" }}>
+                    {p.done}/{p.total}{p.pct === 100 ? " ✓" : ""}
+                  </span>
+                </div>
+                <div className="pw" style={{ marginBottom: 5 }}><div className="pf" style={{ width: `${p.pct}%` }} /></div>
+                <div>
+                  {p.cs.map(c => (
+                    <span key={c.id} className={`dpill ${c.done ? "done" : c.played > 0 ? "part" : "none"}`}>
+                      {c.done ? "✓" : `${c.played}/${config.roundsPerCourse}`} {c.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* ── Scores ── */}
       {leaderTab === "scores" && (() => {
         const allRounds = scored.filter(r => !config.hideScores || myHasSubmitted || r.player_id === session?.user.id);
-        const filteredRounds = allRounds
-          .filter(r => scoresFilterPlayer === "all" || r.player_id === scoresFilterPlayer)
+
+        const teamLookup = Object.fromEntries((config.scrambleTeams ?? []).map(t => [String(t.id), t.name]));
+        // Team mode = any team-format league or tournament with teams configured
+        const isTeamMode = (config.scrambleTeams ?? []).length > 0 &&
+          (TEAM_FORMATS.includes(config.scoringFormat) ||
+           (config.tournamentMode && (config.tournamentRounds ?? []).some(tr => TEAM_FORMATS.includes(tr.format))));
+
+        // Deduplicate team rounds — seed data may store one row per player on the team
+        const deduped = isTeamMode
+          ? Object.values(allRounds.reduce((acc, r) => {
+              const key = r.team_id ? `${r.team_id}_${r.tournament_round_id ?? r.course_id}` : r.id;
+              if (!acc[key] || r.created_at > acc[key].created_at) acc[key] = r;
+              return acc;
+            }, {}))
+          : allRounds;
+
+        const filteredRounds = deduped
+          .filter(r => scoresFilterPlayer === "all" || (isTeamMode ? String(r.team_id) === scoresFilterPlayer : r.player_id === scoresFilterPlayer))
           .filter(r => scoresFilterCourse === "all" || r.course_id === Number(scoresFilterCourse))
           .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-        const roundPlayers = [...new Map(allRounds.map(r => [r.player_id, { id: r.player_id, name: r.player_name }])).values()].sort((a, b) => a.name.localeCompare(b.name));
-        const roundCourses = [...new Map(allRounds.map(r => [r.course_id, { id: r.course_id, name: r.course_name }])).values()].sort((a, b) => a.name.localeCompare(b.name));
+        // For team mode: filter by team; otherwise filter by player
+        const roundFilterOptions = isTeamMode
+          ? [...new Map(deduped.filter(r => r.team_id).map(r => [String(r.team_id), { id: String(r.team_id), name: teamLookup[String(r.team_id)] ?? r.player_name }])).values()].sort((a, b) => a.name.localeCompare(b.name))
+          : [...new Map(deduped.map(r => [r.player_id, { id: r.player_id, name: r.player_name }])).values()].sort((a, b) => a.name.localeCompare(b.name));
+        const roundCourses = [...new Map(deduped.map(r => [r.course_id, { id: r.course_id, name: r.course_name }])).values()].sort((a, b) => a.name.localeCompare(b.name));
 
         return (
           <div className="card">
@@ -298,10 +521,10 @@ export default function Leaderboard({
             </div>
             <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
               <div className="fg" style={{ flex: 1, minWidth: 140 }}>
-                <label>Player</label>
+                <label>{isTeamMode ? "Team" : "Player"}</label>
                 <select value={scoresFilterPlayer} onChange={e => setScoresFilterPlayer(e.target.value)}>
-                  <option value="all">All Players</option>
-                  {roundPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  <option value="all">{isTeamMode ? "All Teams" : "All Players"}</option>
+                  {roundFilterOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
               <div className="fg" style={{ flex: 1, minWidth: 140 }}>
@@ -321,7 +544,7 @@ export default function Leaderboard({
             {filteredRounds.length === 0 ? <div className="empty">No rounds match your filters.</div> : (
               <div className="tw"><table>
                 <thead><tr>
-                  <th>Player</th><th>Course</th><th>Date</th><th>Gross</th>
+                  <th>{isTeamMode ? "Team" : "Player"}</th><th>Course</th><th>Date</th><th>Gross</th>
                   {config.useHandicap && <th>Course Hcp</th>}
                   {config.useHandicap && <th>Net</th>}
                   {config.scoringFormat === "stableford" && <th>Pts</th>}
@@ -330,7 +553,12 @@ export default function Leaderboard({
                 </tr></thead>
                 <tbody>{filteredRounds.map(r => (
                   <tr key={r.id}>
-                    <td><span className="pname" style={{ fontSize: ".86rem" }}>{r.player_name}</span></td>
+                    <td>
+                      {isTeamMode && teamLookup[String(r.team_id)]
+                        ? <><span className="pname" style={{ fontSize: ".86rem" }}>{teamLookup[String(r.team_id)]}</span><div style={{ fontSize: ".72rem", color: "var(--cream-dim)" }}>{r.player_name}</div></>
+                        : <span className="pname" style={{ fontSize: ".86rem" }}>{r.player_name}</span>
+                      }
+                    </td>
                     <td style={{ fontSize: ".8rem", color: "var(--cream-dim)" }}>{r.course_name}</td>
                     <td style={{ fontSize: ".76rem", color: "var(--cream-dim)", whiteSpace: "nowrap" }}>{r.date}</td>
                     <td><span style={{ fontFamily: "var(--font-d)" }}>{r.gross}</span></td>
@@ -641,16 +869,29 @@ export default function Leaderboard({
         const paidPlayers = members.filter(m => m.paid);
         const totalPool = fee * paidPlayers.length;
         const cats = config.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
-        const finalRound = (config.playoffBracket ?? [])[( config.playoffBracket ?? []).length - 1];
+        const finalRound = (config.playoffBracket ?? [])[(config.playoffBracket ?? []).length - 1];
         const playoffChampion = finalRound?.matchups?.[0]?.winner ?? null;
-        const playoffRunnerUp = finalRound?.matchups?.[0] ? (finalRound.matchups[0].winner === finalRound.matchups[0].p1 ? finalRound.matchups[0].p2 : finalRound.matchups[0].p1) : null;
-        const leaderMap = {
-          champion: playoffChampion,
-          runnerUp: playoffRunnerUp,
-          thirdPlace: config.thirdPlaceMatch?.winner ?? null,
-          regularNet: overallLB[0]?.name,
-          regularGross: grossLB[0]?.name,
-        };
+        const playoffRunnerUp = finalRound?.matchups?.[0]
+          ? (finalRound.matchups[0].winner === finalRound.matchups[0].p1 ? finalRound.matchups[0].p2 : finalRound.matchups[0].p1)
+          : null;
+
+        const effectiveNetLB = config.tournamentMode ? tournamentOverallLB : (hasTeams ? teamLB : overallLB);
+        const effectiveGrossLB = config.tournamentMode
+          ? [...tournamentOverallLB].filter(e => e.grossTotal != null).sort((a, b) => a.grossTotal - b.grossTotal)
+          : (hasTeams ? teamGrossLB : grossLB);
+
+        const leaderMap = resolvePayouts({
+          cats,
+          netLB: effectiveNetLB,
+          grossLB: effectiveGrossLB,
+          playoffResults: {
+            champion: playoffChampion,
+            runnerUp: playoffRunnerUp,
+            thirdPlace: config.thirdPlaceMatch?.winner ?? null,
+          },
+          exclusive: config.exclusiveWinners ?? false,
+          precedence: config.exclusivePrecedence ?? "gross",
+        });
         return (
           <div className="card">
             <div className="card-hdr">💰 Payouts</div>
@@ -685,18 +926,19 @@ export default function Leaderboard({
                   const collectedAmt = totalPool > 0 ? Math.round(totalPool * c.pct / 100) : null;
                   const showBoth = collectedAmt !== null && collectedAmt !== fullAmt;
                   const leader = leaderMap[c.id];
-                  const isTopThree = ["champion", "runnerUp", "thirdPlace"].includes(c.id);
+                  const { mapTo } = resolveCatMap(c);
+                  const isPlayoff = mapTo === "playoff";
                   return (
-                    <div key={c.id} style={{ background: isTopThree ? "rgba(212,168,67,.07)" : "rgba(255,255,255,.03)", border: `1px solid ${isTopThree ? "var(--gold-border)" : "var(--navy-border)"}`, borderRadius: 8, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <div key={c.id} style={{ background: isPlayoff ? "rgba(212,168,67,.07)" : "rgba(255,255,255,.03)", border: `1px solid ${isPlayoff ? "var(--gold-border)" : "var(--navy-border)"}`, borderRadius: 8, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: ".78rem", color: isTopThree ? "var(--gold-light)" : "var(--cream-dim)", marginBottom: 4 }}>{c.label}</div>
+                        <div style={{ fontSize: ".78rem", color: isPlayoff ? "var(--gold-light)" : "var(--cream-dim)", marginBottom: 4 }}>{c.label}</div>
                         {leader ? (
                           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                             <span style={{ fontWeight: 600, color: "var(--white)", fontSize: ".95rem" }}>▶ {leader}</span>
                             {fullAmt != null && <span style={{ fontFamily: "var(--font-d)", fontSize: ".85rem", color: "var(--gold)", background: "rgba(212,168,67,.12)", border: "1px solid var(--gold-border)", borderRadius: 5, padding: "1px 8px" }}>${fullAmt.toLocaleString()}</span>}
                           </div>
                         ) : (
-                          <div style={{ color: "#4b5563", fontSize: ".82rem", fontStyle: "italic" }}>{isTopThree ? "Determined by playoffs" : "TBD"}</div>
+                          <div style={{ color: "#4b5563", fontSize: ".82rem", fontStyle: "italic" }}>{isPlayoff ? "Determined by playoffs" : mapTo === "none" ? "Side game — assign winner in Admin" : "No rounds yet"}</div>
                         )}
                       </div>
                       <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -718,7 +960,134 @@ export default function Leaderboard({
           </div>
         );
       })()}
-      {/* ── Rules ── */}
+      {/* ── Tournament tab ── */}
+      {leaderTab === "tournament" && (() => {
+        const tRounds = config.tournamentRounds ?? [];
+        const roundTabs = [["overall", "Overall"], ...tRounds.map(r => [r.id, r.label])];
+        return (
+          <div>
+            {/* Round sub-tabs */}
+            <div className="stab-bar" style={{ marginBottom: 12 }}>
+              {roundTabs.map(([id, label]) => (
+                <button key={id} className={`stab ${tournamentRoundTab === id ? "sel" : ""}`}
+                  onClick={() => setTournamentRoundTab(id)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Overall standings */}
+            {tournamentRoundTab === "overall" && (() => {
+              const isGross = tournamentNetGross === "gross";
+              const displayLB = isGross
+                ? [...tournamentOverallLB].filter(e => e.grossTotal != null).sort((a, b) => a.grossTotal - b.grossTotal)
+                : tournamentOverallLB;
+              return (
+                <div className="card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                    <div className="card-hdr" style={{ marginBottom: 0 }}><Trophy size={15} />Overall Tournament Standings</div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button className={`btn btn-sm ${!isGross ? "btn-gold" : "btn-ghost"}`} onClick={() => setTournamentNetGross("net")}>Net</button>
+                      <button className={`btn btn-sm ${isGross ? "btn-gold" : "btn-ghost"}`} onClick={() => setTournamentNetGross("gross")}>Gross</button>
+                    </div>
+                  </div>
+                  {displayLB.length === 0 ? (
+                    <div className="empty">No scores posted yet.</div>
+                  ) : (
+                    <div className="tw">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Name</th>
+                            {tRounds.map(r => <th key={r.id} style={{ fontSize: ".72rem" }}>{r.label}</th>)}
+                            <th>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {displayLB.map((entry, i) => {
+                            const scores = isGross ? (entry.grossRoundScores ?? []) : (entry.roundScores ?? []);
+                            const total = isGross ? entry.grossTotal : entry.total;
+                            return (
+                              <tr key={entry.id ?? entry.name}>
+                                {rankEl(i)}
+                                <td style={{ fontWeight: 600, color: "var(--cream)" }}>
+                                  {entry.name}
+                                  {entry.players && <div style={{ fontSize: ".75rem", color: "var(--cream-dim)", fontWeight: 400 }}>{entry.players.map(rpn).join(", ")}</div>}
+                                </td>
+                                {scores.map((s, ri) => (
+                                  <td key={ri} style={{ color: s !== null ? "var(--cream)" : "#4b5563", fontSize: ".85rem" }}>
+                                    {s !== null ? s : "—"}
+                                  </td>
+                                ))}
+                                <td><span className="sb">{total}</span></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Per-round standings */}
+            {tournamentRoundTab !== "overall" && (() => {
+              const rd = tournamentRoundLB[tournamentRoundTab];
+              if (!rd) return <div className="empty">No scores for this round yet.</div>;
+              const isRdGross = roundNetGross === "gross";
+              const displayStandings = isRdGross ? (rd.grossStandings ?? rd.standings) : rd.standings;
+              return (
+                <div className="card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                    <div className="card-hdr" style={{ marginBottom: 0 }}><Flag size={15} />{rd.label} — {FORMAT_LABELS[rd.format] ?? rd.format} · {rd.holes}H</div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button className={`btn btn-sm ${!isRdGross ? "btn-gold" : "btn-ghost"}`} onClick={() => setRoundNetGross("net")}>Net</button>
+                      <button className={`btn btn-sm ${isRdGross ? "btn-gold" : "btn-ghost"}`} onClick={() => setRoundNetGross("gross")}>Gross</button>
+                    </div>
+                  </div>
+                  {displayStandings.length === 0 ? (
+                    <div className="empty">No scores posted yet.</div>
+                  ) : rd.isTeam ? (
+                    <div className="tw">
+                      <table>
+                        <thead><tr><th>#</th><th>Team</th><th>Players</th><th>{isRdGross ? "Gross" : "Net"}</th></tr></thead>
+                        <tbody>
+                          {displayStandings.map((t, i) => (
+                            <tr key={t.id}>
+                              {rankEl(i)}
+                              <td style={{ fontWeight: 600, color: "var(--cream)" }}>{t.name}</td>
+                              <td style={{ fontSize: ".8rem", color: "var(--cream-dim)" }}>{(t.players ?? []).map(rpn).join(", ") || "—"}</td>
+                              <td><span className="sb">{isRdGross ? t.grossLabel : t.label}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="tw">
+                      <table>
+                        <thead><tr><th>#</th><th>Player</th><th>{isRdGross ? "Gross" : "Net"}</th></tr></thead>
+                        <tbody>
+                          {displayStandings.map((p, i) => (
+                            <tr key={p.id}>
+                              {rankEl(i)}
+                              <td style={{ fontWeight: 600, color: "var(--cream)" }}>{p.name}</td>
+                              <td><span className="sb">{isRdGross ? p.grossLabel : p.label}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })()}
+
       {leaderTab === "rules" && (
         <div className="card">
           <div className="card-hdr"><FileText size={15} />League Rules & Bylaws</div>

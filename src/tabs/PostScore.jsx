@@ -22,6 +22,26 @@ export default function PostScore({
 
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
+  const TEAM_FORMATS = ["scramble", "texas_scramble", "best_ball"];
+
+  // selectedTournamentRound must come before teams (teams may reference it)
+  const selectedTournamentRound = config.tournamentMode
+    ? (config.tournamentRounds ?? []).find(r => r.id === form.tournamentRoundId) ?? null
+    : null;
+  const activeFmt = selectedTournamentRound?.format ?? config.scoringFormat;
+  const isActiveTeamFormat = TEAM_FORMATS.includes(activeFmt);
+
+  const teamsFixed = config.teamsFixed ?? true;
+  const teams = (config.tournamentMode && !teamsFixed && selectedTournamentRound)
+    ? (selectedTournamentRound.teams ?? [])
+    : (config.scrambleTeams ?? []);
+  const myTeam = teams.find(t => t.players?.includes(profile?.name) || t.players?.includes(session?.user.id));
+
+  // In tournament mode, only show the course assigned to the selected round
+  const tournamentCourse = selectedTournamentRound?.courseId
+    ? courses.find(c => c.id === selectedTournamentRound.courseId) ?? null
+    : null;
+
   const myActiveOnCourse = (cid) =>
     rounds.filter(r =>
       r.player_id === session?.user.id &&
@@ -29,10 +49,41 @@ export default function PostScore({
       r.attest_status !== "rejected"
     );
 
-  const selectedCourse = courses.find(c => c.id === Number(form.courseId));
-  const autoHcp = selectedCourse && config.useHandicap
-    ? calcCourseHcp(profile?.handicap ?? 0, selectedCourse.slope, selectedCourse.par, selectedCourse.rating, config)
-    : 0;
+  const selectedCourse = config.tournamentMode ? tournamentCourse : courses.find(c => c.id === Number(form.courseId));
+
+  const autoHcp = (() => {
+    const course = selectedCourse;
+    if (!course || !config.useHandicap) return 0;
+
+    const roundHcpPct = selectedTournamentRound?.handicapPct ?? config.handicapPct ?? 100;
+    const roundHcpMethod = selectedTournamentRound?.scrambleHcpMethod ?? "each";
+
+    // Team-based handicap methods for team formats in tournament mode
+    if (config.tournamentMode && isActiveTeamFormat && myTeam && roundHcpMethod !== "each") {
+      const teamCourseHcps = (myTeam.players ?? []).map(pName => {
+        const m = members.find(mb => mb.profile?.name === pName);
+        return calcCourseHcp(m?.profile?.handicap ?? 0, course.slope, course.par, course.rating, { ...config, handicapPct: 100 });
+      });
+      if (teamCourseHcps.length === 0) return 0;
+      let rawTeamHcp = 0;
+      if (roundHcpMethod === "lowest") {
+        rawTeamHcp = Math.min(...teamCourseHcps);
+      } else if (roundHcpMethod === "average") {
+        rawTeamHcp = teamCourseHcps.reduce((a, b) => a + b, 0) / teamCourseHcps.length;
+      } else if (roundHcpMethod === "combined") {
+        const sorted = [...teamCourseHcps].sort((a, b) => a - b);
+        const weights = sorted.length >= 4 ? [0.20, 0.15, 0.10, 0.05] : [0.35, 0.15];
+        rawTeamHcp = sorted.reduce((sum, h, i) => sum + h * (weights[i] ?? 0), 0);
+      }
+      return Math.round(rawTeamHcp * (roundHcpPct / 100));
+    }
+
+    // Individual / "each" method — use round's pct override if in tournament mode
+    const effectiveCfg = config.tournamentMode && selectedTournamentRound
+      ? { ...config, handicapPct: roundHcpPct }
+      : config;
+    return calcCourseHcp(profile?.handicap ?? 0, course.slope, course.par, course.rating, effectiveCfg);
+  })();
   const autoNet = form.score ? Number(form.score) - autoHcp : null;
   const autoPts = (autoNet !== null && config.scoringFormat === "stableford" && selectedCourse)
     ? calcStableford(Number(form.score), autoHcp, selectedCourse.par)
@@ -42,13 +93,33 @@ export default function PostScore({
   const missingProfile = config.useHandicap && ((!profile?.handicap && profile?.handicap !== 0) || !isValidGhin(profile?.ghin));
 
   const canSubmit = () => {
-    if (!isOpen || !form.courseId || !form.score) return false;
+    if (!isOpen || !form.score) return false;
     if (config.attestRequired && !form.attesterId) return false;
     if (config.scorecardRequired && !cardFile) return false;
     if (missingProfile) return false;
     const today = new Date();
     const localToday = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
     if (form.date > localToday) return false;
+    if (config.tournamentMode) {
+      if (!form.tournamentRoundId) return false;
+      const activeTeamId = myTeam ? String(myTeam.id) : form.teamId;
+      if (isActiveTeamFormat && !activeTeamId) return false;
+      if (isActiveTeamFormat && activeTeamId) {
+        // Block if anyone on the team already has a score for this round
+        return !rounds.some(r =>
+          String(r.team_id) === activeTeamId &&
+          r.tournament_round_id === form.tournamentRoundId &&
+          r.attest_status !== "rejected"
+        );
+      }
+      return !rounds.some(r =>
+        r.player_id === session?.user.id &&
+        r.tournament_round_id === form.tournamentRoundId &&
+        r.attest_status !== "rejected"
+      );
+    }
+    if (!form.courseId) return false;
+    if (isActiveTeamFormat && teams.length > 0 && !form.teamId) return false;
     return myActiveOnCourse(Number(form.courseId)).length < config.roundsPerCourse;
   };
 
@@ -119,8 +190,10 @@ export default function PostScore({
       attester_email: attester?.profile.email ?? null,
       course_id: course.id, course_name: course.name,
       gross, net, stableford_pts: pts, course_handicap: hcp, par: course.par,
-      date: form.date, scoring_format: config.scoringFormat,
+      date: form.date, scoring_format: activeFmt,
       attest_status: config.attestRequired ? "pending" : "approved",
+      team_id: (isActiveTeamFormat && myTeam) ? myTeam.id : (form.teamId || null),
+      tournament_round_id: form.tournamentRoundId || null,
     }).select().single();
 
     if (error || !inserted) { setFormMsg({ type: "d", text: "Error saving round." }); return; }
@@ -159,7 +232,7 @@ export default function PostScore({
     }
 
     setRounds(p => [inserted, ...p]);
-    setForm(f => ({ ...f, score: "", courseId: "", attesterId: "" }));
+    setForm(f => ({ ...f, score: "", courseId: "", attesterId: "", teamId: "", tournamentRoundId: "" }));
     setCardFile(null); setCardPreview(null); setAiResult(null);
     setFormMsg({
       type: "s",
@@ -206,9 +279,14 @@ export default function PostScore({
       <div className="card" style={{ opacity: isOpen ? 1 : .65, pointerEvents: isOpen ? "auto" : "none" }}>
         <div className="card-hdr">
           <Pencil size={15} />Post Your Round
-          {config.scoringFormat !== "stroke" && (
+          {activeFmt !== "stroke" && (
             <span style={{ fontSize: ".74rem", color: "var(--purple)", marginLeft: 10, fontFamily: "var(--font-b)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
-              {FORMAT_LABELS[config.scoringFormat]}
+              {FORMAT_LABELS[activeFmt] ?? activeFmt}
+            </span>
+          )}
+          {config.tournamentMode && (
+            <span style={{ fontSize: ".74rem", color: "var(--gold)", marginLeft: 6, fontFamily: "var(--font-b)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
+              Tournament
             </span>
           )}
         </div>
@@ -262,21 +340,86 @@ export default function PostScore({
 
         {/* Form fields */}
         <div className="fgrid">
-          <div className="fg">
-            <label>Course</label>
-            <select value={form.courseId} onChange={setF("courseId")}>
-              <option value="">Select course…</option>
-              {courses.filter(c => !c.playoff_only).map(c => {
-                const played = myActiveOnCourse(c.id).length;
-                const full = played >= config.roundsPerCourse;
-                return (
-                  <option key={c.id} value={c.id} disabled={full}>
-                    {c.name} · Par {c.par}{full ? " ✓" : played > 0 ? ` (${played}/${config.roundsPerCourse})` : ""}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
+          {/* Tournament round picker */}
+          {config.tournamentMode && (config.tournamentRounds ?? []).length > 0 && (
+            <div className="fg">
+              <label>Tournament Round</label>
+              <select value={form.tournamentRoundId} onChange={e => {
+                const tr = (config.tournamentRounds ?? []).find(r => r.id === e.target.value);
+                const newTeams = (!teamsFixed && tr) ? (tr.teams ?? []) : (config.scrambleTeams ?? []);
+                const newMyTeam = newTeams.find(t => t.players?.includes(profile?.name) || t.players?.includes(session?.user.id));
+                setForm(f => ({ ...f, tournamentRoundId: e.target.value, courseId: tr?.courseId ? String(tr.courseId) : f.courseId, ...(newMyTeam ? { teamId: String(newMyTeam.id) } : {}) }));
+              }}>
+                <option value="">Select round…</option>
+                {(config.tournamentRounds ?? []).map(r => {
+                  const isRoundTeam = TEAM_FORMATS.includes(r.format);
+                  const checkTeam = isRoundTeam ? teams.find(t => t.players?.includes(profile?.name) || t.players?.includes(session?.user.id)) : null;
+                  const alreadyPosted = isRoundTeam && checkTeam
+                    ? rounds.some(rd => String(rd.team_id) === String(checkTeam.id) && rd.tournament_round_id === r.id && rd.attest_status !== "rejected")
+                    : rounds.some(rd => rd.player_id === session?.user.id && rd.tournament_round_id === r.id && rd.attest_status !== "rejected");
+                  return (
+                    <option key={r.id} value={r.id} disabled={alreadyPosted}>
+                      {r.label} — {FORMAT_LABELS[r.format] ?? r.format} · {r.holes}H{alreadyPosted ? " ✓" : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
+
+          {/* Team picker */}
+          {isActiveTeamFormat && teams.length > 0 && (
+            <div className="fg">
+              <label>Team</label>
+              {myTeam ? (
+                <input type="text" readOnly
+                  value={myTeam.name}
+                  style={{ opacity: .8, cursor: "default", background: "rgba(255,255,255,.04)" }} />
+              ) : (
+                <>
+                  <select value={form.teamId} onChange={setF("teamId")}>
+                    <option value="">Select your team…</option>
+                    {teams.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: ".72rem", color: "var(--red)", marginTop: 3 }}>You're not assigned to a team — contact your commissioner.</span>
+                </>
+              )}
+            </div>
+          )}
+
+          {config.tournamentMode ? (
+            <div className="fg">
+              <label>Course</label>
+              <input
+                type="text"
+                readOnly
+                value={
+                  !form.tournamentRoundId ? "Select a round first" :
+                  !tournamentCourse ? "No course set for this round" :
+                  `${tournamentCourse.name} · Par ${tournamentCourse.par}`
+                }
+                style={{ opacity: .7, cursor: "default", background: "rgba(255,255,255,.04)" }}
+              />
+            </div>
+          ) : (
+            <div className="fg">
+              <label>Course</label>
+              <select value={form.courseId} onChange={setF("courseId")}>
+                <option value="">Select course…</option>
+                {courses.filter(c => !c.playoff_only).map(c => {
+                  const played = myActiveOnCourse(c.id).length;
+                  const full = played >= config.roundsPerCourse;
+                  return (
+                    <option key={c.id} value={c.id} disabled={full}>
+                      {c.name} · Par {c.par}{full ? " ✓" : played > 0 ? ` (${played}/${config.roundsPerCourse})` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
 
           {config.attestRequired && (
             <div className="fg">
@@ -302,14 +445,21 @@ export default function PostScore({
         </div>
 
         {/* Auto-calculated preview */}
-        {form.courseId && form.score && (() => {
+        {selectedCourse && form.score && (() => {
           const gross = Number(form.score);
           return (
             <div style={{ marginTop: 12, padding: "12px 16px", background: "var(--gold-dim)", border: "1px solid var(--gold-border)", borderRadius: 8, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
               <span style={{ fontSize: ".6rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)" }}>Auto-Calculated</span>
               {config.useHandicap && selectedCourse && (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                  <span style={{ fontSize: ".6rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Course Hcp</span>
+                  <span style={{ fontSize: ".6rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>
+                    Course Hcp
+                    {config.tournamentMode && selectedTournamentRound && (
+                      <> · {selectedTournamentRound.handicapPct ?? 100}%
+                        {isActiveTeamFormat && selectedTournamentRound.scrambleHcpMethod && selectedTournamentRound.scrambleHcpMethod !== "each"
+                          ? ` (${selectedTournamentRound.scrambleHcpMethod})` : ""}</>
+                    )}
+                  </span>
                   <span className="hcp-badge" style={{ marginTop: 2 }}>{autoHcp}</span>
                 </div>
               )}

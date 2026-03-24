@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { supabase } from "../supabase.js";
 import { DEFAULT_CONFIG, FORMAT_LABELS } from "../constants/config.js";
 import { calcCourseHcp, calcStableford } from "../utils/golf.js";
@@ -32,6 +32,11 @@ export default function AdminTab({
   const [linkText, setLinkText] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
   const [emailSelected, setEmailSelected] = useState(null);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [addMemberDraft, setAddMemberDraft] = useState({ email: "", name: "", handicap: "", ghin: "" });
+  const [addMemberMsg, setAddMemberMsg] = useState({ text: "", ok: true });
+  const [addMemberLoading, setAddMemberLoading] = useState(false);
+  const [pendingInvites, setPendingInvites] = useState([]);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmRemoveBylaws, setConfirmRemoveBylaws] = useState(false);
   const [confirmDeleteRound, setConfirmDeleteRound] = useState(null);
@@ -76,6 +81,18 @@ export default function AdminTab({
     setCourses(p => p.map(c => c.id === id ? { ...c, playoff_only: !cur } : c));
   };
 
+  // ── Pending invites ──
+  useEffect(() => {
+    if (adminTab !== "members" || !activeLeague?.id) return;
+    supabase.from("league_invites").select("*").eq("league_id", activeLeague.id)
+      .then(({ data }) => setPendingInvites(data ?? []));
+  }, [adminTab, activeLeague?.id]);
+
+  const cancelInvite = async (id) => {
+    await supabase.from("league_invites").delete().eq("id", id);
+    setPendingInvites(p => p.filter(i => i.id !== id));
+  };
+
   // ── Members ──
   const approveJoin = async (req) => {
     await supabase.from("league_members").insert({ league_id: req.league_id, user_id: req.user_id, role: "player" });
@@ -112,6 +129,77 @@ export default function AdminTab({
     await supabase.from("profiles").update({ handicap: Number(editMemberHcp.handicap), ghin: editMemberHcp.ghin }).eq("id", editMemberHcp.uid);
     setMembers(p => p.map(m => m.user_id === editMemberHcp.uid ? { ...m, profile: { ...m.profile, handicap: Number(editMemberHcp.handicap), ghin: editMemberHcp.ghin } } : m));
     setEditMemberHcp(null);
+  };
+
+  const addMemberByEmail = async () => {
+    const email = addMemberDraft.email.trim().toLowerCase();
+    const name = addMemberDraft.name.trim();
+    if (!email || !name) return;
+    setAddMemberLoading(true);
+    setAddMemberMsg({ text: "", ok: true });
+
+    const { data: profile } = await supabase.from("profiles").select("id, name, email, handicap, ghin").eq("email", email).maybeSingle();
+    if (!profile) {
+      // No account yet — store an invite row client-side, then fire-and-forget the email API
+      const { error: inviteError } = await supabase.from("league_invites").upsert({
+        league_id:  activeLeague.id,
+        email,
+        name,
+        handicap:   addMemberDraft.handicap !== "" ? Number(addMemberDraft.handicap) : null,
+        ghin:       addMemberDraft.ghin.trim() || null,
+        invited_by: session?.user?.email ?? null,
+        invited_at: new Date().toISOString(),
+      }, { onConflict: "league_id,email" });
+      if (inviteError) {
+        setAddMemberMsg({ text: "✗ " + inviteError.message, ok: false });
+        setAddMemberLoading(false);
+        return;
+      }
+      // Send invite email (best-effort — won't fail the flow if API is unavailable in dev)
+      const apiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
+      fetch(`${apiUrl}/api/invite-member`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leagueId: activeLeague.id, leagueName: activeLeague.name, email, name, invitedBy: session?.user?.email }),
+      }).catch(() => {});
+      setAddMemberMsg({ text: `Invite created for ${email}. They'll get a signup email when they join.`, ok: true });
+      setAddMemberDraft({ email: "", name: "", handicap: "", ghin: "" });
+      setShowAddMember(false);
+      const { data: invites } = await supabase.from("league_invites").select("*").eq("league_id", activeLeague.id);
+      setPendingInvites(invites ?? []);
+      setAddMemberLoading(false);
+      setTimeout(() => setAddMemberMsg({ text: "", ok: true }), 5000);
+      return;
+    }
+    if (members.some(m => m.user_id === profile.id)) {
+      setAddMemberMsg({ text: "This player is already a member of this league.", ok: false });
+      setAddMemberLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.from("league_members").insert({ league_id: activeLeague.id, user_id: profile.id, role: "player" });
+    if (error) {
+      setAddMemberMsg({ text: "Failed to add member: " + error.message, ok: false });
+      setAddMemberLoading(false);
+      return;
+    }
+
+    // Update profile fields if the commissioner provided overrides
+    const updates = {};
+    if (name !== profile.name) updates.name = name;
+    if (addMemberDraft.handicap !== "") updates.handicap = Number(addMemberDraft.handicap);
+    if (addMemberDraft.ghin.trim() !== "") updates.ghin = addMemberDraft.ghin.trim();
+    if (Object.keys(updates).length > 0) {
+      await supabase.from("profiles").update(updates).eq("id", profile.id);
+    }
+
+    const finalProfile = { ...profile, ...updates };
+    setMembers(p => [...p, { user_id: profile.id, role: "player", paid: false, profile: finalProfile }]);
+    setAddMemberMsg({ text: `✓ ${finalProfile.name} added to the league!`, ok: true });
+    setAddMemberDraft({ email: "", name: "", handicap: "", ghin: "" });
+    setShowAddMember(false);
+    setAddMemberLoading(false);
+    setTimeout(() => setAddMemberMsg({ text: "", ok: true }), 4000);
   };
 
   // ── Rounds ──
@@ -393,6 +481,65 @@ setConfirmClear(false);
         const payoutCats = d.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
         const totalPayoutPct = payoutCats.reduce((s, c) => s + (Number(c.pct) || 0), 0);
         const payoutOverLimit = totalPayoutPct > 100;
+
+        // Reusable team builder — used both in global Teams section and inside per-round config
+        const renderTeamBuilder = (teams, setTeams, teamSize) => {
+          // Resolve any UUID references to names (seed/API data may store user_id instead of name)
+          const resolveRef = (ref) => {
+            if (!ref) return null;
+            const m = members.find(mb => mb.user_id === ref);
+            return m?.profile?.name ?? ref;
+          };
+          const normalizedTeams = teams.map(t => ({ ...t, players: (t.players ?? []).map(resolveRef).filter(Boolean) }));
+
+          const assignedPlayers = new Set(normalizedTeams.flatMap(t => t.players ?? []));
+          const unassigned = members.filter(m => m.profile && !assignedPlayers.has(m.profile.name));
+          return (
+            <>
+              {normalizedTeams.length === 0 && <p className="note" style={{ marginBottom: 8 }}>No teams yet. Add a team below.</p>}
+              {normalizedTeams.map((team, ti) => (
+                <div key={team.id} style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8, padding: "12px 14px", marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                    <input type="text" value={team.name} placeholder="Team name"
+                      onChange={e => setTeams(normalizedTeams.map((t, i) => i === ti ? { ...t, name: e.target.value } : t))}
+                      style={{ flex: "1 1 120px", fontSize: ".86rem" }} />
+                    <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: ".7rem" }}
+                      onClick={() => setTeams(normalizedTeams.filter((_, i) => i !== ti))}>✕ Remove</button>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {Array.from({ length: teamSize }).map((_, si) => {
+                      const assigned = team.players?.[si] ?? null;
+                      const opts = members.filter(m => m.profile && (m.profile.name === assigned || !assignedPlayers.has(m.profile.name)));
+                      return (
+                        <select key={si} value={assigned ?? ""}
+                          onChange={e => {
+                            const newPlayers = [...(team.players ?? [])];
+                            newPlayers[si] = e.target.value || null;
+                            setTeams(normalizedTeams.map((t, i) => i === ti ? { ...t, players: newPlayers.filter(Boolean) } : t));
+                          }}
+                          style={{ flex: "1 1 130px", minWidth: 110, fontSize: ".82rem" }}>
+                          <option value="">— Player {si + 1} —</option>
+                          {opts.map(m => <option key={m.user_id} value={m.profile.name}>{m.profile.name}</option>)}
+                        </select>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                <button className="btn btn-ghost btn-sm" style={{ fontSize: ".65rem" }}
+                  onClick={() => setTeams([...normalizedTeams, { id: `team_${Date.now()}`, name: `Team ${normalizedTeams.length + 1}`, players: [] }])}>
+                  + Add Team
+                </button>
+                {unassigned.length > 0 && (
+                  <span style={{ fontSize: ".72rem", color: "var(--cream-dim)" }}>
+                    {unassigned.length} unassigned: {unassigned.map(m => m.profile.name).join(", ")}
+                  </span>
+                )}
+              </div>
+            </>
+          );
+        };
         return (
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
@@ -407,28 +554,192 @@ setConfirmClear(false);
             </div>
 
             <div className="cfg-section">
-              <div className="cfg-section-title">Scoring Format</div>
+              <div className="cfg-section-title">League Type</div>
               <div className="format-grid">
-                {[["stroke", "Stroke Play", "Classic lowest-score-wins"], ["stableford", "Stableford", "Points per hole, most wins"], ["match", "Match Play", "Head-to-head holes"], ["scramble", "Scramble", "Team best-ball"]].map(([val, name, hint]) => (
-                  <button key={val} className={`format-btn ${d.scoringFormat === val ? "sel" : ""}`} onClick={() => set("scoringFormat", val)}>
+                {[
+                  ["stroke",      "Stroke Play",  "Classic lowest-score-wins"],
+                  ["stableford",  "Stableford",   "Points per hole, most wins"],
+                  ["match",       "Match Play",   "Head-to-head holes"],
+                  ["scramble",    "Scramble",     "Team best-ball format"],
+                  ["tournament",  "Tournament",   "Multi-round event with mixed formats"],
+                ].map(([val, name, hint]) => (
+                  <button key={val} className={`format-btn ${d.scoringFormat === val ? "sel" : ""}`}
+                    onClick={() => setConfigDraft(prev => ({
+                      ...(prev ?? config),
+                      scoringFormat: val,
+                      tournamentMode: val === "tournament",
+                    }))}>
                     <span className="format-name">{name}</span><span className="format-hint">{hint}</span>
                   </button>
                 ))}
               </div>
             </div>
 
+            {/* ── Tournament rounds (only when Tournament is selected) ── */}
+            {d.scoringFormat === "tournament" && (() => {
+                const tRounds = d.tournamentRounds ?? [];
+                const setRounds = (rounds) => set("tournamentRounds", rounds);
+                const FORMAT_HCP_DEFAULTS = {
+                  scramble:       { handicapPct: 25,  scrambleHcpMethod: "lowest" },
+                  texas_scramble: { handicapPct: 50,  scrambleHcpMethod: "each" },
+                  best_ball:      { handicapPct: 100, scrambleHcpMethod: "each" },
+                  stroke:         { handicapPct: 100, scrambleHcpMethod: "each" },
+                  stableford:     { handicapPct: 100, scrambleHcpMethod: "each" },
+                };
+                const addRound = () => setRounds([...tRounds, {
+                  id: `tr_${Date.now()}`, day: tRounds.length + 1,
+                  label: `Round ${tRounds.length + 1}`, holes: 18,
+                  format: "stroke", teamSize: 2, texasScrambleMode: "individual", courseId: null,
+                  handicapPct: 100, scrambleHcpMethod: "each",
+                }]);
+                const updRound = (idx, patch) => setRounds(tRounds.map((r, i) => i === idx ? { ...r, ...patch } : r));
+                const remRound = (idx) => setRounds(tRounds.filter((_, i) => i !== idx));
+                const TEAM_FMTS = ["scramble", "texas_scramble", "best_ball"];
+                return (
+                  <div className="cfg-section">
+                    <div className="cfg-section-title">Tournament Rounds</div>
+                    <div className="cfg-row" style={{ marginBottom: 8 }}>
+                      <div><div className="cfg-label">Teams stay the same across all rounds</div><div className="cfg-desc">Off = teams can be reconfigured per round</div></div>
+                      <Toggle checked={d.teamsFixed ?? true} onChange={v => set("teamsFixed", v)} />
+                    </div>
+                    {tRounds.length === 0 && <p className="note" style={{ marginBottom: 8 }}>No rounds yet. Add a round below.</p>}
+                    {tRounds.map((tr, idx) => (
+                      <div key={tr.id} style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8, padding: "12px 14px", marginBottom: 8 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 120px", minWidth: 100 }}>
+                            <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Label</label>
+                            <input type="text" value={tr.label} onChange={e => updRound(idx, { label: e.target.value })} style={{ fontSize: ".85rem" }} />
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "0 0 60px" }}>
+                            <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Holes</label>
+                            <select value={tr.holes} onChange={e => updRound(idx, { holes: Number(e.target.value) })} style={{ fontSize: ".82rem" }}>
+                              <option value={9}>9</option>
+                              <option value={18}>18</option>
+                            </select>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px", minWidth: 130 }}>
+                            <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Format</label>
+                            <select value={tr.format} onChange={e => { const fmt = e.target.value; updRound(idx, { format: fmt, ...(FORMAT_HCP_DEFAULTS[fmt] ?? { handicapPct: 100, scrambleHcpMethod: "each" }) }); }} style={{ fontSize: ".82rem" }}>
+                              <option value="stroke">Stroke Play</option>
+                              <option value="stableford">Stableford</option>
+                              <option value="scramble">Scramble</option>
+                              <option value="texas_scramble">Texas Scramble</option>
+                              <option value="best_ball">Best Ball</option>
+                            </select>
+                          </div>
+                          {TEAM_FMTS.includes(tr.format) && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "0 0 80px" }}>
+                              <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Team Size</label>
+                              <select value={tr.teamSize ?? 2} onChange={e => updRound(idx, { teamSize: Number(e.target.value) })} style={{ fontSize: ".82rem" }}>
+                                <option value={2}>2-man</option>
+                                <option value={4}>4-man</option>
+                              </select>
+                            </div>
+                          )}
+                          {tr.format === "texas_scramble" && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px", minWidth: 130 }}>
+                              <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Scoring</label>
+                              <select value={tr.texasScrambleMode ?? "individual"} onChange={e => updRound(idx, { texasScrambleMode: e.target.value })} style={{ fontSize: ".82rem" }}>
+                                <option value="individual">Each score counts</option>
+                                <option value="best">Team takes best score</option>
+                              </select>
+                            </div>
+                          )}
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 140px", minWidth: 120 }}>
+                            <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Course</label>
+                            <select value={tr.courseId ?? ""} onChange={e => updRound(idx, { courseId: e.target.value ? Number(e.target.value) : null })} style={{ fontSize: ".82rem" }}>
+                              <option value="">— TBD —</option>
+                              {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                          </div>
+                          {config.useHandicap && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "0 0 70px" }}>
+                              <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Hcp %</label>
+                              <input type="number" min={0} max={100} value={tr.handicapPct ?? 100} onChange={e => updRound(idx, { handicapPct: Number(e.target.value) })} style={{ fontSize: ".82rem", width: "100%" }} />
+                            </div>
+                          )}
+                          {config.useHandicap && TEAM_FMTS.includes(tr.format) && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 140px", minWidth: 120 }}>
+                              <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Hcp Method</label>
+                              <select value={tr.scrambleHcpMethod ?? "each"} onChange={e => updRound(idx, { scrambleHcpMethod: e.target.value })} style={{ fontSize: ".82rem" }}>
+                                <option value="each">Each player</option>
+                                <option value="lowest">Lowest</option>
+                                <option value="average">Average</option>
+                                <option value="combined">Combined (weighted)</option>
+                              </select>
+                            </div>
+                          )}
+                          <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: ".7rem", alignSelf: "flex-end" }} onClick={() => remRound(idx)}>✕</button>
+                        </div>
+                        {/* Per-round team builder when teamsFixed is off */}
+                        {!(d.teamsFixed ?? true) && TEAM_FMTS.includes(tr.format) && (
+                          <div style={{ marginTop: 12, borderTop: "1px solid var(--navy-border)", paddingTop: 12 }}>
+                            <div style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)", marginBottom: 8 }}>
+                              Teams for this round
+                            </div>
+                            {renderTeamBuilder(
+                              tr.teams ?? [],
+                              (t) => updRound(idx, { teams: t }),
+                              tr.teamSize ?? 2
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    <button className="btn btn-ghost btn-sm" style={{ fontSize: ".65rem", marginTop: 4 }} onClick={addRound}>+ Add Round</button>
+                  </div>
+                );
+              })()}
+
+            {/* ── Teams ── (global — hidden when tournament + teamsFixed is off, since teams are per-round in that case) */}
+            {(["scramble", "texas_scramble", "best_ball"].includes(d.scoringFormat) ||
+              (d.tournamentMode && (d.teamsFixed ?? true) && (d.tournamentRounds ?? []).some(r => ["scramble", "texas_scramble", "best_ball"].includes(r.format)))) && (
+              <div className="cfg-section">
+                <div className="cfg-section-title">Teams</div>
+                {!d.tournamentMode && (
+                  <div className="cfg-row" style={{ marginBottom: 12 }}>
+                    <div><div className="cfg-label">Team size</div><div className="cfg-desc">Players per team</div></div>
+                    <select value={d.scrambleTeamSize ?? 2} onChange={e => set("scrambleTeamSize", Number(e.target.value))} style={{ width: 90 }}>
+                      <option value={2}>2-man</option>
+                      <option value={4}>4-man</option>
+                    </select>
+                  </div>
+                )}
+                {d.tournamentMode && (
+                  <p className="note" style={{ marginBottom: 12 }}>
+                    Teams are shared across all rounds. Make sure all team sizes match the rounds above.
+                  </p>
+                )}
+                {(() => {
+                  const TEAM_FMTS2 = ["scramble", "texas_scramble", "best_ball"];
+                  const teamSize = d.tournamentMode
+                    ? Math.max(2, ...(d.tournamentRounds ?? []).filter(r => TEAM_FMTS2.includes(r.format)).map(r => r.teamSize ?? 2))
+                    : d.scrambleTeamSize ?? 2;
+                  return renderTeamBuilder(
+                    d.scrambleTeams ?? [],
+                    (t) => set("scrambleTeams", t),
+                    teamSize
+                  );
+                })()}
+              </div>
+            )}
+
             <div className="cfg-section">
               <div className="cfg-section-title">Round Rules</div>
-              <div className="cfg-row">
-                <div><div className="cfg-label">Required rounds per course</div><div className="cfg-desc">How many rounds each player must post at each course</div></div>
-                <select value={d.roundsPerCourse} onChange={e => set("roundsPerCourse", Number(e.target.value))} style={{ width: 80 }}>
-                  {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </div>
-              <div className="cfg-row">
-                <div><div className="cfg-label">Best N scores count</div><div className="cfg-desc">Only the best N of all submitted scores count. Leave blank to count all.</div></div>
-                <input type="number" min={1} placeholder="All" value={d.scoresToCount ?? ""} onChange={e => set("scoresToCount", e.target.value ? Number(e.target.value) : null)} style={{ width: 80 }} />
-              </div>
+              {!d.tournamentMode && <>
+                <div className="cfg-row">
+                  <div><div className="cfg-label">Required rounds per course</div><div className="cfg-desc">How many rounds each player/team must post at each course</div></div>
+                  <select value={d.roundsPerCourse} onChange={e => set("roundsPerCourse", Number(e.target.value))} style={{ width: 80 }}>
+                    {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                {["stroke", "stableford"].includes(d.scoringFormat) && (
+                  <div className="cfg-row">
+                    <div><div className="cfg-label">Best N scores count</div><div className="cfg-desc">Only the best N of all submitted scores count. Leave blank to count all.</div></div>
+                    <input type="number" min={1} placeholder="All" value={d.scoresToCount ?? ""} onChange={e => set("scoresToCount", e.target.value ? Number(e.target.value) : null)} style={{ width: 80 }} />
+                  </div>
+                )}
+              </>}
               <div className="cfg-row">
                 <div><div className="cfg-label">Require attestation</div><div className="cfg-desc">Playing partner must approve each round by email</div></div>
                 <Toggle checked={d.attestRequired} onChange={v => set("attestRequired", v)} />
@@ -502,17 +813,38 @@ setConfirmClear(false);
                 const paidCnt = members.filter(m => m.paid).length;
                 return <div style={{ padding: "10px 0 4px", fontSize: ".82rem", color: "var(--cream-dim)" }}><span style={{ color: "var(--gold-light)", fontFamily: "var(--font-d)" }}>${(d.entryFee * paidCnt).toLocaleString()}</span> collected so far ({paidCnt} of {members.length} players paid)</div>;
               })()}
+              <div className="cfg-row" style={{ marginTop: 12 }}>
+                <div><div className="cfg-label">One award per player</div><div className="cfg-desc">A player cannot win both a net and a gross category</div></div>
+                <Toggle checked={d.exclusiveWinners ?? false} onChange={v => set("exclusiveWinners", v)} />
+              </div>
+              {(d.exclusiveWinners ?? false) && (
+                <div className="cfg-row">
+                  <div><div className="cfg-label">Precedence</div><div className="cfg-desc">Which category wins when a player qualifies for both</div></div>
+                  <select value={d.exclusivePrecedence ?? "gross"} onChange={e => set("exclusivePrecedence", e.target.value)} style={{ width: 160 }}>
+                    <option value="gross">Gross over Net</option>
+                    <option value="net">Net over Gross</option>
+                    <option value="highest">Highest Payout Wins</option>
+                  </select>
+                </div>
+              )}
               <div style={{ marginTop: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
                   <div style={{ fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)" }}>Payout Categories</div>
                   <button className="btn btn-ghost btn-sm" style={{ fontSize: ".65rem" }} onClick={() => {
                     const cats = d.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
-                    set("payoutCategories", [...cats, { id: `custom_${Date.now()}`, label: "Custom Category", pct: 0 }]);
+                    set("payoutCategories", [...cats, { id: `custom_${Date.now()}`, label: "New Category", pct: 0, mapTo: "none", mapRank: 1 }]);
                   }}>+ Add Category</button>
                 </div>
-                <p className="note" style={{ marginBottom: 12 }}>Set the % of the prize pool for each category. Total must not exceed 100%.</p>
+                <p className="note" style={{ marginBottom: 12 }}>Map each category to a specific placement so winners are tracked automatically. Set the % of the prize pool for each.</p>
                 {(() => {
-                  const cats = d.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
+                  const legacyIdToType = { champion: "playoff_1", runnerUp: "playoff_2", thirdPlace: "playoff_3", regularNet: "net_1", regularGross: "gross_1" };
+                  const cats = (d.payoutCategories ?? DEFAULT_CONFIG.payoutCategories).map(cat => {
+                    if (cat.mapTo !== undefined) return cat;
+                    const type = cat.type ?? legacyIdToType[cat.id];
+                    if (!type || type === "none") return { ...cat, mapTo: "none", mapRank: 1 };
+                    const m = type.match(/^(playoff|net|gross)_(\d+)$/);
+                    return m ? { ...cat, mapTo: m[1], mapRank: Number(m[2]) } : { ...cat, mapTo: "none", mapRank: 1 };
+                  });
                   const totalPct = cats.reduce((s, c) => s + (Number(c.pct) || 0), 0);
                   const pool = (d.entryFee ?? 0) * members.filter(m => m.paid).length;
                   const overLimit = totalPct > 100;
@@ -520,21 +852,39 @@ setConfirmClear(false);
                   return <>
                     {cats.map((cat, idx) => {
                       const amt = pool > 0 ? Math.round(pool * cat.pct / 100) : null;
-                      const isCustom = cat.id.startsWith("custom_");
+                      const upd = (patch) => set("payoutCategories", cats.map((c, i) => i === idx ? { ...c, ...patch } : c));
                       return (
-                        <div key={cat.id} className="payout-cat-row">
-                          {isCustom
-                            ? <input type="text" value={cat.label} placeholder="Category name" style={{ flex: 1, minWidth: 120 }} onChange={e => { const updated = cats.map((c, i) => i === idx ? { ...c, label: e.target.value } : c); set("payoutCategories", updated); }} />
-                            : <div className="payout-cat-label">{cat.label}</div>
-                          }
+                        <div key={cat.id} className="payout-cat-row" style={{ flexWrap: "wrap", gap: 8 }}>
+                          <input type="text" value={cat.label} placeholder="Category name"
+                            style={{ flex: "1 1 130px", minWidth: 100, fontSize: ".86rem" }}
+                            onChange={e => upd({ label: e.target.value })} />
+                          <select value={cat.mapTo ?? "none"} onChange={e => upd({ mapTo: e.target.value, mapRank: cat.mapRank ?? 1 })}
+                            style={{ flex: "1 1 130px", minWidth: 120, fontSize: ".82rem" }}>
+                            <option value="none">— Side game —</option>
+                            <option value="playoff">Playoff</option>
+                            <option value="net">Net standings</option>
+                            <option value="gross">Gross standings</option>
+                          </select>
+                          {(cat.mapTo ?? "none") !== "none" ? (
+                            <input type="number" min={1} max={99} value={cat.mapRank ?? 1}
+                              onChange={e => upd({ mapRank: Math.max(1, Number(e.target.value) || 1) })}
+                              style={{ width: 52, fontSize: ".82rem", textAlign: "center" }}
+                              title="Rank (1 = 1st place, 2 = 2nd place, etc.)" />
+                          ) : (
+                            <select value={cat.winner ?? ""} onChange={e => upd({ winner: e.target.value || null })}
+                              style={{ flex: "1 1 130px", minWidth: 120, fontSize: ".82rem" }}>
+                              <option value="">— Assign winner —</option>
+                              {members.filter(m => m.profile).map(m => <option key={m.user_id} value={m.profile.name}>{m.profile.name}</option>)}
+                            </select>
+                          )}
                           <div className="payout-pct-input">
                             <input type="number" min={0} max={100} step={1} value={cat.pct || ""} placeholder="0"
                               style={{ borderColor: overLimit && cat.pct > 0 ? "rgba(224,92,92,.5)" : undefined }}
-                              onChange={e => { const val = Math.max(0, Math.min(100, Number(e.target.value) || 0)); const updated = cats.map((c, i) => i === idx ? { ...c, pct: val } : c); set("payoutCategories", updated); }} />
+                              onChange={e => { const val = Math.max(0, Math.min(100, Number(e.target.value) || 0)); upd({ pct: val }); }} />
                             <span style={{ color: "var(--cream-dim)" }}>%</span>
                           </div>
                           <div className="payout-amount">{amt != null && cat.pct > 0 ? `$${amt.toLocaleString()}` : <span style={{ color: "#4b5563" }}>—</span>}</div>
-                          {isCustom && <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: ".7rem" }} onClick={() => set("payoutCategories", cats.filter((_, i) => i !== idx))}>✕</button>}
+                          <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: ".7rem", flexShrink: 0 }} onClick={() => set("payoutCategories", cats.filter((_, i) => i !== idx))}>✕</button>
                         </div>
                       );
                     })}
@@ -599,6 +949,80 @@ setConfirmClear(false);
               );
             })()}
           </div>
+
+          {/* Add member manually */}
+          <div style={{ marginBottom: 16 }}>
+            {!showAddMember ? (
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowAddMember(true)}>+ Add Member Manually</button>
+            ) : (
+              <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 10, padding: "16px" }}>
+                <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "var(--gold)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 12 }}>Add Member</div>
+                <div className="fgrid" style={{ marginBottom: 12 }}>
+                  <div className="fg" style={{ gridColumn: "1/-1" }}>
+                    <label>Email <span style={{ color: "var(--red)" }}>*</span></label>
+                    <input type="email" placeholder="player@email.com" value={addMemberDraft.email}
+                      onChange={e => setAddMemberDraft(d => ({ ...d, email: e.target.value }))} />
+                    <span style={{ fontSize: ".7rem", color: "var(--cream-dim)", marginTop: 3, display: "block" }}>Must match their Greek Side Bunker account email.</span>
+                  </div>
+                  <div className="fg" style={{ gridColumn: "1/-1" }}>
+                    <label>Display Name <span style={{ color: "var(--red)" }}>*</span></label>
+                    <input type="text" placeholder="John Smith" value={addMemberDraft.name}
+                      onChange={e => setAddMemberDraft(d => ({ ...d, name: e.target.value }))} />
+                  </div>
+                  <div className="fg">
+                    <label>Handicap Index</label>
+                    <input type="number" step=".1" min={0} max={54} placeholder="e.g. 8.4" value={addMemberDraft.handicap}
+                      onChange={e => setAddMemberDraft(d => ({ ...d, handicap: e.target.value }))} />
+                  </div>
+                  <div className="fg">
+                    <label>GHIN #</label>
+                    <input type="text" placeholder="e.g. 1234567" value={addMemberDraft.ghin}
+                      onChange={e => setAddMemberDraft(d => ({ ...d, ghin: e.target.value }))} />
+                  </div>
+                </div>
+                {addMemberMsg.text && (
+                  <div style={{ marginBottom: 10, fontSize: ".82rem", color: addMemberMsg.ok ? "var(--green)" : "#f09090" }}>{addMemberMsg.text}</div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn btn-gold btn-sm" onClick={addMemberByEmail}
+                    disabled={!addMemberDraft.email.trim() || !addMemberDraft.name.trim() || addMemberLoading}>
+                    {addMemberLoading ? "Adding..." : "Add to League"}
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setShowAddMember(false); setAddMemberMsg({ text: "", ok: true }); }}>Cancel</button>
+                </div>
+              </div>
+            )}
+            {!showAddMember && addMemberMsg.text && (
+              <div style={{ marginTop: 8, fontSize: ".82rem", color: addMemberMsg.ok ? "var(--green)" : "#f09090" }}>{addMemberMsg.text}</div>
+            )}
+          </div>
+
+          {pendingInvites.length > 0 && (
+            <>
+              <div style={{ fontSize: ".7rem", color: "var(--gold)", fontFamily: "var(--font-d)", letterSpacing: "2px", textTransform: "uppercase", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                <Mail size={11} />Pending Invites ({pendingInvites.length})
+              </div>
+              {pendingInvites.map(inv => (
+                <div key={inv.id} className="pchip" style={{ borderColor: "rgba(212,168,67,.25)", opacity: 0.85 }}>
+                  <div className="avatar lg" style={{ background: "rgba(212,168,67,.12)", border: "1px solid rgba(212,168,67,.3)", color: "var(--gold)", fontSize: ".75rem" }}>
+                    {inv.name?.[0]?.toUpperCase()}
+                  </div>
+                  <div className="pchip-info">
+                    <div className="pchip-name">{inv.name}</div>
+                    <div className="pchip-meta">
+                      {inv.email}
+                      {inv.handicap != null && <> · Hcp {inv.handicap}</>}
+                      {" · "}<span style={{ color: "var(--gold-light)" }}>Invite pending</span>
+                    </div>
+                  </div>
+                  <div className="pchip-actions">
+                    <button className="btn btn-danger" onClick={() => cancelInvite(inv.id)}>Cancel</button>
+                  </div>
+                </div>
+              ))}
+              <div style={{ borderTop: "1px solid var(--navy-border)", margin: "12px 0" }} />
+            </>
+          )}
 
           {pendingJoins.length > 0 && <>
             <div style={{ fontSize: ".7rem", color: "var(--purple)", fontFamily: "var(--font-d)", letterSpacing: "2px", textTransform: "uppercase", marginBottom: 8 }}>Pending Join Requests</div>
@@ -697,7 +1121,23 @@ setConfirmClear(false);
       )}
 
       {/* ── ALL ROUNDS ── */}
-      {adminTab === "rounds" && (
+      {adminTab === "rounds" && (() => {
+        const TEAM_FORMATS = ["scramble", "texas_scramble", "best_ball"];
+        const teamLookup = Object.fromEntries((config.scrambleTeams ?? []).map(t => [String(t.id), t.name]));
+        const isTeamMode = (config.scrambleTeams ?? []).length > 0 &&
+          (TEAM_FORMATS.includes(config.scoringFormat) ||
+           (config.tournamentMode && (config.tournamentRounds ?? []).some(tr => TEAM_FORMATS.includes(tr.format))));
+
+        // Deduplicate: in team mode keep one row per team per course/tournament-round (latest wins)
+        const displayRounds = isTeamMode
+          ? Object.values(rounds.reduce((acc, r) => {
+              const key = r.team_id ? `${r.team_id}_${r.tournament_round_id ?? r.course_id}` : r.id;
+              if (!acc[key] || r.created_at > acc[key].created_at) acc[key] = r;
+              return acc;
+            }, {})).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+          : rounds;
+
+        return (
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
             <div className="card-hdr" style={{ marginBottom: 0 }}><ClipboardList size={15} />All Rounds</div>
@@ -706,16 +1146,20 @@ setConfirmClear(false);
           {rounds.length === 0 ? <div className="empty">No rounds yet.</div> : (
             <div className="tw"><table>
               <thead><tr>
-                <th>Player</th><th>Course</th><th>Gross</th>
+                <th>{isTeamMode ? "Team" : "Player"}</th><th>Course</th><th>Gross</th>
                 {config.useHandicap && <th>Crs Hcp</th>}
                 <th>Net</th>
                 {config.scoringFormat === "stableford" && <th>Pts</th>}
                 {config.attestRequired && <th>Attester</th>}
                 <th>Status</th><th>Date</th><th>Card</th><th></th>
               </tr></thead>
-              <tbody>{rounds.map(r => (
+              <tbody>{displayRounds.map(r => (
                 <tr key={r.id}>
-                  <td><span className="pname" style={{ fontSize: ".84rem" }}>{r.player_name}</span></td>
+                  <td>
+                    {isTeamMode && teamLookup[String(r.team_id)]
+                      ? <><span className="pname" style={{ fontSize: ".84rem" }}>{teamLookup[String(r.team_id)]}</span><div style={{ fontSize: ".72rem", color: "var(--cream-dim)" }}>{r.player_name}</div></>
+                      : <span className="pname" style={{ fontSize: ".84rem" }}>{r.player_name}</span>}
+                  </td>
                   <td style={{ fontSize: ".8rem", color: "var(--cream-dim)" }}>{r.course_name}</td>
                   <td>{r.gross}</td>
                   {config.useHandicap && <td><span className="hcp-badge" style={{ fontSize: ".66rem" }}>{r.course_handicap}</span></td>}
@@ -740,7 +1184,8 @@ setConfirmClear(false);
             </table></div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* ── EXPORT ── */}
       {adminTab === "export" && (
@@ -1010,7 +1455,7 @@ setConfirmRemoveBylaws(false);
           <div style={{ fontSize: ".88rem", color: "var(--cream-dim)", lineHeight: 2 }}>
             <div>Name: <span style={{ color: "var(--white)" }}>{activeLeague.name}</span></div>
             {activeLeague.description && <div>Description: <span style={{ color: "var(--white)" }}>{activeLeague.description}</span></div>}
-            <div>Scoring format: <span style={{ color: "var(--purple)" }}>{FORMAT_LABELS[config.scoringFormat]}</span></div>
+            <div>Scoring format: <span style={{ color: "var(--purple)" }}>{config.tournamentMode ? "Tournament" : FORMAT_LABELS[config.scoringFormat]}</span></div>
             <div>Members: <span style={{ color: "var(--white)" }}>{members.length}{config.maxPlayers ? ` / ${config.maxPlayers} max` : ""}</span></div>
             <div>Handicap: <span style={{ color: "var(--white)" }}>{config.useHandicap ? `${config.handicapPct}%${config.useSlopeRating ? " (USGA slope/rating)" : " (flat)"}${config.maxHandicap ? ` · max ${config.maxHandicap}` : ""}` : "Gross only"}</span></div>
             <div>Attestation: <span style={{ color: "var(--white)" }}>{config.attestRequired ? "Required" : "Off"}</span></div>

@@ -35,6 +35,10 @@ export default function HelpModal({ onClose }) {
       title: "Leaderboard",
       steps: [
         { heading: "Overall standings", body: "Players are ranked by net average (stroke play) or total points (Stableford). Only approved rounds count." },
+        { heading: "Net & Gross", body: "Use the Net / Gross toggle on the leaderboard to switch between handicap-adjusted and raw scores." },
+        { heading: "Team formats", body: "Scramble and Best Ball leagues show team standings instead of individuals. Your commissioner assigns teams — your score counts toward your team's average." },
+        { heading: "Tournament mode", body: "Some leagues run a playoff tournament. The leaderboard shows per-round brackets alongside the overall standings. Each round has its own Net / Gross toggle." },
+        { heading: "Payouts", body: "If your commissioner has set up payouts, the Payouts tab shows who wins each category and how much — based on the entry fee and payout percentages they configured." },
         { heading: "Score visibility", body: "If your commissioner has enabled 'Hide scores until submitted', you won't see other players' scores until you post your own round." },
         { heading: "Counting rounds", body: "Your commissioner may set a limit on how many rounds count — e.g. best 5 of 8. Your best rounds are used automatically." },
       ]

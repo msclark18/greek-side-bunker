@@ -59,7 +59,7 @@ export default function App() {
   const creatingLeague = useRef(false);
 
   // ── Post score state ──
-  const [form, setForm] = useState({ courseId: "", score: "", attesterId: "", date: new Date().toISOString().split("T")[0] });
+  const [form, setForm] = useState({ courseId: "", score: "", attesterId: "", date: new Date().toISOString().split("T")[0], teamId: "", tournamentRoundId: "" });
   const [formMsg, setFormMsg] = useState({ type: "", text: "" });
   const [cardFile, setCardFile] = useState(null);
   const [cardPreview, setCardPreview] = useState(null);
@@ -76,15 +76,47 @@ export default function App() {
   useEffect(() => {
     if (!session?.user?.id) return;
     supabase.from("profiles").select("*").eq("id", session.user.id).single().then(({ data, error }) => { if (!error && data) setProfile(data); });
+    consumePendingInvites();
     loadLeagues();
   }, [session]);
+
+  const consumePendingInvites = async () => {
+    const email = session?.user?.email;
+    if (!email) return;
+    const { data: invites } = await supabase
+      .from("league_invites")
+      .select("*")
+      .eq("email", email.toLowerCase());
+    if (!invites?.length) return;
+    for (const inv of invites) {
+      // Add to league (ignore duplicate error if already a member)
+      await supabase.from("league_members").insert({ league_id: inv.league_id, user_id: session.user.id, role: "player" });
+      // Apply profile overrides the commissioner set
+      const updates = {};
+      if (inv.name) updates.name = inv.name;
+      if (inv.handicap != null) updates.handicap = Number(inv.handicap);
+      if (inv.ghin) updates.ghin = inv.ghin;
+      if (Object.keys(updates).length > 0) {
+        await supabase.from("profiles").update(updates).eq("id", session.user.id);
+      }
+      await supabase.from("league_invites").delete().eq("id", inv.id);
+    }
+    loadLeagues();
+  };
 
   const loadLeagues = async () => {
     if (!session?.user?.id) return;
     const { data, error } = await supabase.from("league_members").select("*, league:leagues(*)").eq("user_id", session.user.id);
     if (error) { console.error("Supabase error loading leagues:", error); return; }
+    const rawLeagues = (data || []).map(m => m.league).filter(Boolean);
+    // Fetch tournament mode flags for all leagues in one query
+    const leagueIds = rawLeagues.map(l => l.id);
+    const { data: settings } = leagueIds.length
+      ? await supabase.from("league_settings").select("league_id, config").in("league_id", leagueIds)
+      : { data: [] };
+    const tournamentByLeague = Object.fromEntries((settings || []).map(s => [s.league_id, !!(s.config?.tournamentMode)]));
     setMyMemberships(data || []);
-    setLeagues((data || []).map(m => m.league).filter(Boolean));
+    setLeagues(rawLeagues.map(l => ({ ...l, tournamentMode: tournamentByLeague[l.id] ?? false })));
   };
 
   // ── Auth actions ──
@@ -261,6 +293,105 @@ export default function App() {
     const pr = visible.filter(r => r.player_id === p.id); if (!pr.length) return null;
     return { ...p, best: pr.reduce((b, r) => r.gross < b.gross ? r : b) };
   }).filter(Boolean).sort((a, b) => a.best.gross - b.best.gross), [players, visible]);
+
+  // ── Team leaderboard (scramble season) ──
+  const teamLB = useMemo(() => {
+    const teams = config.scrambleTeams ?? [];
+    if (!teams.length) return [];
+    return teams.map(team => {
+      const teamRounds = visible.filter(r => r.team_id === team.id);
+      if (!teamRounds.length) return null;
+      const avg = teamRounds.reduce((s, r) => s + (r.net ?? 0), 0) / teamRounds.length;
+      return { ...team, rounds: teamRounds, primary: avg, label: avg.toFixed(1), totalRounds: teamRounds.length };
+    }).filter(Boolean).sort((a, b) => a.primary - b.primary);
+  }, [config.scrambleTeams, visible]);
+
+  // ── Tournament leaderboard ──
+  const TEAM_FORMATS = ["scramble", "texas_scramble", "best_ball"];
+  const tournamentRoundLB = useMemo(() => {
+    if (!config.tournamentMode || !config.tournamentRounds?.length) return {};
+    const teams = config.scrambleTeams ?? [];
+    return Object.fromEntries(config.tournamentRounds.map(tr => {
+      const trRounds = visible.filter(r => r.tournament_round_id === tr.id);
+      const roundTeams = (config.teamsFixed ?? true) ? teams : (tr.teams ?? []);
+      const isTeam = TEAM_FORMATS.includes(tr.format) && roundTeams.length > 0;
+      if (isTeam) {
+        const standings = roundTeams.map(team => {
+          const tr_rounds = trRounds.filter(r => r.team_id === team.id);
+          if (!tr_rounds.length) return null;
+          const avg = tr_rounds.reduce((s, r) => s + (r.net ?? 0), 0) / tr_rounds.length;
+          const grossAvg = tr_rounds.reduce((s, r) => s + r.gross, 0) / tr_rounds.length;
+          return { ...team, rounds: tr_rounds, primary: avg, label: avg.toFixed(1), grossPrimary: grossAvg, grossLabel: grossAvg.toFixed(1) };
+        }).filter(Boolean).sort((a, b) => a.primary - b.primary);
+        const grossStandings = [...standings].sort((a, b) => a.grossPrimary - b.grossPrimary);
+        return [tr.id, { ...tr, standings, grossStandings, isTeam: true }];
+      }
+      const standings = players.map(p => {
+        const pr = trRounds.filter(r => r.player_id === p.id);
+        if (!pr.length) return null;
+        const avg = pr.reduce((s, r) => s + (r.net ?? 0), 0) / pr.length;
+        const grossAvg = pr.reduce((s, r) => s + r.gross, 0) / pr.length;
+        return { ...p, pr, primary: avg, label: avg.toFixed(1), grossPrimary: grossAvg, grossLabel: grossAvg.toFixed(1) };
+      }).filter(Boolean).sort((a, b) => a.primary - b.primary);
+      const grossStandings = [...standings].sort((a, b) => a.grossPrimary - b.grossPrimary);
+      return [tr.id, { ...tr, standings, grossStandings, isTeam: false }];
+    }));
+  }, [config.tournamentMode, config.tournamentRounds, config.scrambleTeams, visible, players]);
+
+  const tournamentOverallLB = useMemo(() => {
+    if (!config.tournamentMode || !config.tournamentRounds?.length) return [];
+    const teams = config.scrambleTeams ?? [];
+    const allTeamFormat = config.tournamentRounds.every(tr => TEAM_FORMATS.includes(tr.format));
+    if (allTeamFormat && teams.length > 0) {
+      // Team overall: sum of team net scores across all tournament rounds
+      return teams.map(team => {
+        const roundScores = config.tournamentRounds.map(tr => {
+          const r = visible.find(r => r.team_id === team.id && r.tournament_round_id === tr.id);
+          return r ? r.net : null;
+        });
+        const grossRoundScores = config.tournamentRounds.map(tr => {
+          const r = visible.find(r => r.team_id === team.id && r.tournament_round_id === tr.id);
+          return r ? r.gross : null;
+        });
+        const scored = roundScores.filter(s => s !== null);
+        if (!scored.length) return null;
+        const total = scored.reduce((s, n) => s + n, 0);
+        const grossScored = grossRoundScores.filter(s => s !== null);
+        const grossTotal = grossScored.length ? grossScored.reduce((s, n) => s + n, 0) : null;
+        return { ...team, roundScores, total, label: String(total), roundsPlayed: scored.length, grossRoundScores, grossTotal };
+      }).filter(Boolean).sort((a, b) => a.total - b.total);
+    }
+    // Individual overall: sum of net scores across all tournament rounds
+    return players.map(p => {
+      const roundScores = config.tournamentRounds.map(tr => {
+        // For team rounds, find team's score and attribute to this player
+        if (TEAM_FORMATS.includes(tr.format) && teams.length > 0) {
+          const myTeam = teams.find(t => t.players?.includes(p.name) || t.players?.includes(p.id));
+          if (!myTeam) return null;
+          const r = visible.find(r => r.team_id === myTeam.id && r.tournament_round_id === tr.id);
+          return r ? r.net : null;
+        }
+        const r = visible.find(r => r.player_id === p.id && r.tournament_round_id === tr.id);
+        return r ? r.net : null;
+      });
+      const grossRoundScores = config.tournamentRounds.map(tr => {
+        if (TEAM_FORMATS.includes(tr.format) && teams.length > 0) {
+          const myTeam = teams.find(t => t.players?.includes(p.name) || t.players?.includes(p.id));
+          if (!myTeam) return null;
+          const r = visible.find(r => r.team_id === myTeam.id && r.tournament_round_id === tr.id);
+          return r ? r.gross : null;
+        }
+        const r = visible.find(r => r.player_id === p.id && r.tournament_round_id === tr.id);
+        return r ? r.gross : null;
+      });
+      const scored = roundScores.filter(s => s !== null);
+      if (!scored.length) return null;
+      const total = scored.reduce((s, n) => s + n, 0);
+      const grossScored = grossRoundScores.filter(s => s !== null);
+      const grossTotal = grossScored.length ? grossScored.reduce((s, n) => s + n, 0) : null;
+      return { ...p, roundScores, total, label: String(total), roundsPlayed: scored.length, grossRoundScores, grossTotal };
+    }).filter(Boolean).sort((a, b) => a.total - b.total);
+  }, [config.tournamentMode, config.tournamentRounds, config.scrambleTeams, visible, players]);
 
   const regularCourses = courses.filter(c => !c.playoff_only);
 
@@ -467,7 +598,7 @@ export default function App() {
           </div>
           <div className="topbar-right">
             {isAdmin && <span className="badge-admin">Commissioner</span>}
-            <span className="fmt-pip">{FORMAT_LABELS[config.scoringFormat]}</span>
+            <span className="fmt-pip">{config.tournamentMode ? "Tournament" : FORMAT_LABELS[config.scoringFormat]}</span>
             {isAdmin && pendingJoins.length > 0 && (
               <button className="btn btn-ghost btn-sm" style={{ color: "var(--purple)" }} onClick={() => setTab("admin")}>
                 {pendingJoins.length} join request{pendingJoins.length > 1 ? "s" : ""}
@@ -492,6 +623,7 @@ export default function App() {
                   <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setShowMenu(false)} />
                   <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", background: "var(--navy-card)", border: "1px solid var(--gold-border)", borderRadius: 10, minWidth: 200, zIndex: 100, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,.6)", padding: "6px 0" }}>
                     <button className="menu-item" onClick={() => { setShowMenu(false); setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin }); setProfileModal(true); }}>Edit Profile</button>
+                    <div style={{ borderTop: "1px solid var(--navy-border)", margin: "6px 0" }} />
                     <button className="menu-item" onClick={() => { setShowMenu(false); setShowHelp(true); }}>Guide</button>
                     <div style={{ borderTop: "1px solid var(--navy-border)", margin: "6px 0" }} />
                     <button className="menu-item" onClick={() => { setShowMenu(false); setActiveLeague(null); }}>Switch League</button>
@@ -568,6 +700,7 @@ export default function App() {
             session={session} activeLeague={activeLeague} isAdmin={isAdmin}
             overallLB={overallLB} grossLB={grossLB} courseLB={courseLB}
             bestNetLB={bestNetLB} bestGrossLB={bestGrossLB}
+            teamLB={teamLB} tournamentRoundLB={tournamentRoundLB} tournamentOverallLB={tournamentOverallLB}
             completionData={completionData} scored={scored} myHasSubmitted={myHasSubmitted}
             selCourse={selCourse} setSelCourse={setSelCourse}
             setConfig={setConfig} setViewCardModal={setViewCardModal}
