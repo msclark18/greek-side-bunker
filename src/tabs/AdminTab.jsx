@@ -155,19 +155,12 @@ export default function AdminTab({
         setAddMemberLoading(false);
         return;
       }
-      // Send invite email
-      try {
-        const inviteRes = await fetch(`/api/invite-member`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ leagueId: activeLeague.id, leagueName: activeLeague.name, email, name, invitedBy: session?.user?.email }),
-        });
-        const inviteData = await inviteRes.json();
-        if (!inviteRes.ok) console.error("invite-member error:", inviteData);
-        else console.log("invite-member response:", inviteData);
-      } catch (e) {
-        console.error("invite-member fetch failed:", e);
-      }
+      // Send invite email (best-effort)
+      fetch(`/api/invite-member`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leagueId: activeLeague.id, leagueName: activeLeague.name, email, name, invitedBy: session?.user?.email }),
+      }).catch(() => {});
       setAddMemberMsg({ text: `Invite created for ${email}. They'll get a signup email when they join.`, ok: true });
       setAddMemberDraft({ email: "", name: "", handicap: "", ghin: "" });
       setShowAddMember(false);
