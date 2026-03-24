@@ -156,8 +156,7 @@ export default function AdminTab({
         return;
       }
       // Send invite email (best-effort — won't fail the flow if API is unavailable in dev)
-      const apiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
-      fetch(`${apiUrl}/api/invite-member`, {
+      fetch(`/api/invite-member`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ leagueId: activeLeague.id, leagueName: activeLeague.name, email, name, invitedBy: session?.user?.email }),
