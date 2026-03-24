@@ -1,56 +1,25 @@
 // api/invite-member.js
-// Vercel serverless function — invites a new user to a league by email
+// Vercel serverless function — sends a league invite email
+// The league_invites row is already created client-side before this is called.
 // POST /api/invite-member
 //
 // Required env vars:
-//   SUPABASE_URL
-//   SUPABASE_SERVICE_KEY
 //   RESEND_API_KEY
 //   FROM_EMAIL
-//   VITE_APP_URL (or APP_URL) — public app URL, e.g. https://greeksidebunker.com
+//   APP_URL — public app URL, e.g. https://greeksidebunker.com
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { leagueId, leagueName, email, name, handicap, ghin, invitedBy } = req.body;
+  const { leagueId, leagueName, email, name, invitedBy } = req.body;
 
   if (!leagueId || !email || !name) {
     return res.status(400).json({ error: "leagueId, email, and name are required" });
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceKey  = process.env.SUPABASE_SERVICE_KEY;
   const normalEmail = email.trim().toLowerCase();
-
-  const headers = {
-    apikey:        serviceKey,
-    Authorization: `Bearer ${serviceKey}`,
-    "Content-Type": "application/json",
-    Prefer:        "return=representation",
-  };
-
-  // Upsert league_invites row (unique on league_id + email)
-  const upsertRes = await fetch(`${supabaseUrl}/rest/v1/league_invites`, {
-    method: "POST",
-    headers: { ...headers, Prefer: "resolution=merge-duplicates,return=representation" },
-    body: JSON.stringify({
-      league_id:  leagueId,
-      email:      normalEmail,
-      name,
-      handicap:   handicap !== "" && handicap != null ? Number(handicap) : null,
-      ghin:       ghin?.trim() || null,
-      invited_by: invitedBy ?? null,
-      invited_at: new Date().toISOString(),
-    }),
-  });
-
-  if (!upsertRes.ok) {
-    const err = await upsertRes.text();
-    console.error("league_invites upsert error:", err);
-    return res.status(500).json({ error: "Failed to store invite." });
-  }
 
   // Send invite email via Resend
   const appUrl = process.env.APP_URL ?? process.env.VITE_APP_URL ?? "https://greeksidebunker.com";
