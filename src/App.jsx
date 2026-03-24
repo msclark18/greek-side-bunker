@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { Trophy, Pencil, Clock, Settings, FileText, AlertTriangle } from "lucide-react";
 import { supabase } from "./supabase.js";
 import { DEFAULT_CONFIG, FORMAT_LABELS } from "./constants/config.js";
 import { calcCourseHcp, calcStableford, isSeasonActive, ini } from "./utils/golf.js";
@@ -87,7 +88,7 @@ export default function App() {
   };
 
   // ── Auth actions ──
-  const signInWithGoogle = () => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: "https://greeksidebunker.com/" } });
+  const signInWithGoogle = () => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin + "/" } });
 
   const signInWithEmail = async () => {
     setAuthError(""); setAuthLoading(true);
@@ -340,7 +341,7 @@ export default function App() {
       {showProfileGate && isProfileIncomplete && dataLoaded && (
         <div className="modal-bg">
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">⚠ Profile Incomplete</div>
+            <div className="modal-title" style={{ display: "flex", alignItems: "center", gap: 8 }}><AlertTriangle size={18} />Profile Incomplete</div>
             <p style={{ fontSize: ".9rem", color: "var(--cream-dim)", marginBottom: 18, lineHeight: 1.7 }}>
               This league requires a <strong style={{ color: "var(--cream)" }}>handicap index</strong> and a valid <strong style={{ color: "var(--cream)" }}>GHIN number</strong> (7-8 digits) to participate. Please update your profile before continuing.
             </p>
@@ -358,7 +359,7 @@ export default function App() {
                   onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))}
                   style={{ borderColor: profileDraft.ghin && !/^\d{7,8}$/.test(String(profileDraft.ghin)) ? "var(--red)" : undefined }} />
                 {profileDraft.ghin && !/^\d{7,8}$/.test(String(profileDraft.ghin)) && (
-                  <span style={{ fontSize: ".72rem", color: "var(--red)", marginTop: 2 }}>⚠ Must be 7-8 digits</span>
+                  <span style={{ fontSize: ".72rem", color: "var(--red)", marginTop: 2, display: "inline-flex", alignItems: "center", gap: 4 }}><AlertTriangle size={11} />Must be 7-8 digits</span>
                 )}
                 {profileDraft.ghin && /^\d{7,8}$/.test(String(profileDraft.ghin)) && (
                   <span style={{ fontSize: ".72rem", color: "var(--green)", marginTop: 2 }}>✓ Valid format</span>
@@ -388,7 +389,7 @@ export default function App() {
         <div className="modal-bg" onClick={() => setViewCardModal(null)}>
           <div className="modal" style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <div className="modal-title" style={{ marginBottom: 0 }}>📋 Scorecard</div>
+              <div className="modal-title" style={{ marginBottom: 0, display: "flex", alignItems: "center", gap: 8 }}><FileText size={17} />Scorecard</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <a href={viewCardModal.url} target="_blank" rel="noreferrer"><button className="btn btn-ghost btn-sm">Full Size ↗</button></a>
                 <button className="btn btn-ghost btn-sm" onClick={() => setViewCardModal(null)}>Close</button>
@@ -411,7 +412,7 @@ export default function App() {
                 <div className="fg"><label>GHIN #</label><input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""} onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))} /></div>
               </div>
               {profileDraft.ghin && !/^\d{7,8}$/.test(String(profileDraft.ghin)) && (
-                <p style={{ fontSize: ".72rem", color: "var(--red)" }}>⚠ GHIN must be 7-8 digits</p>
+                <p style={{ fontSize: ".72rem", color: "var(--red)", display: "flex", alignItems: "center", gap: 4 }}><AlertTriangle size={11} />GHIN must be 7-8 digits</p>
               )}
               {profileDraft.ghin && /^\d{7,8}$/.test(String(profileDraft.ghin)) && (
                 <><GhinLink ghin={profileDraft.ghin} /><p className="note" style={{ marginTop: 4 }}>Your GHIN # will be copied to clipboard when you click the link.</p></>
@@ -429,7 +430,7 @@ export default function App() {
       {playersModal && (
         <div className="modal-bg" onClick={() => setPlayersModal(false)}>
           <div className="modal" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-title">👥 League Players</div>
+            <div className="modal-title">League Players</div>
             <div className="player-card-grid">
               {members.filter(m => m.profile).map(m => {
                 const courseHcps = courses.map(c => ({ ...c, ch: calcCourseHcp(m.profile.handicap ?? 0, c.slope, c.par, c.rating, config) }));
@@ -469,10 +470,10 @@ export default function App() {
             <span className="fmt-pip">{FORMAT_LABELS[config.scoringFormat]}</span>
             {isAdmin && pendingJoins.length > 0 && (
               <button className="btn btn-ghost btn-sm" style={{ color: "var(--purple)" }} onClick={() => setTab("admin")}>
-                🙋 {pendingJoins.length} join request{pendingJoins.length > 1 ? "s" : ""}
+                {pendingJoins.length} join request{pendingJoins.length > 1 ? "s" : ""}
               </button>
             )}
-            <button className="btn btn-ghost btn-sm" onClick={() => setPlayersModal(true)}>👥 Players</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setPlayersModal(true)}>Players</button>
             <div className="user-chip" onClick={() => { setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin }); setProfileModal(true); }}>
               <div className="avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : ini(profile?.name)}</div>
               <div>
@@ -516,7 +517,7 @@ export default function App() {
         {/* Profile incomplete banner */}
         {isProfileIncomplete && dataLoaded && (
           <div className="alert-w" style={{ marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-            <span>⚠ Your profile is missing a handicap index or valid GHIN number — required by this league.</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><AlertTriangle size={14} />Your profile is missing a handicap index or valid GHIN number — required by this league.</span>
             <button className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }} onClick={() => {
               setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin });
               setProfileModal(true);
@@ -541,10 +542,10 @@ export default function App() {
         <div className="nav-wrap">
           <div className="nav">
             {[
-              ["leaderboard", "🏆 Leaderboard", false],
-              ["score", "✏️ Post Score", false],
-              ...(config.attestRequired ? [["attest", "⏳ Attest", true]] : []),
-              ...(isAdmin ? [["admin", "⚙ Admin", false]] : []),
+              ["leaderboard", <><Trophy size={14} />Leaderboard</>, false],
+              ["score", <><Pencil size={14} />Post Score</>, false],
+              ...(config.attestRequired ? [["attest", <><Clock size={14} />Attest</>, true]] : []),
+              ...(isAdmin ? [["admin", <><Settings size={14} />Admin</>, false]] : []),
             ].map(([k, l, isAttest]) => (
               <button
                 key={k}

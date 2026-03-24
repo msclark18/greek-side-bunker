@@ -36,7 +36,9 @@ export default class ErrorBoundary extends Component {
           width: "100%",
           textAlign: "center",
         }}>
-          <div style={{ fontSize: "2.5rem", marginBottom: 16 }}>⛳</div>
+          <div style={{ marginBottom: 16, color: "#d4a843" }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
           <div style={{ fontSize: "1rem", letterSpacing: "3px", color: "#faf9f6", fontWeight: 700, marginBottom: 8 }}>
             GREEK SIDE BUNKER
           </div>

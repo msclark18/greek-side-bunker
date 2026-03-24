@@ -2,6 +2,7 @@ import { useState } from "react";
 import { supabase } from "../supabase.js";
 import { calcCourseHcp, calcStableford, toPM, pmCls } from "../utils/golf.js";
 import { FORMAT_LABELS } from "../constants/config.js";
+import { Pencil, Camera, BarChart2, FileText, AlertTriangle, Ban, Clock } from "lucide-react";
 
 export default function PostScore({
   session, profile, setProfile, activeLeague,
@@ -57,7 +58,7 @@ export default function PostScore({
 
   const attestBadge = (status) => !config.attestRequired
     ? <span className="ab auto">Auto ✓</span>
-    : <span className={`ab ${status}`}>{status === "approved" ? "✓ Approved" : status === "rejected" ? "✗ Rejected" : "⏳ Pending"}</span>;
+    : <span className={`ab ${status}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>{status === "approved" ? "✓ Approved" : status === "rejected" ? "✗ Rejected" : <><Clock size={11} />Pending</>}</span>;
 
   const readScorecardWithAI = async (file) => {
     if (!file) return;
@@ -189,15 +190,14 @@ export default function PostScore({
   return (
     <>
       {!isOpen && (
-        <div className="alert-d" style={{ marginBottom: 16 }}>
-          ⛔ Season is not currently active — score submission is closed.
+        <div className="alert-d" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
+          <Ban size={14} /> Season is not currently active — score submission is closed.
         </div>
       )}
 
       {isOpen && missingProfile && (
-        <div className="alert-w" style={{ marginBottom: 16 }}>
-          ⚠ This league requires a handicap index and valid GHIN number (7-8 digits) to post scores.
-          Please update your profile before submitting a round.
+        <div className="alert-w" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
+          <AlertTriangle size={14} /> This league requires a handicap index and valid GHIN number (7-8 digits) to post scores. Please update your profile before submitting a round.
         </div>
       )}
 
@@ -205,7 +205,7 @@ export default function PostScore({
 
       <div className="card" style={{ opacity: isOpen ? 1 : .65, pointerEvents: isOpen ? "auto" : "none" }}>
         <div className="card-hdr">
-          ✏️ Post Your Round
+          <Pencil size={15} />Post Your Round
           {config.scoringFormat !== "stroke" && (
             <span style={{ fontSize: ".74rem", color: "var(--purple)", marginLeft: 10, fontFamily: "var(--font-b)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
               {FORMAT_LABELS[config.scoringFormat]}
@@ -227,7 +227,7 @@ export default function PostScore({
               onClick={() => document.getElementById("sc-upload").click()}
               onDragOver={e => e.preventDefault()}
               onDrop={e => { e.preventDefault(); handleCardFile(e.dataTransfer.files[0]); }}>
-              <div style={{ fontSize: "1.4rem", marginBottom: 4 }}>📷</div>
+              <div style={{ marginBottom: 4, color: "var(--cream-dim)" }}><Camera size={22} /></div>
               <div style={{ fontSize: ".85rem", color: "var(--cream-dim)" }}>
                 Drop scorecard photo here or <strong style={{ color: "var(--gold)" }}>browse</strong> · JPG PNG · max 10 MB
               </div>
@@ -250,7 +250,7 @@ export default function PostScore({
                   color: aiResult.error ? "#f09090" : "#6ee7a0",
                 }}>
                   {aiResult.error
-                    ? "⚠ Couldn't read score — please enter manually."
+                    ? <><AlertTriangle size={13} /> Couldn't read score — please enter manually.</>
                     : aiResult.gross
                       ? `✓ Detected score: ${aiResult.gross}${aiResult.date ? ` · Date: ${aiResult.date}` : ""}${aiResult.course ? ` · Course: ${aiResult.course}` : ""} — fields pre-filled!`
                       : "Score not detected — please enter manually."}
@@ -439,7 +439,7 @@ export default function PostScore({
         const regularCourses = courses.filter(c => !c.playoff_only);
         return (
           <div className="card">
-            <div className="card-hdr">📊 My Stats</div>
+            <div className="card-hdr"><BarChart2 size={15} />My Stats</div>
             <div style={{ display: "flex", gap: 0, flexWrap: "wrap", background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 10, marginBottom: 18, overflow: "hidden" }}>
               <div className="bstat">
                 <div className="bstat-n">{approved.length}</div>
@@ -526,13 +526,13 @@ export default function PostScore({
                     <td>
                       {r.scorecard_url ? (
                         <div style={{ display: "flex", gap: 5 }}>
-                          <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}>📋</button>
+                          <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}><FileText size={13} /></button>
                           <button className="sc-btn" style={{ borderColor: "rgba(224,92,92,.3)", background: "rgba(224,92,92,.1)", color: "#f09090" }}
                             onClick={() => deleteScorecard(r)}>✕</button>
                         </div>
                       ) : (
                         <label className="sc-btn" style={{ background: "rgba(255,255,255,.04)", borderColor: "rgba(255,255,255,.1)", color: "var(--cream-dim)", cursor: "pointer" }}>
-                          📷 Add
+                          <Camera size={13} style={{ display: "inline" }} /> Add
                           <input type="file" accept="image/*" style={{ display: "none" }}
                             onChange={async e => { if (e.target.files[0]) await uploadScorecardToRound(r.id, e.target.files[0]); }} />
                         </label>

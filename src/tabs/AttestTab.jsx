@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { supabase } from "../supabase.js";
 import { toPM, pmCls } from "../utils/golf.js";
+import { Clock, FileText, Check, X } from "lucide-react";
 
 export default function AttestTab({ pendingForMe, config, setRounds, setViewCardModal }) {
   const [attestMsg, setAttestMsg] = useState({ id: null, text: "", ok: true });
@@ -32,10 +33,10 @@ export default function AttestTab({ pendingForMe, config, setRounds, setViewCard
 
   return (
     <>
-      <div className="card-hdr" style={{ marginBottom: 16 }}>⏳ Rounds Awaiting Your Attestation</div>
+      <div className="card-hdr" style={{ marginBottom: 16 }}><Clock size={15} />Rounds Awaiting Your Attestation</div>
 
       {pendingForMe.length === 0 ? (
-        <div className="card"><div className="empty">No rounds waiting for your attestation. 🎉</div></div>
+        <div className="card"><div className="empty">No rounds waiting for your attestation.</div></div>
       ) : (
         pendingForMe.map(r => (
           <div key={r.id} className="attest-card">
@@ -45,8 +46,8 @@ export default function AttestTab({ pendingForMe, config, setRounds, setViewCard
                 <div className="attest-meta">{r.course_name} · {r.date}</div>
               </div>
               {r.scorecard_url && (
-                <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}>
-                  📋 View Scorecard
+                <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <FileText size={13} />View Scorecard
                 </button>
               )}
             </div>
@@ -79,8 +80,8 @@ export default function AttestTab({ pendingForMe, config, setRounds, setViewCard
             </div>
 
             <div className="attest-actions">
-              <button className="btn btn-gold btn-sm" onClick={() => approveRound(r)}>✓ Approve Round</button>
-              <button className="btn btn-danger" onClick={() => { setRejectModal(r); setRejectNote(""); }}>✗ Reject</button>
+              <button className="btn btn-gold btn-sm" style={{ display: "inline-flex", alignItems: "center", gap: 5 }} onClick={() => approveRound(r)}><Check size={13} />Approve Round</button>
+              <button className="btn btn-danger" style={{ display: "inline-flex", alignItems: "center", gap: 5 }} onClick={() => { setRejectModal(r); setRejectNote(""); }}><X size={13} />Reject</button>
             </div>
           </div>
         ))

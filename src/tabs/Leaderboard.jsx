@@ -3,6 +3,7 @@ import { supabase } from "../supabase.js";
 import { calcCourseHcp, toPM, pmCls, ini } from "../utils/golf.js";
 import { DEFAULT_CONFIG, FORMAT_LABELS } from "../constants/config.js";
 import GhinLink from "../components/GhinLink.jsx";
+import { Trophy, Star, ClipboardList, FileText, BarChart2, Flag, DollarSign, MapPin, AlertTriangle, Clock } from "lucide-react";
 
 export default function Leaderboard({
   config, courses, members, rounds, payouts,
@@ -19,7 +20,7 @@ export default function Leaderboard({
 
   const rankEl = (i) => (
     <td className={`rc ${i === 0 ? "r1" : i === 1 ? "r2" : i === 2 ? "r3" : ""}`}>
-      {i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}
+      {i + 1}
     </td>
   );
 
@@ -38,15 +39,15 @@ export default function Leaderboard({
   };
 
   const subTabs = [
-    ["overall", config.scoringFormat === "stableford" ? "⭐ Stableford" : "🏆 Net Standings"],
-    ["gross", "🏌️ Gross"],
-    ...(config.scoringFormat !== "match" && config.scoringFormat !== "scramble" ? [["course", "📍 By Course"]] : []),
-    ["best", "⭐ Best Rounds"],
-    ["completion", "📋 Completion"],
-    ["scores", "📋 Scores"],
-    ...(config.playoffEnabled !== false ? [["playoffs", "🏆 Playoffs"]] : []),
-    ["payouts", "💰 Payouts"],
-    ...(config.bylawsUrl ? [["rules", "📋 Rules"]] : []),
+    ["overall", config.scoringFormat === "stableford" ? <><Star size={13} />Stableford</> : <><Trophy size={13} />Net Standings</>],
+    ["gross", "Gross"],
+    ...(config.scoringFormat !== "match" && config.scoringFormat !== "scramble" ? [["course", <><MapPin size={13} />By Course</>]] : []),
+    ["best", <><Star size={13} />Best Rounds</>],
+    ["completion", <><ClipboardList size={13} />Completion</>],
+    ["scores", <><FileText size={13} />Scores</>],
+    ...(config.playoffEnabled !== false ? [["playoffs", <><Trophy size={13} />Playoffs</>]] : []),
+    ["payouts", <><DollarSign size={13} />Payouts</>],
+    ...(config.bylawsUrl ? [["rules", <><FileText size={13} />Rules</>]] : []),
   ];
 
   const regularCourses = courses.filter(c => !c.playoff_only);
@@ -83,8 +84,8 @@ export default function Leaderboard({
                       const extraCols = 2 + (config.useHandicap ? 2 : 0) + (config.scoringFormat === "stableford" ? 1 : 0) + (config.attestRequired ? 1 : 0);
                       const incompleteRow = (key) => (
                         <tr key={key} style={{ opacity: 0.45 }}>
-                          <td style={{ fontSize: ".82rem", color: "var(--cream-dim)" }}>{c.name}</td>
-                          <td colSpan={extraCols} style={{ fontSize: ".78rem", color: "#4b5563", fontStyle: "italic" }}>
+                          <td style={{ fontSize: ".82rem", color: "var(--cream)" }}>{c.name}</td>
+                          <td colSpan={extraCols} style={{ fontSize: ".78rem", color: "var(--cream-dim)", fontStyle: "italic" }}>
                             Incomplete{config.roundsPerCourse > 1 ? ` · ${courseRounds.length}/${config.roundsPerCourse} played` : ""}
                           </td>
                         </tr>
@@ -93,13 +94,13 @@ export default function Leaderboard({
                       return [
                         ...courseRounds.map(r => (
                           <tr key={r.id}>
-                            <td style={{ fontSize: ".82rem", color: "var(--cream-dim)" }}>{r.course_name}</td>
+                            <td style={{ fontSize: ".82rem", color: "var(--cream)" }}>{r.course_name}</td>
                             <td style={{ fontSize: ".76rem", color: "var(--cream-dim)", whiteSpace: "nowrap" }}>{r.date}</td>
                             <td><span style={{ fontFamily: "var(--font-d)" }}>{r.gross}</span></td>
                             {config.useHandicap && <td><span className="hcp-badge" style={{ fontSize: ".66rem" }}>{r.course_handicap}</span></td>}
                             {config.useHandicap && <td>{netEl(r.net, r.par)}</td>}
                             {config.scoringFormat === "stableford" && <td style={{ color: "var(--purple)", fontFamily: "var(--font-d)" }}>{r.stableford_pts ?? "-"}</td>}
-                            {config.attestRequired && <td><span className={`ab ${r.attest_status}`}>{r.attest_status === "approved" ? "✓" : r.attest_status === "rejected" ? "✗" : "⏳"}</span></td>}
+                            {config.attestRequired && <td><span className={`ab ${r.attest_status}`}>{r.attest_status === "approved" ? "✓" : r.attest_status === "rejected" ? "✗" : <Clock size={11} />}</span></td>}
                           </tr>
                         )),
                         ...Array.from({ length: remaining }, (_, i) => incompleteRow(`inc-${c.id}-${i}`)),
@@ -126,11 +127,11 @@ export default function Leaderboard({
       {leaderTab === "overall" && (
         <div className="card">
           <div className="card-hdr">
-            {config.scoringFormat === "stableford" ? "⭐ Stableford Standings" : "🏆 Net Standings"}
+            {config.scoringFormat === "stableford" ? <><Star size={15} />Stableford Standings</> : <><Trophy size={15} />Net Standings</>}
             {!config.useHandicap && <span style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginLeft: 10, fontFamily: "var(--font-b)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(gross only)</span>}
           </div>
-          {config.hideScores && !myHasSubmitted && <div className="alert-w" style={{ marginBottom: 14 }}>📵 Scores are hidden until you post your own round.</div>}
-          {config.scoresToCount && <div className="alert-w" style={{ marginBottom: 14 }}>📊 Best {config.scoresToCount} of all submitted scores count toward standings.</div>}
+          {config.hideScores && !myHasSubmitted && <div className="alert-w" style={{ marginBottom: 14 }}>Scores are hidden until you post your own round.</div>}
+          {config.scoresToCount && <div className="alert-w" style={{ marginBottom: 14 }}><BarChart2 size={14} /> Best {config.scoresToCount} of all submitted scores count toward standings.</div>}
           {overallLB.length === 0 ? <div className="empty">No {config.attestRequired ? "approved " : ""}rounds yet.</div> : (
             <div className="tw"><table>
               <thead><tr>
@@ -161,7 +162,7 @@ export default function Leaderboard({
       {/* ── Gross ── */}
       {leaderTab === "gross" && (
         <div className="card">
-          <div className="card-hdr">🏌️ Gross Standings</div>
+          <div className="card-hdr">Gross Standings</div>
           {grossLB.length === 0 ? <div className="empty">No rounds yet.</div> : (
             <div className="tw"><table>
               <thead><tr><th>#</th><th>Player</th><th>Rounds</th><th>Avg Gross</th><th>Best</th></tr></thead>
@@ -188,7 +189,7 @@ export default function Leaderboard({
               {courses.map(c => <option key={c.id} value={c.id}>{c.name} · Par {c.par}</option>)}
             </select>
           </div>
-          <div className="card-hdr">📍 {courses.find(c => c.id === selCourse)?.name}</div>
+          <div className="card-hdr"><MapPin size={15} />{courses.find(c => c.id === selCourse)?.name}</div>
           {courseLB.length === 0 ? <div className="empty">No rounds at this course yet.</div> : (
             <div className="tw"><table>
               <thead><tr>
@@ -218,7 +219,7 @@ export default function Leaderboard({
       {/* ── Best Rounds ── */}
       {leaderTab === "best" && (
         <div className="card">
-          <div className="card-hdr">⭐ Best Single Round</div>
+          <div className="card-hdr"><Star size={15} />Best Single Round</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
             <div>
               <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "var(--gold)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 8 }}>Best Net</div>
@@ -249,7 +250,7 @@ export default function Leaderboard({
       {/* ── Completion ── */}
       {leaderTab === "completion" && (
         <div className="card">
-          <div className="card-hdr">📋 Completion Tracker</div>
+          <div className="card-hdr"><ClipboardList size={15} />Completion Tracker</div>
           <p className="note" style={{ marginBottom: 14 }}>
             {config.roundsPerCourse} {config.attestRequired ? "approved " : ""}round{config.roundsPerCourse > 1 ? "s" : ""} per course · {courses.length * config.roundsPerCourse} total required.
           </p>
@@ -292,7 +293,7 @@ export default function Leaderboard({
         return (
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
-              <div className="card-hdr" style={{ marginBottom: 0 }}>📋 All Scores</div>
+              <div className="card-hdr" style={{ marginBottom: 0 }}><FileText size={15} />All Scores</div>
               <div style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>{filteredRounds.length} round{filteredRounds.length !== 1 ? "s" : ""}</div>
             </div>
             <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
@@ -340,12 +341,12 @@ export default function Leaderboard({
                     <td>
                       {!config.attestRequired
                         ? <span className="ab auto">Auto ✓</span>
-                        : <span className={`ab ${r.attest_status}`}>{r.attest_status === "approved" ? "✓ Approved" : r.attest_status === "rejected" ? "✗ Rejected" : "⏳ Pending"}</span>
+                        : <span className={`ab ${r.attest_status}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>{r.attest_status === "approved" ? "✓ Approved" : r.attest_status === "rejected" ? "✗ Rejected" : <><Clock size={11} />Pending</>}</span>
                       }
                     </td>
                     <td>
                       {r.scorecard_url
-                        ? <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}>📋 View</button>
+                        ? <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><FileText size={12} />View</button>
                         : <span style={{ color: "#4b5563", fontSize: ".76rem" }}>—</span>
                       }
                     </td>
@@ -445,7 +446,7 @@ export default function Leaderboard({
             {/* Qualifiers card */}
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
-                <div className="card-hdr" style={{ marginBottom: 0 }}>🏆 Playoff Qualifiers</div>
+                <div className="card-hdr" style={{ marginBottom: 0 }}><Trophy size={15} />Playoff Qualifiers</div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                   <span className="fmt-pip" style={{ background: "rgba(212,168,67,.12)", borderColor: "var(--gold-border)", color: "var(--gold-light)" }}>{FORMAT_LABELS[fmt] ?? fmt}</span>
                   <span style={{ fontSize: ".72rem", color: "var(--cream-dim)" }}>Top {n} by {seedingBy === "net" ? "net avg" : seedingBy === "gross" ? "gross avg" : "stableford pts"}</span>
@@ -474,6 +475,7 @@ export default function Leaderboard({
                           <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                             <span className="qualifier-name" style={{ flex: "unset" }}>{p.name}</span>
                             {config.entryFee > 0 && <span className={`paid-badge ${isPaid ? "paid" : "unpaid"}`}>{isPaid ? "✓ Paid" : "✗ Unpaid"}</span>}
+
                           </div>
                           <div style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginTop: 2 }}>
                             {p.seedStat} {p.seedLabel}
@@ -500,11 +502,11 @@ export default function Leaderboard({
                 <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(ellipse 80% 50% at 50% 0%,rgba(212,168,67,.05),transparent)", pointerEvents: "none" }} />
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 8, position: "relative" }}>
                   <div>
-                    <div className="card-hdr" style={{ marginBottom: 4 }}>🏆 Tournament Bracket</div>
+                    <div className="card-hdr" style={{ marginBottom: 4 }}><Trophy size={15} />Tournament Bracket</div>
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                       <span style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>{FORMAT_LABELS[fmt] ?? fmt} · {n}-player single elimination</span>
-                      {config.playoffCourse && (() => { const pc = courses.find(c => String(c.id) === String(config.playoffCourse)); return pc ? <span style={{ fontSize: ".78rem", color: "var(--gold-light)" }}>⛳ {pc.name}</span> : null; })()}
-                      {config.playoffDate && <span style={{ fontSize: ".78rem", color: "var(--gold-light)" }}>📅 {new Date(config.playoffDate + "T12:00:00").toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}</span>}
+                      {config.playoffCourse && (() => { const pc = courses.find(c => String(c.id) === String(config.playoffCourse)); return pc ? <span style={{ fontSize: ".78rem", color: "var(--gold-light)", display: "inline-flex", alignItems: "center", gap: 4 }}><Flag size={12} />{pc.name}</span> : null; })()}
+                      {config.playoffDate && <span style={{ fontSize: ".78rem", color: "var(--gold-light)" }}>{new Date(config.playoffDate + "T12:00:00").toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}</span>}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
@@ -570,7 +572,7 @@ export default function Leaderboard({
                       return (
                         <div className="bk-champion">
                           <div className="bk-champ-card">
-                            <span className="bk-champ-trophy">🏆</span>
+                            <span className="bk-champ-trophy"><Trophy size={32} /></span>
                             <div className="bk-champ-label">Champion</div>
                             <div className="bk-champ-name">{champ}</div>
                           </div>
@@ -590,7 +592,7 @@ export default function Leaderboard({
                   const winner = tpm?.winner ?? null;
                   return (
                     <div className="bk-third">
-                      <div className="bk-third-label">🥉 Third Place Match</div>
+                      <div className="bk-third-label">Third Place Match</div>
                       <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
                         <div className="bk-match" style={{ margin: 0 }}>
                           <div className={`bk-match-inner${winner ? " has-winner" : ""}`}>
@@ -605,7 +607,7 @@ export default function Leaderboard({
                                   >
                                     <span className="bk-seed">{name ? (seedList.findIndex(p => p.name === name) + 1 || "") : ""}</span>
                                     <span className="bk-name">{name ?? "TBD"}</span>
-                                    {isWinner && <span className="bk-win-icon">🥉</span>}
+                                    {isWinner && <span className="bk-win-icon">3rd</span>}
                                   </div>
                                   {si === 0 && <div className="bk-slot-divider" />}
                                 </div>
@@ -615,7 +617,7 @@ export default function Leaderboard({
                         </div>
                         {winner && (
                           <div style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 10, padding: "10px 16px" }}>
-                            <span style={{ fontSize: "1.4rem" }}>🥉</span>
+                            <span style={{ fontSize: ".72rem", color: "var(--cream-dim)", fontFamily: "var(--font-d)", letterSpacing: "1px" }}>3RD</span>
                             <div>
                               <div style={{ fontSize: ".58rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--cream-dim)", fontFamily: "var(--font-d)", marginBottom: 2 }}>Third Place</div>
                               <div style={{ fontFamily: "var(--font-d)", fontSize: ".95rem", color: "var(--white)" }}>{winner}</div>
@@ -708,7 +710,7 @@ export default function Leaderboard({
                 {(() => {
                   const tot = cats.reduce((s, c) => s + c.pct, 0);
                   const remaining = totalPool - cats.filter(c => c.pct > 0).reduce((s, c) => s + Math.round(totalPool * c.pct / 100), 0);
-                  if (tot < 100 && totalPool > 0) return <div className="alert-w" style={{ fontSize: ".8rem" }}>⚠ {100 - tot}% of the pool (${remaining.toLocaleString()}) is unallocated.</div>;
+                  if (tot < 100 && totalPool > 0) return <div className="alert-w" style={{ fontSize: ".8rem", display: "flex", alignItems: "center", gap: 6 }}><AlertTriangle size={13} /> {100 - tot}% of the pool (${remaining.toLocaleString()}) is unallocated.</div>;
                   return null;
                 })()}
               </div>
@@ -719,7 +721,7 @@ export default function Leaderboard({
       {/* ── Rules ── */}
       {leaderTab === "rules" && (
         <div className="card">
-          <div className="card-hdr">📋 League Rules & Bylaws</div>
+          <div className="card-hdr"><FileText size={15} />League Rules & Bylaws</div>
           {config.bylawsUrl ? (
             <div>
               <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 16, lineHeight: 1.6 }}>

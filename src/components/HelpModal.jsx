@@ -1,7 +1,9 @@
+import { User, Pencil, Clock, Trophy, Flag, Smartphone } from "lucide-react";
+
 export default function HelpModal({ onClose }) {
   const sections = [
     {
-      icon: "👤",
+      icon: <User size={18} />,
       title: "Getting Started",
       steps: [
         { heading: "Create your account", body: "Sign up with Google or your email address. Your profile is created automatically." },
@@ -10,7 +12,7 @@ export default function HelpModal({ onClose }) {
       ]
     },
     {
-      icon: "✏️",
+      icon: <Pencil size={18} />,
       title: "Posting a Score",
       steps: [
         { heading: "Go to Post Score", body: "Tap the Post Score tab at the top of the screen." },
@@ -21,7 +23,7 @@ export default function HelpModal({ onClose }) {
       ]
     },
     {
-      icon: "⏳",
+      icon: <Clock size={18} />,
       title: "Attesting a Round",
       steps: [
         { heading: "Via email", body: "Click Approve or Reject directly in the attestation email. You'll see a confirmation page and the round updates instantly." },
@@ -29,7 +31,7 @@ export default function HelpModal({ onClose }) {
       ]
     },
     {
-      icon: "🏆",
+      icon: <Trophy size={18} />,
       title: "Leaderboard",
       steps: [
         { heading: "Overall standings", body: "Players are ranked by net average (stroke play) or total points (Stableford). Only approved rounds count." },
@@ -38,7 +40,7 @@ export default function HelpModal({ onClose }) {
       ]
     },
     {
-      icon: "⛳",
+      icon: <Flag size={18} />,
       title: "Handicaps",
       steps: [
         { heading: "What to enter", body: "Enter your total Handicap Index from GHIN or TheGrint — not your course handicap. The app calculates course handicap automatically using the USGA formula: Handicap Index × (Slope ÷ 113) + (Course Rating − Par)." },
@@ -47,7 +49,7 @@ export default function HelpModal({ onClose }) {
       ]
     },
     {
-      icon: "📱",
+      icon: <Smartphone size={18} />,
       title: "Install the App",
       steps: [
         { heading: "iPhone (Safari only)", body: "Open greeksidebunker.com in Safari. Tap the Share button (box with arrow) → Add to Home Screen → Add. The app icon will appear on your home screen." },

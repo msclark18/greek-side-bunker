@@ -4,6 +4,7 @@ import { DEFAULT_CONFIG, FORMAT_LABELS } from "../constants/config.js";
 import { calcCourseHcp, calcStableford } from "../utils/golf.js";
 import Toggle from "../components/Toggle.jsx";
 import GhinLink from "../components/GhinLink.jsx";
+import { Settings, Users, Flag, ClipboardList, BarChart2, FileText, Mail, Trophy, DollarSign, AlertTriangle, Check, X, Clock } from "lucide-react";
 
 export default function AdminTab({
   session, activeLeague,
@@ -275,7 +276,7 @@ setConfirmClear(false);
 
   const attestBadge = (status) => !config.attestRequired
     ? <span className="ab auto">Auto ✓</span>
-    : <span className={`ab ${status}`}>{status === "approved" ? "✓ Approved" : status === "rejected" ? "✗ Rejected" : "⏳ Pending"}</span>;
+    : <span className={`ab ${status}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>{status === "approved" ? "✓ Approved" : status === "rejected" ? "✗ Rejected" : <><Clock size={11} />Pending</>}</span>;
 
   return (
     <>
@@ -369,13 +370,13 @@ setConfirmClear(false);
       <div className="stabs-wrap">
         <div className="stabs">
           {[
-            ["config", "⚙ Config"],
-            ["members", `Members${pendingJoins.length > 0 ? ` (${pendingJoins.length})` : ""}`],
-            ["courses", "Courses"],
-            ["rounds", "All Rounds"],
-            ["export", "📊 Export"],
-            ["bylaws", "📋 Bylaws"],
-            ["email", "📧 Email Members"],
+            ["config", <><Settings size={13} />Config</>],
+            ["members", <><Users size={13} />Members{pendingJoins.length > 0 ? ` (${pendingJoins.length})` : ""}</>],
+            ["courses", <><Flag size={13} />Courses</>],
+            ["rounds", <><ClipboardList size={13} />All Rounds</>],
+            ["export", <><BarChart2 size={13} />Export</>],
+            ["bylaws", <><FileText size={13} />Bylaws</>],
+            ["email", <><Mail size={13} />Email Members</>],
             ["league", "League Info"],
           ].map(([k, l]) => (
             <button key={k} className={`stab${adminTab === k ? " active" : ""}`} onClick={() => setAdminTab(k)}>{l}</button>
@@ -395,7 +396,7 @@ setConfirmClear(false);
         return (
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
-              <div className="card-hdr" style={{ marginBottom: 0 }}>⚙ League Configuration</div>
+              <div className="card-hdr" style={{ marginBottom: 0 }}><Settings size={15} />League Configuration</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {dirty && <>
                   <button className="btn btn-gold" onClick={() => saveConfig(configDraft)} disabled={payoutOverLimit}>Save Changes</button>
@@ -489,7 +490,7 @@ setConfirmClear(false);
             </div>
 
             <div className="cfg-section">
-              <div className="cfg-section-title">💰 Payouts & Entry Fee</div>
+              <div className="cfg-section-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><DollarSign size={13} />Payouts & Entry Fee</div>
               <div className="cfg-row">
                 <div><div className="cfg-label">Entry fee per player</div><div className="cfg-desc">Used to calculate the total prize pool</div></div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -541,7 +542,7 @@ setConfirmClear(false);
                     <div className="pct-total-row">
                       <span style={{ color: "var(--cream-dim)" }}>Total allocated</span>
                       <span className={overLimit ? "pct-total-over" : totalPct === 100 ? "pct-total-ok" : "pct-total-under"}>
-                        {overLimit ? `⚠ ${totalPct}% — exceeds 100%` : totalPct === 100 ? `✓ ${totalPct}% — fully allocated` : `${totalPct}% (${remaining}% remaining)`}
+                        {overLimit ? `${totalPct}% — exceeds 100%` : totalPct === 100 ? `✓ ${totalPct}% — fully allocated` : `${totalPct}% (${remaining}% remaining)`}
                       </span>
                     </div>
                     {overLimit && <div className="alert-d" style={{ marginTop: 10, fontSize: ".8rem" }}>Total exceeds 100%. Please reduce before saving.</div>}
@@ -551,7 +552,7 @@ setConfirmClear(false);
             </div>
 
             <div className="cfg-section">
-              <div className="cfg-section-title">🏆 Playoffs</div>
+              <div className="cfg-section-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><Trophy size={13} />Playoffs</div>
               <div className="cfg-row"><div><div className="cfg-label">Enable playoffs</div><div className="cfg-desc">Adds a Playoffs tab to the leaderboard</div></div><Toggle checked={d.playoffEnabled ?? true} onChange={v => set("playoffEnabled", v)} /></div>
               {(d.playoffEnabled ?? true) && <>
                 <div className="cfg-row"><div><div className="cfg-label">Number of qualifiers</div><div className="cfg-desc">Top N players by regular season standings</div></div><select value={d.playoffQualifiers ?? 4} onChange={e => set("playoffQualifiers", Number(e.target.value))} style={{ width: 80 }}>{[2, 4, 8, 16].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
@@ -585,14 +586,14 @@ setConfirmClear(false);
       {adminTab === "members" && (
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
-            <div className="card-hdr" style={{ marginBottom: 0 }}>👤 League Members</div>
+            <div className="card-hdr" style={{ marginBottom: 0 }}><Users size={15} />League Members</div>
             {config.entryFee > 0 && (() => {
               const paidCount = members.filter(m => m.paid).length;
               const unpaidCount = members.length - paidCount;
               return (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={{ fontSize: ".76rem", color: "#6ee7a0" }}>✓ {paidCount} paid</span>
-                  {unpaidCount > 0 && <span style={{ fontSize: ".76rem", color: "#f09090" }}>⚠ {unpaidCount} unpaid</span>}
+                  <span style={{ fontSize: ".76rem", color: "#6ee7a0", display: "inline-flex", alignItems: "center", gap: 4 }}><Check size={11} />{paidCount} paid</span>
+                  {unpaidCount > 0 && <span style={{ fontSize: ".76rem", color: "#f09090", display: "inline-flex", alignItems: "center", gap: 4 }}><AlertTriangle size={11} />{unpaidCount} unpaid</span>}
                   <span style={{ fontSize: ".76rem", color: "var(--gold-light)", fontFamily: "var(--font-d)" }}>${(paidCount * config.entryFee).toLocaleString()} / ${(members.length * config.entryFee).toLocaleString()} collected</span>
                 </div>
               );
@@ -620,10 +621,10 @@ setConfirmClear(false);
               <div className="pchip-info">
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <div className="pchip-name">{m.profile?.name ?? "Unknown"}</div>
-                  {config.entryFee > 0 && <span className={`paid-badge ${m.paid ? "paid" : "unpaid"}`}>{m.paid ? "✓ Paid" : "✗ Unpaid"}</span>}
+                  {config.entryFee > 0 && <span className={`paid-badge ${m.paid ? "paid" : "unpaid"}`} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>{m.paid ? <><Check size={10} />Paid</> : <><X size={10} />Unpaid</>}</span>}
                   {config.useHandicap && ((!m.profile.handicap && m.profile.handicap !== 0) || !/^\d{7,8}$/.test(String(m.profile.ghin ?? ""))) && (
                     <span style={{ fontSize: ".6rem", padding: "2px 7px", borderRadius: 20, background: "rgba(224,92,92,.12)", border: "1px solid rgba(224,92,92,.3)", color: "#f09090", fontFamily: "var(--font-d)", letterSpacing: "1px", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                      ⚠ Profile Incomplete
+                      <AlertTriangle size={10} style={{ display: "inline" }} /> Profile Incomplete
                     </span>
                   )}
                 </div>
@@ -643,7 +644,7 @@ setConfirmClear(false);
               </div>
               <div className="pchip-actions">
                 <span className={`lrole ${m.role}`}>{m.role === "admin" ? "Commissioner" : "Player"}</span>
-                {config.entryFee > 0 && <button className={`btn btn-sm ${m.paid ? "btn-danger" : "btn-gold"}`} onClick={() => togglePaid(m.user_id, m.paid)}>{m.paid ? "Mark Unpaid" : "✓ Mark Paid"}</button>}
+                {config.entryFee > 0 && <button className={`btn btn-sm ${m.paid ? "btn-danger" : "btn-gold"}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => togglePaid(m.user_id, m.paid)}>{m.paid ? "Mark Unpaid" : <><Check size={12} />Mark Paid</>}</button>}
                 <button className="btn btn-ghost btn-sm" onClick={() => setEditMemberHcp({ uid: m.user_id, name: m.profile?.name, handicap: m.profile?.handicap, ghin: m.profile?.ghin })}>Edit Hcp</button>
                 {m.user_id !== session.user.id && <button className="btn btn-ghost btn-sm" onClick={() => toggleRole(m.user_id, m.role)}>{m.role === "admin" ? "→ Player" : "→ Commissioner"}</button>}
                 {m.user_id !== session.user.id && <button className="btn btn-danger" onClick={() => removeMember(m.user_id)}>Remove</button>}
@@ -656,7 +657,7 @@ setConfirmClear(false);
       {/* ── COURSES ── */}
       {adminTab === "courses" && (
         <div className="card">
-          <div className="card-hdr">⛳ Courses</div>
+          <div className="card-hdr"><Flag size={15} />Courses</div>
           {courses.map(c => (
             <div key={c.id} className="pchip" style={{ borderColor: c.playoff_only ? "rgba(212,168,67,.25)" : undefined }}>
               <div style={{ flex: 1 }}>
@@ -699,7 +700,7 @@ setConfirmClear(false);
       {adminTab === "rounds" && (
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
-            <div className="card-hdr" style={{ marginBottom: 0 }}>📋 All Rounds</div>
+            <div className="card-hdr" style={{ marginBottom: 0 }}><ClipboardList size={15} />All Rounds</div>
             <button className="btn btn-danger" onClick={clearAllRounds}>Clear All</button>
           </div>
           {rounds.length === 0 ? <div className="empty">No rounds yet.</div> : (
@@ -723,12 +724,12 @@ setConfirmClear(false);
                   {config.attestRequired && <td style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>{r.attester_name ?? "—"}</td>}
                   <td>{attestBadge(r.attest_status)}</td>
                   <td style={{ fontSize: ".76rem", color: "var(--cream-dim)" }}>{r.date}</td>
-                  <td>{r.scorecard_url ? <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}>📋</button> : <span style={{ color: "#4b5563" }}>—</span>}</td>
+                  <td>{r.scorecard_url ? <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}><FileText size={13} /></button> : <span style={{ color: "#4b5563" }}>—</span>}</td>
                   <td>
                     <div style={{ display: "flex", gap: 4, flexWrap: "nowrap" }}>
                       {config.attestRequired && r.attest_status === "pending" && (<>
-                        <button className="btn btn-gold btn-sm" title="Approve" onClick={() => adminApproveRound(r)}>✓</button>
-                        <button className="btn btn-danger btn-sm" title="Reject" onClick={() => adminRejectRound(r)}>✗</button>
+                        <button className="btn btn-gold btn-sm" title="Approve" onClick={() => adminApproveRound(r)}><Check size={12} /></button>
+                        <button className="btn btn-danger btn-sm" title="Reject" onClick={() => adminRejectRound(r)}><X size={12} /></button>
                       </>)}
                       <button className="btn btn-ghost btn-sm" title="Edit" onClick={() => { setEditRound(r); setEditRoundDraft({ gross: String(r.gross), date: r.date }); }}>✎</button>
                       <button className="btn btn-danger btn-sm" title="Delete" onClick={() => setConfirmDeleteRound(r)}>✕</button>
@@ -744,7 +745,7 @@ setConfirmClear(false);
       {/* ── EXPORT ── */}
       {adminTab === "export" && (
         <div className="card">
-          <div className="card-hdr">📊 Export Data</div>
+          <div className="card-hdr"><BarChart2 size={15} />Export Data</div>
           <div style={{ marginBottom: 20 }}>
             <div className="cfg-section-title">Google Sheet Integration</div>
             <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 14, lineHeight: 1.6 }}>
@@ -757,7 +758,7 @@ setConfirmClear(false);
                 onChange={e => setConfigDraft(d => ({ ...(d ?? config), googleSheetUrl: e.target.value || null }))} />
             </div>
             {(configDraft?.googleSheetUrl || config.googleSheetUrl) && (
-              <a href={configDraft?.googleSheetUrl ?? config.googleSheetUrl} target="_blank" rel="noreferrer" className="gs-badge" style={{ marginBottom: 12, display: "inline-flex" }}>📊 Open Google Sheet ↗</a>
+              <a href={configDraft?.googleSheetUrl ?? config.googleSheetUrl} target="_blank" rel="noreferrer" className="gs-badge" style={{ marginBottom: 12, display: "inline-flex", alignItems: "center", gap: 5 }}><BarChart2 size={13} />Open Google Sheet ↗</a>
             )}
             {configDraft && (
               <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
@@ -779,7 +780,7 @@ setConfirmClear(false);
       {/* ── EMAIL MEMBERS ── */}
       {adminTab === "email" && (
         <div className="card">
-          <div className="card-hdr">📧 Email Members</div>
+          <div className="card-hdr"><Mail size={15} />Email Members</div>
           <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 18, lineHeight: 1.6 }}>
             Send a message to all {members.length} members in this league. Emails are sent from <strong style={{ color: "var(--cream)" }}>noreply@greeksidebunker.com</strong>.
           </p>
@@ -920,7 +921,7 @@ setConfirmClear(false);
                     disabled={emailSending || !emailDraft.subject.trim() || selected.length === 0}
                     onClick={sendLeagueEmail}
                   >
-                    {emailSending ? "Sending..." : `📧 Send to ${selected.length} Member${selected.length !== 1 ? "s" : ""}`}
+                    {emailSending ? "Sending..." : `Send to ${selected.length} Member${selected.length !== 1 ? "s" : ""}`}
                   </button>
                   <button
                     className="btn btn-ghost"
@@ -928,7 +929,7 @@ setConfirmClear(false);
                     onClick={sendRoundReminders}
                     title="Send a round-completion reminder to all members who haven't finished their required rounds"
                   >
-                    {reminderSending ? "Sending..." : "⏰ Send Round Reminders"}
+                    {reminderSending ? "Sending..." : "Send Round Reminders"}
                   </button>
                   {emailMsg && (
                     <span style={{ fontSize: ".85rem", color: emailMsg.startsWith("✓") ? "var(--green)" : "#f09090" }}>
@@ -945,7 +946,7 @@ setConfirmClear(false);
       {/* ── BYLAWS ── */}
       {adminTab === "bylaws" && (
         <div className="card">
-          <div className="card-hdr">📋 League Bylaws</div>
+          <div className="card-hdr"><FileText size={15} />League Bylaws</div>
           <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 18, lineHeight: 1.6 }}>
             Upload a PDF of your league bylaws or rules. It will be visible to all members under the <strong style={{ color: "var(--cream)" }}>Rules</strong> tab.
           </p>
@@ -975,7 +976,7 @@ setConfirmRemoveBylaws(false);
               onClick={() => document.getElementById("bylaws-upload").click()}
               onDragOver={e => e.preventDefault()}
               onDrop={async e => { e.preventDefault(); const file = e.dataTransfer.files[0]; if (file) await uploadBylaws(file); }}>
-              <div style={{ fontSize: "1.4rem", marginBottom: 4 }}>📄</div>
+              <div style={{ marginBottom: 4, color: "var(--cream-dim)" }}><FileText size={22} /></div>
               <div style={{ fontSize: ".85rem", color: "var(--cream-dim)" }}>
                 Drop PDF here or <strong style={{ color: "var(--gold)" }}>browse</strong> · PDF only · max 10 MB
               </div>
@@ -1003,7 +1004,7 @@ setConfirmRemoveBylaws(false);
           </div>
           {config.googleSheetUrl && (
             <div style={{ marginBottom: 16 }}>
-              <a href={config.googleSheetUrl} target="_blank" rel="noreferrer" className="gs-badge">📊 View League Google Sheet ↗</a>
+              <a href={config.googleSheetUrl} target="_blank" rel="noreferrer" className="gs-badge" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><BarChart2 size={13} />View League Google Sheet ↗</a>
             </div>
           )}
           <div style={{ fontSize: ".88rem", color: "var(--cream-dim)", lineHeight: 2 }}>

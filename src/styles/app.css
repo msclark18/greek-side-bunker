@@ -89,7 +89,7 @@ input[type=password]::placeholder{color:var(--cream-dim) !important;opacity:1 !i
 .nav-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:26px;padding-bottom:2px}
 .nav-wrap::-webkit-scrollbar{height:0;display:none}
 .nav{display:inline-flex;gap:4px;background:var(--navy-card);border:1px solid var(--navy-border);border-radius:50px;padding:4px;min-width:100%;width:max-content}
-.nav-tab{flex-shrink:0;padding:8px 14px;border:none;border-radius:40px;background:transparent;color:var(--cream-dim);font-family:var(--font-b);font-size:.88rem;cursor:pointer;transition:all .22s;text-align:center;white-space:nowrap;position:relative}
+.nav-tab{flex-shrink:0;padding:8px 14px;border:none;border-radius:40px;background:transparent;color:var(--cream-dim);font-family:var(--font-b);font-size:.88rem;cursor:pointer;transition:all .22s;text-align:center;white-space:nowrap;position:relative;display:inline-flex;align-items:center;gap:6px}
 .nav-tab.active{background:linear-gradient(135deg,var(--gold),var(--gold-light));color:var(--navy);font-weight:600}
 .nav-tab:hover:not(.active){color:var(--white)}
 .nav-tab.admin-tab:not(.active){border:1px solid var(--gold-border);color:var(--gold)}
@@ -105,13 +105,13 @@ input[type=password]::placeholder{color:var(--cream-dim) !important;opacity:1 !i
 
 /* ── CARDS ── */
 .card{background:var(--navy-card);border:1px solid var(--navy-border);border-radius:var(--r);padding:22px;margin-bottom:18px}
-.card-hdr{font-family:var(--font-d);font-size:.95rem;font-weight:600;color:var(--gold);letter-spacing:1.5px;margin-bottom:16px;text-transform:uppercase}
+.card-hdr{font-family:var(--font-d);font-size:.95rem;font-weight:600;color:var(--gold);letter-spacing:1.5px;margin-bottom:16px;text-transform:uppercase;display:flex;align-items:center;gap:8px}
 
 /* ── SUB TABS ── */
 .stabs-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:18px}
 .stabs-wrap::-webkit-scrollbar{height:0;display:none}
 .stabs{display:inline-flex;gap:6px;min-width:100%;width:max-content}
-.stab{flex-shrink:0;padding:5px 14px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:transparent;color:var(--cream-dim);font-family:var(--font-b);font-size:.88rem;cursor:pointer;transition:all .2s;white-space:nowrap}
+.stab{flex-shrink:0;padding:5px 14px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:transparent;color:var(--cream-dim);font-family:var(--font-b);font-size:.88rem;cursor:pointer;transition:all .2s;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
 .stab.active{border-color:var(--gold);color:var(--gold);background:var(--gold-dim)}
 .stab:hover:not(.active){color:var(--white);border-color:rgba(255,255,255,.2)}
 
