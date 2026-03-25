@@ -62,6 +62,8 @@ export default function App() {
 
   // ── Post score state ──
   const [liveRound, setLiveRound] = useState(null);
+  const [companionRounds, setCompanionRounds] = useState([]);
+  useEffect(() => { if (!liveRound) setCompanionRounds([]); }, [liveRound]);
   const [form, setForm] = useState({ courseId: "", score: "", attesterId: "", date: new Date().toISOString().split("T")[0], teamId: "", tournamentRoundId: "" });
   const [formMsg, setFormMsg] = useState({ type: "", text: "" });
   const [cardFile, setCardFile] = useState(null);
@@ -280,7 +282,7 @@ export default function App() {
 
   // ── Leaderboard computations ──
   const players = members.filter(m => m.profile).map(m => ({ ...m.profile, role: m.role }));
-  const scored = rounds.filter(r => !config.attestRequired || r.attest_status === "approved");
+  const scored = rounds.filter(r => r.round_status !== "in_progress" && (!config.attestRequired || r.attest_status === "approved"));
   const myHasSubmitted = scored.some(r => r.player_id === session?.user.id);
   const visible = (config.hideScores && !myHasSubmitted) ? scored.filter(r => r.player_id === session?.user.id) : scored;
 
@@ -771,6 +773,7 @@ export default function App() {
             setRounds={setRounds}
             setViewCardModal={setViewCardModal}
             liveRound={liveRound} setLiveRound={setLiveRound}
+            setCompanionRounds={setCompanionRounds}
           />
         )}
 
@@ -808,7 +811,10 @@ export default function App() {
           members={members}
           activeLeague={activeLeague}
           setRounds={setRounds}
+          companions={companionRounds}
+          setCompanionRounds={setCompanionRounds}
           onComplete={(updated) => {
+            setCompanionRounds([]);
             setLiveRound(null);
             setForm(f => ({ ...f, score: "", courseId: "", attesterId: "", teamId: "", tournamentRoundId: "" }));
             setFormMsg({

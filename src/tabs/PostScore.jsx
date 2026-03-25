@@ -17,13 +17,24 @@ export default function PostScore({
   setRounds,
   setViewCardModal,
   liveRound, setLiveRound,
+  setCompanionRounds,
 }) {
   const [showHcpModal, setShowHcpModal] = useState(false);
   const [hcpDraft, setHcpDraft] = useState("");
   const [scoringMode, setScoringMode] = useState(null); // null | "total" | "live"
+  const [companionIds, setCompanionIds] = useState([]);
+  const [showPlayerPicker, setShowPlayerPicker] = useState(false);
+  const [playerSearch, setPlayerSearch] = useState("");
 
   // When the live round clears (submitted or closed from App level), reset mode
-  useEffect(() => { if (!liveRound) setScoringMode(null); }, [liveRound]);
+  useEffect(() => { if (!liveRound) { setScoringMode(null); setCompanionIds([]); } }, [liveRound]);
+
+  // In live mode, auto-set attester to first companion (they're your playing partner)
+  useEffect(() => {
+    if (scoringMode === "live" && config?.attestRequired && companionIds.length > 0) {
+      setForm(f => ({ ...f, attesterId: companionIds[0] }));
+    }
+  }, [companionIds, scoringMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Any in-progress round this player has in this league
   const inProgressRound = rounds.find(
@@ -138,7 +149,9 @@ export default function PostScore({
     if (config.attestRequired && !form.attesterId) return false;
     if (!form.date) return false;
     if (config.tournamentMode) return !!form.tournamentRoundId;
-    return !!form.courseId;
+    if (!form.courseId) return false;
+    // Live scoring requires hole-by-hole scorecard data
+    return !!(selectedCourse?.scorecard?.holes?.length);
   };
 
   const startLiveRound = async () => {
@@ -173,12 +186,68 @@ export default function PostScore({
       return;
     }
     setRounds(p => [inserted, ...p]);
+
+    const createdCompanions = [];
+    for (const cId of companionIds) {
+      const cm = members.find(m => m.user_id === cId);
+      if (!cm?.profile) continue;
+      // If companion already posted all rounds for this course, create a tracking-only round
+      const cRoundsOnCourse = rounds.filter(r => r.player_id === cId && r.course_id === course.id && r.attest_status !== "rejected").length;
+      const trackingOnly = cRoundsOnCourse >= config.roundsPerCourse;
+      const cmHcp = calcCourseHcp(cm.profile.handicap ?? 0, course.slope, course.par, course.rating, config);
+      const { data: cr } = await supabase.from("rounds").insert({
+        league_id: activeLeague.id,
+        player_id: cId,
+        player_name: cm.profile.name,
+        attester_id: null,
+        attester_name: null,
+        attester_email: null,
+        course_id: course.id,
+        course_name: course.name,
+        gross: 0,
+        net: 0,
+        course_handicap: cmHcp,
+        par: course.par,
+        date: form.date,
+        scoring_format: activeFmt,
+        attest_status: config.attestRequired ? "pending" : "approved",
+        round_status: "in_progress",
+        tracking_only: trackingOnly,
+        team_id: null,
+        tournament_round_id: form.tournamentRoundId || null,
+      }).select().single();
+      if (cr) {
+        setRounds(p => [cr, ...p]);
+        createdCompanions.push({ round: cr, member: cm });
+      }
+    }
+    setCompanionRounds(createdCompanions);
+
     setLiveRound(inserted);
   };
 
   const cancelLiveRound = async (round) => {
     await supabase.from("rounds").delete().eq("id", round.id);
     setRounds(p => p.filter(r => r.id !== round.id));
+  };
+
+  const resumeRound = (round) => {
+    // Find other in-progress rounds from the same group (same date, course, league)
+    const groupRounds = rounds.filter(r =>
+      r.player_id !== session?.user.id &&
+      r.round_status === "in_progress" &&
+      r.date === round.date &&
+      r.course_id === round.course_id &&
+      r.league_id === round.league_id
+    );
+    const companions = groupRounds
+      .map(r => {
+        const member = members.find(m => m.user_id === r.player_id);
+        return member ? { round: r, member } : null;
+      })
+      .filter(Boolean);
+    setCompanionRounds(companions);
+    setLiveRound(round);
   };
 
   const netEl = (net, par) => config.useHandicap
@@ -349,7 +418,7 @@ export default function PostScore({
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button className="btn btn-ghost btn-sm" onClick={() => cancelLiveRound(inProgressRound)}>Abandon</button>
-              <button className="btn btn-gold" onClick={() => setLiveRound(inProgressRound)}>Resume Round</button>
+              <button className="btn btn-gold" onClick={() => resumeRound(inProgressRound)}>Resume Round</button>
             </div>
           </div>
         </div>
@@ -388,8 +457,8 @@ export default function PostScore({
           )}
         </div>
 
-        {/* Scorecard upload */}
-        <div className="fg" style={{ marginBottom: 14 }}>
+        {/* Scorecard upload — hidden for live scoring (scorecard is auto-generated) */}
+        <div className="fg" style={{ marginBottom: 14, display: scoringMode === "live" ? "none" : undefined }}>
           <label>
             Scorecard Photo{" "}
             {config.scorecardRequired
@@ -508,17 +577,23 @@ export default function PostScore({
                 {courses.filter(c => !c.playoff_only).map(c => {
                   const played = myActiveOnCourse(c.id).length;
                   const full = played >= config.roundsPerCourse;
+                  const noHoleData = scoringMode === "live" && !c.scorecard?.holes?.length;
                   return (
-                    <option key={c.id} value={c.id} disabled={full}>
-                      {c.name} · Par {c.par}{full ? " ✓" : played > 0 ? ` (${played}/${config.roundsPerCourse})` : ""}
+                    <option key={c.id} value={c.id} disabled={full || noHoleData}>
+                      {c.name} · Par {c.par}{full ? " ✓" : played > 0 ? ` (${played}/${config.roundsPerCourse})` : ""}{noHoleData ? " — no hole data" : ""}
                     </option>
                   );
                 })}
               </select>
+              {scoringMode === "live" && selectedCourse && !selectedCourse.scorecard?.holes?.length && (
+                <span style={{ fontSize: "0.72rem", color: "#f87171", marginTop: 4 }}>
+                  This course doesn't have hole-by-hole data. Ask your admin to re-add it via course search.
+                </span>
+              )}
             </div>
           )}
 
-          {config.attestRequired && (
+          {config.attestRequired && scoringMode !== "live" && (
             <div className="fg">
               <label>Attested By</label>
               <select value={form.attesterId} onChange={setF("attesterId")}>
@@ -584,6 +659,200 @@ export default function PostScore({
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                     <span style={{ fontSize: ".6rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Stableford</span>
                     <span style={{ fontFamily: "var(--font-d)", fontSize: "1.2rem", color: "var(--purple)" }}>{autoPts} pts</span>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
+
+        {scoringMode === "live" && selectedCourse && (() => {
+          const eligibleMembers = members.filter(m => m.user_id !== session?.user.id && m.profile);
+          const selectedMembers = eligibleMembers.filter(m => companionIds.includes(m.user_id));
+          const filteredMembers = eligibleMembers.filter(m =>
+            m.profile.name?.toLowerCase().includes(playerSearch.toLowerCase())
+          );
+
+          const Avatar = ({ member, size = 40 }) => {
+            const initials = (member.profile.name ?? "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+            return member.profile.avatar_url
+              ? <img src={member.profile.avatar_url} alt={member.profile.name}
+                  style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+              : <div style={{
+                  width: size, height: size, borderRadius: "50%", flexShrink: 0,
+                  background: "rgba(212,168,67,.18)", border: "1.5px solid rgba(212,168,67,.35)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontFamily: "var(--font-d)", fontWeight: 700,
+                  fontSize: size > 36 ? "0.82rem" : "0.62rem", color: "var(--gold)",
+                }}>{initials}</div>;
+          };
+
+          return (
+            <div style={{ marginTop: 20, paddingTop: 18, borderTop: "1px solid var(--navy-border)", marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <div style={{ fontSize: "0.72rem", color: "var(--cream-dim)", fontFamily: "var(--font-d)",
+                  letterSpacing: "1.5px", textTransform: "uppercase" }}>
+                  Playing With
+                </div>
+                <div style={{ fontSize: "0.65rem", color: "var(--cream-dim)", fontFamily: "var(--font-d)" }}>
+                  {companionIds.length}/3
+                </div>
+              </div>
+
+              {/* Selected player cards */}
+              {selectedMembers.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                  {selectedMembers.map(m => {
+                    const hcp = calcCourseHcp(m.profile.handicap ?? 0, selectedCourse.slope, selectedCourse.par, selectedCourse.rating, config);
+                    return (
+                      <div key={m.user_id} style={{
+                        display: "flex", alignItems: "center", gap: 8, padding: "8px 12px 8px 8px",
+                        borderRadius: 40, background: "rgba(212,168,67,.1)",
+                        border: "1px solid rgba(212,168,67,.3)",
+                      }}>
+                        <Avatar member={m} size={32} />
+                        <div style={{ lineHeight: 1.2 }}>
+                          <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--cream)",
+                            fontFamily: "var(--font-d)" }}>{m.profile.name}</div>
+                          {hcp > 0 && <div style={{ fontSize: "0.65rem", color: "rgba(212,168,67,.8)" }}>
+                            Hdcp {hcp}
+                          </div>}
+                        </div>
+                        <button
+                          onClick={() => setCompanionIds(p => p.filter(id => id !== m.user_id))}
+                          style={{ background: "none", border: "none", color: "var(--cream-dim)",
+                            cursor: "pointer", padding: "0 0 0 4px", fontSize: "1rem", lineHeight: 1 }}
+                        >×</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Add Players button */}
+              <button
+                onClick={() => { setShowPlayerPicker(true); setPlayerSearch(""); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "10px 16px",
+                  borderRadius: 10, border: "1.5px dashed rgba(255,255,255,.18)",
+                  background: "rgba(255,255,255,.03)", color: "var(--cream-dim)",
+                  cursor: "pointer", fontSize: "0.82rem", fontFamily: "var(--font-d)",
+                }}
+              >
+                <span style={{ fontSize: "1.2rem", lineHeight: 1, color: "var(--gold)" }}>+</span>
+                Add Players
+              </button>
+
+              {/* Player picker sheet */}
+              {showPlayerPicker && (
+                <>
+                  <div onClick={() => setShowPlayerPicker(false)}
+                    style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,.5)" }} />
+                  <div style={{
+                    position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 101,
+                    background: "var(--navy-card)", borderRadius: "18px 18px 0 0",
+                    borderTop: "1px solid var(--navy-border)",
+                    maxHeight: "70vh", display: "flex", flexDirection: "column",
+                  }}>
+                    {/* Sheet header */}
+                    <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid var(--navy-border)",
+                      flexShrink: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                        marginBottom: 12 }}>
+                        <span style={{ fontFamily: "var(--font-d)", fontWeight: 700,
+                          fontSize: "0.95rem", color: "var(--cream)" }}>Add Players</span>
+                        <button onClick={() => setShowPlayerPicker(false)}
+                          style={{ background: "none", border: "none", color: "var(--cream-dim)",
+                            cursor: "pointer", fontSize: "1.4rem", lineHeight: 1 }}>×</button>
+                      </div>
+                      {/* Search */}
+                      <input
+                        type="text"
+                        placeholder="Search players..."
+                        value={playerSearch}
+                        onChange={e => setPlayerSearch(e.target.value)}
+                        style={{
+                          width: "100%", padding: "9px 12px", borderRadius: 8,
+                          border: "1px solid var(--navy-border)", background: "rgba(255,255,255,.05)",
+                          color: "var(--cream)", fontSize: "0.88rem", fontFamily: "var(--font-b)",
+                          outline: "none", boxSizing: "border-box",
+                        }}
+                        autoFocus
+                      />
+                    </div>
+
+                    {/* Member list */}
+                    <div style={{ overflowY: "auto", flex: 1, padding: "8px 0 24px" }}>
+                      {filteredMembers.length === 0
+                        ? <div style={{ padding: "24px 16px", textAlign: "center",
+                            color: "var(--cream-dim)", fontSize: "0.82rem" }}>No players found</div>
+                        : filteredMembers.map(m => {
+                          const selected = companionIds.includes(m.user_id);
+                          const atGroupLimit = companionIds.length >= 3 && !selected;
+                          const roundsFull = selectedCourse
+                            ? rounds.filter(r => r.player_id === m.user_id && r.course_id === selectedCourse.id && r.attest_status !== "rejected").length >= config.roundsPerCourse
+                            : false;
+                          const disabled = atGroupLimit || roundsFull;
+                          const hcp = calcCourseHcp(m.profile.handicap ?? 0, selectedCourse.slope, selectedCourse.par, selectedCourse.rating, config);
+                          return (
+                            <button
+                              key={m.user_id}
+                              disabled={disabled}
+                              onClick={() => {
+                                if (roundsFull) return;
+                                setCompanionIds(p => selected ? p.filter(id => id !== m.user_id) : (p.length < 3 ? [...p, m.user_id] : p));
+                              }}
+                              style={{
+                                width: "100%", display: "flex", alignItems: "center", gap: 12,
+                                padding: "12px 16px", background: selected ? "rgba(212,168,67,.08)" : "transparent",
+                                border: "none", borderBottom: "1px solid rgba(255,255,255,.04)",
+                                cursor: disabled ? "not-allowed" : "pointer", textAlign: "left",
+                                opacity: disabled ? 0.4 : 1,
+                              }}
+                            >
+                              <Avatar member={m} size={46} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontFamily: "var(--font-d)", fontWeight: 700,
+                                  fontSize: "0.92rem", color: "var(--cream)" }}>{m.profile.name}</div>
+                                <div style={{ fontSize: "0.72rem", color: roundsFull ? "#f87171" : "var(--cream-dim)", marginTop: 2 }}>
+                                  {roundsFull
+                                    ? "Already posted all rounds for this course"
+                                    : hcp > 0 ? `Hdcp ${hcp}` : "Scratch"}
+                                  {!roundsFull && m.profile.handicap > 0 && ` · Index ${m.profile.handicap}`}
+                                </div>
+                              </div>
+                              {/* Checkmark */}
+                              <div style={{
+                                width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+                                border: selected ? "none" : "1.5px solid rgba(255,255,255,.2)",
+                                background: selected ? "var(--gold)" : "transparent",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                              }}>
+                                {selected && <span style={{ color: "var(--navy)", fontSize: "0.75rem",
+                                  fontWeight: 900 }}>✓</span>}
+                              </div>
+                            </button>
+                          );
+                        })}
+                    </div>
+
+                    {/* Done button */}
+                    {companionIds.length > 0 && (
+                      <div style={{ padding: "12px 16px 28px", borderTop: "1px solid var(--navy-border)",
+                        flexShrink: 0 }}>
+                        <button
+                          onClick={() => setShowPlayerPicker(false)}
+                          style={{
+                            width: "100%", padding: "13px", borderRadius: 10, border: "none",
+                            background: "var(--gold)", color: "var(--navy)",
+                            fontFamily: "var(--font-d)", fontWeight: 700, fontSize: "0.95rem",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Done · {companionIds.length} player{companionIds.length !== 1 ? "s" : ""} added
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </>
               )}

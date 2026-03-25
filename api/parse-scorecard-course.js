@@ -37,7 +37,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 1024,
+        max_tokens: 4096,
         messages: [{
           role: "user",
           content: [
@@ -58,7 +58,12 @@ export default async function handler(req, res) {
       "par_total": 72,
       "number_of_holes": 18,
       "slope_rating": 132,
-      "course_rating": 74.2
+      "course_rating": 74.2,
+      "total_yards": 7200,
+      "holes": [
+        { "hole_number": 1, "par": 4, "stroke_index": 7, "yards": 412 },
+        { "hole_number": 2, "par": 3, "stroke_index": 15, "yards": 178 }
+      ]
     }
   ]
 }
@@ -66,8 +71,10 @@ export default async function handler(req, res) {
 Rules:
 - Include every tee box listed on the scorecard
 - slope_rating is an integer (e.g. 132), course_rating is a decimal (e.g. 74.2)
-- If a value is not visible on the card, use null
-- number_of_holes is typically 18 or 9
+- holes array must contain one entry per hole in order (typically 18 or 9)
+- stroke_index is the handicap/difficulty ranking of the hole (1 = hardest)
+- yards is the yardage for that tee from that tee box
+- If a value is not visible, use null
 - Return only the raw JSON, nothing else`,
             },
           ],
@@ -120,8 +127,13 @@ Rules:
               number_of_holes: t.number_of_holes ?? 18,
               slope_rating: t.slope_rating,
               course_rating: t.course_rating,
-              total_yards: null,
-              holes: [],
+              total_yards: t.total_yards ?? null,
+              holes: (t.holes ?? []).map(h => ({
+                hole_number: h.hole_number,
+                par: h.par ?? null,
+                handicap: h.stroke_index ?? null,
+                yardage: h.yards ?? null,
+              })),
             })),
             female: [],
           },

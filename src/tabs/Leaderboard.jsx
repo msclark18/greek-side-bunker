@@ -185,16 +185,32 @@ export default function Leaderboard({
               <Radio size={14} /> Live Now
             </div>
             {live.map(r => {
-              const thru = (r.hole_scores ?? []).filter(s => s != null).length;
-              const gross = r.hole_scores?.filter(s => s != null).reduce((a, b) => a + b, 0) ?? 0;
+              const holeScores = r.hole_scores ?? [];
+              const thru = holeScores.filter(s => s != null).length;
+              const gross = holeScores.reduce((a, s) => a + (s ?? 0), 0);
+              const courseSc = courses.find(c => c.id === r.course_id);
+              const holeData = courseSc?.scorecard?.holes ?? [];
+              const playedPar = holeData.reduce((a, h, i) => a + (holeScores[i] != null ? (h.par ?? 0) : 0), 0);
+              const diff = playedPar > 0 ? gross - playedPar : null;
+              const diffLabel = diff === null ? null : diff === 0 ? "E" : diff > 0 ? `+${diff}` : `${diff}`;
+              const diffColor = diff === null ? "var(--cream-dim)" : diff < 0 ? "#3b82f6" : diff === 0 ? "#6ee7a0" : "var(--cream-dim)";
               return (
-                <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--navy-border)" }}>
                   <div>
                     <span style={{ fontWeight: 600, color: "var(--cream)", fontSize: "0.88rem" }}>{r.player_name}</span>
                     <span style={{ fontSize: "0.72rem", color: "var(--cream-dim)", marginLeft: 8 }}>{r.course_name}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    {gross > 0 && <span style={{ fontSize: "0.8rem", color: "var(--cream)", fontFamily: "var(--font-d)" }}>Gross {gross}</span>}
+                    {diffLabel && (
+                      <span style={{ fontSize: "0.88rem", fontFamily: "var(--font-d)", fontWeight: 700, color: diffColor }}>
+                        {diffLabel}
+                      </span>
+                    )}
+                    {gross > 0 && !diffLabel && (
+                      <span style={{ fontSize: "0.8rem", color: "var(--cream)", fontFamily: "var(--font-d)" }}>
+                        {gross}
+                      </span>
+                    )}
                     <span style={{ fontSize: "0.7rem", color: "#6ee7a0", fontFamily: "var(--font-d)", padding: "2px 9px", border: "1px solid rgba(76,175,125,.4)", borderRadius: 20, whiteSpace: "nowrap" }}>
                       Thru {thru}
                     </span>

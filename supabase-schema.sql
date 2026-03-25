@@ -144,8 +144,10 @@ CREATE TABLE IF NOT EXISTS rounds (
   attest_note     text,
   scorecard_url   text,
   hole_scores     jsonb DEFAULT NULL,
+  hole_stats      jsonb DEFAULT NULL,
   round_status    text DEFAULT 'not_started'
                     CHECK (round_status IN ('not_started', 'in_progress', 'completed')),
+  tracking_only   boolean DEFAULT false,  -- true = scores tracked but don't count toward standings
   created_at      timestamptz DEFAULT now()
 );
 
@@ -293,8 +295,7 @@ ALTER TABLE league_invites       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE course_cache         ENABLE ROW LEVEL SECURITY;
 
 -- Helper function: returns all league_ids the current user belongs to.
--- SECURITY DEFINER runs as the function owner (postgres/superuser) so it
--- can read league_members without triggering RLS — breaking the circular dep.
+-- SECURITY DEFINER bypasses RLS on league_members — breaks the circular dep.
 CREATE OR REPLACE FUNCTION public.get_my_league_ids()
 RETURNS SETOF bigint
 LANGUAGE sql
@@ -309,6 +310,25 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.get_my_league_ids() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_my_league_ids() TO anon;
+
+-- Helper function: returns true if current user is admin of the given league.
+-- SECURITY DEFINER bypasses RLS — used in league_members policies to avoid
+-- infinite recursion (policies on league_members cannot subquery league_members directly).
+CREATE OR REPLACE FUNCTION public.is_league_admin(p_league_id bigint)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.league_members
+    WHERE league_id = p_league_id AND user_id = auth.uid() AND role = 'admin'
+  );
+$$;
+
+GRANT EXECUTE ON FUNCTION public.is_league_admin(bigint) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.is_league_admin(bigint) TO anon;
 
 -- ── PROFILES ─────────────────────────────────────────────────
 CREATE POLICY "profiles_select" ON profiles FOR SELECT TO authenticated USING (
@@ -335,18 +355,14 @@ CREATE POLICY "leagues_delete" ON leagues FOR DELETE TO authenticated
 -- ── LEAGUE MEMBERS ───────────────────────────────────────────
 CREATE POLICY "league_members_select" ON league_members FOR SELECT TO authenticated
   USING (league_id IN (SELECT public.get_my_league_ids()));
+-- INSERT/UPDATE/DELETE use is_league_admin() to avoid infinite recursion
+-- (subquerying league_members directly inside a league_members policy causes 42P17)
 CREATE POLICY "league_members_insert" ON league_members FOR INSERT TO authenticated
-  WITH CHECK (
-    user_id = auth.uid()
-    OR league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin')
-  );
+  WITH CHECK (user_id = auth.uid() OR public.is_league_admin(league_id));
 CREATE POLICY "league_members_update" ON league_members FOR UPDATE TO authenticated
-  USING (league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin'));
+  USING (public.is_league_admin(league_id));
 CREATE POLICY "league_members_delete" ON league_members FOR DELETE TO authenticated
-  USING (
-    user_id = auth.uid()
-    OR league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin')
-  );
+  USING (user_id = auth.uid() OR public.is_league_admin(league_id));
 
 -- ── LEAGUE SETTINGS ──────────────────────────────────────────
 CREATE POLICY "league_settings_select" ON league_settings FOR SELECT TO authenticated
@@ -369,15 +385,21 @@ CREATE POLICY "courses_delete" ON courses FOR DELETE TO authenticated
 -- ── ROUNDS ───────────────────────────────────────────────────
 CREATE POLICY "rounds_select" ON rounds FOR SELECT TO authenticated
   USING (league_id IN (SELECT public.get_my_league_ids()));
+-- Allow inserting rounds on behalf of other league members (companion scoring)
 CREATE POLICY "rounds_insert" ON rounds FOR INSERT TO authenticated
   WITH CHECK (
     league_id IN (SELECT public.get_my_league_ids())
-    AND player_id = auth.uid()
+    AND player_id IN (
+      SELECT user_id FROM league_members
+      WHERE league_id = ANY(SELECT public.get_my_league_ids())
+    )
   );
+-- Allow updating in-progress rounds by any league member (group leader entering companion scores)
 CREATE POLICY "rounds_update" ON rounds FOR UPDATE TO authenticated
   USING (
     league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin')
     OR (player_id = auth.uid() AND attest_status = 'pending')
+    OR (league_id IN (SELECT public.get_my_league_ids()) AND round_status = 'in_progress')
   );
 CREATE POLICY "rounds_delete" ON rounds FOR DELETE TO authenticated
   USING (
