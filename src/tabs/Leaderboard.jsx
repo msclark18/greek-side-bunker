@@ -967,15 +967,15 @@ export default function Leaderboard({
         return (
           <div>
             {/* Round sub-tabs */}
-            <div className="stab-bar" style={{ marginBottom: 12 }}>
-              {roundTabs.map(([id, label]) => (
-                <button key={id} className={`stab ${tournamentRoundTab === id ? "sel" : ""}`}
-                  onClick={() => setTournamentRoundTab(id)}
-                  style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                  title={label}>
-                  {label}
-                </button>
-              ))}
+            <div className="stabs-wrap" style={{ marginBottom: 12 }}>
+              <div className="stabs">
+                {roundTabs.map(([id, label]) => (
+                  <button key={id} className={`stab${tournamentRoundTab === id ? " active" : ""}`}
+                    onClick={() => setTournamentRoundTab(id)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Overall standings */}
