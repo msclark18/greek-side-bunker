@@ -4,7 +4,7 @@ import { DEFAULT_CONFIG, FORMAT_LABELS } from "../constants/config.js";
 import { calcCourseHcp, calcStableford } from "../utils/golf.js";
 import Toggle from "../components/Toggle.jsx";
 import GhinLink from "../components/GhinLink.jsx";
-import { Settings, Users, Flag, ClipboardList, BarChart2, FileText, Mail, Trophy, DollarSign, AlertTriangle, Check, X, Clock, Camera } from "lucide-react";
+import { Settings, Users, Flag, ClipboardList, BarChart2, FileText, Mail, Trophy, DollarSign, AlertTriangle, Check, X, Clock, Camera, Lock } from "lucide-react";
 
 export default function AdminTab({
   session, activeLeague,
@@ -39,6 +39,8 @@ export default function AdminTab({
   const [addMemberMsg, setAddMemberMsg] = useState({ text: "", ok: true });
   const [addMemberLoading, setAddMemberLoading] = useState(false);
   const [pendingInvites, setPendingInvites] = useState([]);
+  const [handicapChangePending, setHandicapChangePending] = useState(null); // { key, value, label, newConfig }
+  const [retroLoading, setRetroLoading] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmRemoveBylaws, setConfirmRemoveBylaws] = useState(false);
   const [confirmDeleteRound, setConfirmDeleteRound] = useState(null);
@@ -54,6 +56,62 @@ export default function AdminTab({
     await supabase.from("league_settings").upsert({ league_id: activeLeague.id, config: newCfg, payouts }, { onConflict: "league_id" });
     setConfig(newCfg);
     setConfigDraft(null);
+  };
+
+  // ── League started check ──
+  const leagueStarted = config.attestRequired
+    ? rounds.some(r => r.attest_status === "approved")
+    : rounds.length > 0;
+
+  // ── Handicap setting change (intercept for future-only vs retroactive) ──
+  const handleSaveConfig = (newConfig) => {
+    if (!leagueStarted) { saveConfig(newConfig); return; }
+    const hcpChanged =
+      newConfig.handicapPct !== config.handicapPct ||
+      newConfig.useSlopeRating !== config.useSlopeRating ||
+      newConfig.maxHandicap !== config.maxHandicap;
+    if (!hcpChanged) { saveConfig(newConfig); return; }
+    const changed = [];
+    if (newConfig.handicapPct !== config.handicapPct) changed.push(`Handicap % (${config.handicapPct}% → ${newConfig.handicapPct}%)`);
+    if (newConfig.useSlopeRating !== config.useSlopeRating) changed.push(`Slope/rating formula`);
+    if (newConfig.maxHandicap !== config.maxHandicap) changed.push(`Max handicap cap`);
+    setHandicapChangePending({ label: changed.join(", "), newConfig });
+  };
+
+  const applyHandicapChange = async (retroactive) => {
+    const { newConfig } = handicapChangePending;
+    setHandicapChangePending(null);
+    await saveConfig(newConfig);
+    if (!retroactive) return;
+    setRetroLoading(true);
+    const approvedRounds = rounds.filter(r => r.attest_status === "approved" || !config.attestRequired);
+    const memberMap = Object.fromEntries(members.filter(m => m.profile).map(m => [m.user_id, m.profile]));
+    const courseMap = Object.fromEntries(courses.map(c => [String(c.id), c]));
+    const updatedValues = {};
+    const updates = approvedRounds
+      .filter(r => r.course_id && memberMap[r.player_id]?.handicap != null)
+      .map(r => {
+        const course = courseMap[String(r.course_id)];
+        const profile = memberMap[r.player_id];
+        if (!course || !profile) return null;
+        const newCourseHcp = calcCourseHcp(profile.handicap, course.slope, course.par, course.rating, newConfig);
+        const newNet = r.gross - newCourseHcp;
+        const newStableford = newConfig.scoringFormat === "stableford"
+          ? calcStableford(r.gross, newCourseHcp, course.par) : null;
+        const patch = {
+          course_handicap: newCourseHcp,
+          net: newNet,
+          ...(newStableford !== null ? { stableford_pts: newStableford } : {}),
+        };
+        updatedValues[r.id] = patch;
+        return supabase.from("rounds").update(patch).eq("id", r.id);
+      }).filter(Boolean);
+    await Promise.all(updates);
+    // Sync local state so UI reflects changes immediately without a page reload
+    setRounds(prev => prev.map(r => updatedValues[r.id] ? { ...r, ...updatedValues[r.id] } : r));
+    setRetroLoading(false);
+    setAddMsg(`Retroactively updated ${updates.length} rounds.`);
+    setTimeout(() => setAddMsg(""), 4000);
   };
 
   // ── Course Search ──
@@ -630,6 +688,42 @@ setConfirmClear(false);
         </div>
       )}
 
+      {/* Retroactive recalc loading overlay */}
+      {retroLoading && (
+        <div className="modal-bg">
+          <div className="modal" style={{ textAlign: "center", padding: "32px 24px" }}>
+            <div style={{ fontSize: "2rem", marginBottom: 12 }}>⟳</div>
+            <div style={{ fontWeight: 600, color: "var(--cream)", marginBottom: 8 }}>Updating rounds…</div>
+            <div style={{ fontSize: ".84rem", color: "var(--cream-dim)" }}>Recalculating handicaps for all approved rounds.</div>
+          </div>
+        </div>
+      )}
+
+      {/* Handicap change — future only vs retroactive */}
+      {handicapChangePending && (
+        <div className="modal-bg" onClick={() => setHandicapChangePending(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title" style={{ marginBottom: 8 }}>Apply Handicap Change</div>
+            <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 20, lineHeight: 1.7 }}>
+              You're changing <strong style={{ color: "var(--cream)" }}>{handicapChangePending.label}</strong>. How should this apply?
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+              <button className="btn btn-ghost" style={{ textAlign: "left", padding: "14px 16px", borderRadius: 10 }}
+                onClick={() => applyHandicapChange(false)}>
+                <div style={{ fontWeight: 600, color: "var(--cream)", marginBottom: 3 }}>Future rounds only</div>
+                <div style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>Already approved rounds keep their current net scores.</div>
+              </button>
+              <button className="btn btn-ghost" style={{ textAlign: "left", padding: "14px 16px", borderRadius: 10, borderColor: "rgba(212,168,67,.35)" }}
+                onClick={() => applyHandicapChange(true)}>
+                <div style={{ fontWeight: 600, color: "var(--gold)", marginBottom: 3 }}>All approved rounds</div>
+                <div style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>Retroactively recalculates net scores and course handicaps for every approved round in the league.</div>
+              </button>
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={() => setHandicapChangePending(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
       {/* Edit Hcp Modal */}
       {editMemberHcp && (
         <div className="modal-bg" onClick={() => setEditMemberHcp(null)}>
@@ -690,6 +784,14 @@ setConfirmClear(false);
         const payoutCats = d.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
         const totalPayoutPct = payoutCats.reduce((s, c) => s + (Number(c.pct) || 0), 0);
         const payoutOverLimit = totalPayoutPct > 100;
+        const Locked = ({ children }) => (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: "var(--cream-dim)", fontSize: ".88rem" }}>{children}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: ".68rem", color: "#4b5563", background: "rgba(255,255,255,.05)", border: "1px solid var(--navy-border)", borderRadius: 6, padding: "2px 7px" }}>
+              <Lock size={9} />League started
+            </span>
+          </div>
+        );
 
         return (
           <div className="card">
@@ -697,7 +799,7 @@ setConfirmClear(false);
               <div className="card-hdr" style={{ marginBottom: 0 }}><Settings size={15} />League Configuration</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {dirty && <>
-                  <button className="btn btn-gold" onClick={() => saveConfig(configDraft)} disabled={payoutOverLimit}>Save Changes</button>
+                  <button className="btn btn-gold" onClick={() => handleSaveConfig(configDraft)} disabled={payoutOverLimit}>Save Changes</button>
                   <button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button>
                 </>}
                 {!dirty && <span style={{ fontSize: ".76rem", color: "var(--green)", fontFamily: "var(--font-d)", letterSpacing: "1px" }}>✓ Saved</span>}
@@ -705,7 +807,10 @@ setConfirmClear(false);
             </div>
 
             <div className="cfg-section">
-              <div className="cfg-section-title">League Type</div>
+              <div className="cfg-section-title" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                League Type
+                {leagueStarted && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: ".68rem", color: "#4b5563", background: "rgba(255,255,255,.05)", border: "1px solid var(--navy-border)", borderRadius: 6, padding: "2px 7px" }}><Lock size={9} />Locked</span>}
+              </div>
               <div className="format-grid">
                 {[
                   ["stroke",      "Stroke Play",  "Classic lowest-score-wins"],
@@ -715,7 +820,8 @@ setConfirmClear(false);
                   ["tournament",  "Tournament",   "Multi-round event with mixed formats"],
                 ].map(([val, name, hint]) => (
                   <button key={val} className={`format-btn ${d.scoringFormat === val ? "sel" : ""}`}
-                    onClick={() => setConfigDraft(prev => ({
+                    disabled={leagueStarted}
+                    onClick={() => !leagueStarted && setConfigDraft(prev => ({
                       ...(prev ?? config),
                       scoringFormat: val,
                       tournamentMode: val === "tournament",
@@ -732,14 +838,18 @@ setConfirmClear(false);
               {!d.tournamentMode && <>
                 <div className="cfg-row">
                   <div><div className="cfg-label">Required rounds per course</div><div className="cfg-desc">How many rounds each player/team must post at each course</div></div>
-                  <select value={d.roundsPerCourse} onChange={e => set("roundsPerCourse", Number(e.target.value))} style={{ width: 80 }}>
-                    {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
-                  </select>
+                  {leagueStarted
+                    ? <Locked>{d.roundsPerCourse}</Locked>
+                    : <select value={d.roundsPerCourse} onChange={e => set("roundsPerCourse", Number(e.target.value))} style={{ width: 80 }}>
+                        {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>}
                 </div>
                 {["stroke", "stableford"].includes(d.scoringFormat) && (
                   <div className="cfg-row">
                     <div><div className="cfg-label">Best N scores count</div><div className="cfg-desc">Only the best N of all submitted scores count. Leave blank to count all.</div></div>
-                    <input type="number" min={1} placeholder="All" value={d.scoresToCount ?? ""} onChange={e => set("scoresToCount", e.target.value ? Number(e.target.value) : null)} style={{ width: 80 }} />
+                    {leagueStarted
+                      ? <Locked>{d.scoresToCount ?? "All"}</Locked>
+                      : <input type="number" min={1} placeholder="All" value={d.scoresToCount ?? ""} onChange={e => set("scoresToCount", e.target.value ? Number(e.target.value) : null)} style={{ width: 80 }} />}
                   </div>
                 )}
               </>}
@@ -769,7 +879,9 @@ setConfirmClear(false);
                 <div className="cfg-row">
                   <div><div className="cfg-label">Handicap percentage used</div><div className="cfg-desc">e.g. 85 means players use 85% of their handicap index</div></div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input type="number" min={50} max={100} value={d.handicapPct} onChange={e => set("handicapPct", Number(e.target.value))} style={{ width: 70 }} />
+                    <input type="number" min={50} max={100} value={d.handicapPct}
+                      onChange={e => set("handicapPct", Number(e.target.value))}
+                      style={{ width: 70 }} />
                     <span style={{ color: "var(--cream-dim)" }}>%</span>
                   </div>
                 </div>
@@ -779,7 +891,9 @@ setConfirmClear(false);
                 </div>
                 <div className="cfg-row">
                   <div><div className="cfg-label">Max handicap cap</div><div className="cfg-desc">Leave blank for no cap</div></div>
-                  <input type="number" min={0} max={54} placeholder="None" value={d.maxHandicap ?? ""} onChange={e => set("maxHandicap", e.target.value ? Number(e.target.value) : null)} style={{ width: 80 }} />
+                  <input type="number" min={0} max={54} placeholder="None" value={d.maxHandicap ?? ""}
+                    onChange={e => set("maxHandicap", e.target.value ? Number(e.target.value) : null)}
+                    style={{ width: 80 }} />
                 </div>
               </>}
             </div>
@@ -826,7 +940,7 @@ setConfirmClear(false);
 
             {dirty && (
               <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-                <button className="btn btn-gold" onClick={() => saveConfig(configDraft)} disabled={payoutOverLimit}>Save Changes</button>
+                <button className="btn btn-gold" onClick={() => handleSaveConfig(configDraft)} disabled={payoutOverLimit}>Save Changes</button>
                 <button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button>
               </div>
             )}

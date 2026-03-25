@@ -273,8 +273,147 @@ CREATE INDEX IF NOT EXISTS idx_join_requests_league_id ON league_join_requests(l
 -- DO NOT recreate these triggers. The app handles member
 -- insertion in createLeague() in App.jsx.
 --
--- ── NOTES ────────────────────────────────────────────────────
--- RLS is intentionally disabled on all tables.
--- Security is handled at the application layer.
--- Storage policies are the ONLY policies.
 -- ============================================================
+-- ROW LEVEL SECURITY
+-- ============================================================
+-- NOTE: Vercel API routes using SUPABASE_SERVICE_KEY bypass RLS entirely.
+
+-- Enable RLS on all tables
+ALTER TABLE profiles             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE leagues              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE league_members       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE league_settings      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE courses              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rounds               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE league_join_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE league_invites       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE course_cache         ENABLE ROW LEVEL SECURITY;
+
+-- Helper function: returns all league_ids the current user belongs to.
+-- SECURITY DEFINER runs as the function owner (postgres/superuser) so it
+-- can read league_members without triggering RLS — breaking the circular dep.
+CREATE OR REPLACE FUNCTION public.get_my_league_ids()
+RETURNS SETOF bigint
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT DISTINCT league_id
+  FROM public.league_members
+  WHERE user_id = auth.uid()
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_my_league_ids() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_my_league_ids() TO anon;
+
+-- ── PROFILES ─────────────────────────────────────────────────
+CREATE POLICY "profiles_select" ON profiles FOR SELECT TO authenticated USING (
+  id = auth.uid()
+  OR id IN (
+    SELECT user_id FROM public.league_members
+    WHERE league_id IN (SELECT public.get_my_league_ids())
+  )
+);
+CREATE POLICY "profiles_insert" ON profiles FOR INSERT TO authenticated
+  WITH CHECK (id = auth.uid());
+CREATE POLICY "profiles_update" ON profiles FOR UPDATE TO authenticated
+  USING (id = auth.uid());
+
+-- ── LEAGUES ──────────────────────────────────────────────────
+-- SELECT open to all authenticated users (needed for invite_code lookup before joining)
+CREATE POLICY "leagues_select" ON leagues FOR SELECT TO authenticated USING (true);
+CREATE POLICY "leagues_insert" ON leagues FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "leagues_update" ON leagues FOR UPDATE TO authenticated
+  USING (id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin'));
+CREATE POLICY "leagues_delete" ON leagues FOR DELETE TO authenticated
+  USING (id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin'));
+
+-- ── LEAGUE MEMBERS ───────────────────────────────────────────
+CREATE POLICY "league_members_select" ON league_members FOR SELECT TO authenticated
+  USING (league_id IN (SELECT public.get_my_league_ids()));
+CREATE POLICY "league_members_insert" ON league_members FOR INSERT TO authenticated
+  WITH CHECK (
+    user_id = auth.uid()
+    OR league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin')
+  );
+CREATE POLICY "league_members_update" ON league_members FOR UPDATE TO authenticated
+  USING (league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin'));
+CREATE POLICY "league_members_delete" ON league_members FOR DELETE TO authenticated
+  USING (
+    user_id = auth.uid()
+    OR league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin')
+  );
+
+-- ── LEAGUE SETTINGS ──────────────────────────────────────────
+CREATE POLICY "league_settings_select" ON league_settings FOR SELECT TO authenticated
+  USING (league_id IN (SELECT public.get_my_league_ids()));
+CREATE POLICY "league_settings_insert" ON league_settings FOR INSERT TO authenticated
+  WITH CHECK (league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin'));
+CREATE POLICY "league_settings_update" ON league_settings FOR UPDATE TO authenticated
+  USING (league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin'));
+
+-- ── COURSES ──────────────────────────────────────────────────
+CREATE POLICY "courses_select" ON courses FOR SELECT TO authenticated
+  USING (league_id IN (SELECT public.get_my_league_ids()));
+CREATE POLICY "courses_insert" ON courses FOR INSERT TO authenticated
+  WITH CHECK (league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin'));
+CREATE POLICY "courses_update" ON courses FOR UPDATE TO authenticated
+  USING (league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin'));
+CREATE POLICY "courses_delete" ON courses FOR DELETE TO authenticated
+  USING (league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin'));
+
+-- ── ROUNDS ───────────────────────────────────────────────────
+CREATE POLICY "rounds_select" ON rounds FOR SELECT TO authenticated
+  USING (league_id IN (SELECT public.get_my_league_ids()));
+CREATE POLICY "rounds_insert" ON rounds FOR INSERT TO authenticated
+  WITH CHECK (
+    league_id IN (SELECT public.get_my_league_ids())
+    AND player_id = auth.uid()
+  );
+CREATE POLICY "rounds_update" ON rounds FOR UPDATE TO authenticated
+  USING (
+    league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin')
+    OR (player_id = auth.uid() AND attest_status = 'pending')
+  );
+CREATE POLICY "rounds_delete" ON rounds FOR DELETE TO authenticated
+  USING (
+    league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin')
+    OR (player_id = auth.uid() AND attest_status = 'pending')
+  );
+
+-- ── LEAGUE JOIN REQUESTS ─────────────────────────────────────
+CREATE POLICY "join_requests_select" ON league_join_requests FOR SELECT TO authenticated
+  USING (
+    user_id = auth.uid()
+    OR league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin')
+  );
+CREATE POLICY "join_requests_insert" ON league_join_requests FOR INSERT TO authenticated
+  WITH CHECK (user_id = auth.uid());
+CREATE POLICY "join_requests_update" ON league_join_requests FOR UPDATE TO authenticated
+  USING (league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin'));
+CREATE POLICY "join_requests_delete" ON league_join_requests FOR DELETE TO authenticated
+  USING (
+    user_id = auth.uid()
+    OR league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin')
+  );
+
+-- ── LEAGUE INVITES ───────────────────────────────────────────
+CREATE POLICY "league_invites_select" ON league_invites FOR SELECT TO authenticated
+  USING (
+    lower(email) = lower((SELECT email FROM profiles WHERE id = auth.uid()))
+    OR league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin')
+  );
+CREATE POLICY "league_invites_insert" ON league_invites FOR INSERT TO authenticated
+  WITH CHECK (league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin'));
+CREATE POLICY "league_invites_delete" ON league_invites FOR DELETE TO authenticated
+  USING (
+    lower(email) = lower((SELECT email FROM profiles WHERE id = auth.uid()))
+    OR league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin')
+  );
+
+-- ── COURSE CACHE ─────────────────────────────────────────────
+-- Global shared cache — any authenticated user can read/write
+CREATE POLICY "course_cache_select" ON course_cache FOR SELECT TO authenticated USING (true);
+CREATE POLICY "course_cache_insert" ON course_cache FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "course_cache_update" ON course_cache FOR UPDATE TO authenticated USING (true);
