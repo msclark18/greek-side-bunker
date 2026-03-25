@@ -258,6 +258,7 @@ export default function AdminTab({
                 hole: h.hole_number,
                 par: h.par,
                 stroke_index: h.handicap ?? h.stroke_index ?? null,
+                yards: h.yards ?? h.yardage ?? h.distance ?? null,
               })),
             };
           }

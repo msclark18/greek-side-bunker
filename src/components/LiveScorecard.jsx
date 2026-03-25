@@ -201,7 +201,8 @@ export default function LiveScorecard({
         color: "var(--cream-dim)", fontFamily: "var(--font-d)",
       }}>
         <div style={{ width: 28 }}>#</div>
-        <div style={{ width: 44 }}>Par</div>
+        <div style={{ width: 36 }}>Par</div>
+        <div style={{ width: 44 }}>Yds</div>
         <div style={{ flex: 1 }}>SI</div>
         <div style={{ width: 44, textAlign: "right" }}>Score</div>
       </div>
@@ -231,11 +232,14 @@ export default function LiveScorecard({
             }}>
               {h.hole}
             </div>
-            <div style={{ width: 44, fontSize: "0.8rem", color: "var(--cream-dim)" }}>
-              {h.par ? `P${h.par}` : "—"}
+            <div style={{ width: 36, fontSize: "0.8rem", color: "var(--cream-dim)" }}>
+              {h.par ?? "—"}
+            </div>
+            <div style={{ width: 44, fontSize: "0.75rem", color: "var(--cream-dim)" }}>
+              {h.yards ?? "—"}
             </div>
             <div style={{ flex: 1, display: "flex", alignItems: "center", fontSize: "0.75rem", color: "var(--cream-dim)" }}>
-              {h.stroke_index ? `${h.stroke_index}` : "—"}
+              {h.stroke_index ?? "—"}
               <StrokeDots count={strokes} />
             </div>
             <div style={{ width: 44, display: "flex", justifyContent: "flex-end" }}>
