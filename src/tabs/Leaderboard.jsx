@@ -76,6 +76,27 @@ export default function Leaderboard({
   const [tournamentRoundTab, setTournamentRoundTab] = useState("overall");
   const [tournamentNetGross, setTournamentNetGross] = useState("net");
   const [roundNetGross, setRoundNetGross] = useState("net");
+  const [activeFlight, setActiveFlight] = useState("all");
+
+  const flights = config.flights ?? [];
+  const flightFilter = (lb) => {
+    if (activeFlight === "all" || !flights.length) return lb;
+    const f = flights.find(fl => fl.id === activeFlight);
+    if (!f) return lb;
+    const ids = new Set(f.memberIds ?? []);
+    return lb.filter(e => {
+      // Individual player entry
+      if (e.id && ids.has(e.id)) return true;
+      // Team entry — check if any member of the team is in the flight
+      if (e.players) {
+        return (e.players ?? []).some(p => {
+          const m = members.find(mb => mb.profile?.name === p || mb.user_id === p);
+          return m && ids.has(m.user_id);
+        });
+      }
+      return false;
+    });
+  };
 
   const subTabs = [
     ...(config.tournamentMode ? [["tournament", <><Trophy size={13} />Tournament</>]] : []),
@@ -166,17 +187,25 @@ export default function Leaderboard({
       {/* ── Overall / Stableford ── */}
       {leaderTab === "overall" && (
         <div className="card">
-          <div className="card-hdr">
-            {config.scoringFormat === "stableford" ? <><Star size={15} />Stableford Standings</> : <><Trophy size={15} />Net Standings</>}
-            {!config.useHandicap && <span style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginLeft: 10, fontFamily: "var(--font-b)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(gross only)</span>}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+            <div className="card-hdr" style={{ marginBottom: 0 }}>
+              {config.scoringFormat === "stableford" ? <><Star size={15} />Stableford Standings</> : <><Trophy size={15} />Net Standings</>}
+              {!config.useHandicap && <span style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginLeft: 10, fontFamily: "var(--font-b)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(gross only)</span>}
+            </div>
+            {flights.length > 0 && (
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                <button className={`btn btn-sm ${activeFlight === "all" ? "btn-gold" : "btn-ghost"}`} onClick={() => setActiveFlight("all")}>All</button>
+                {flights.map(f => <button key={f.id} className={`btn btn-sm ${activeFlight === f.id ? "btn-gold" : "btn-ghost"}`} onClick={() => setActiveFlight(f.id)}>{f.name}</button>)}
+              </div>
+            )}
           </div>
           {config.hideScores && !myHasSubmitted && <div className="alert-w" style={{ marginBottom: 14 }}>Scores are hidden until you post your own round.</div>}
           {config.scoresToCount && <div className="alert-w" style={{ marginBottom: 14 }}><BarChart2 size={14} /> Best {config.scoresToCount} of all submitted scores count toward standings.</div>}
           {hasTeams ? (
-            teamLB.length === 0 ? <div className="empty">No {config.attestRequired ? "approved " : ""}rounds yet.</div> : (
+            flightFilter(teamLB).length === 0 ? <div className="empty">No {config.attestRequired ? "approved " : ""}rounds yet.</div> : (
               <div className="tw"><table>
                 <thead><tr><th>#</th><th>Team</th><th>Players</th><th>Rounds</th><th>Avg Net</th></tr></thead>
-                <tbody>{teamLB.map((t, i) => (
+                <tbody>{flightFilter(teamLB).map((t, i) => (
                   <tr key={t.id}>
                     {rankEl(i)}
                     <td style={{ fontWeight: 600, color: "var(--cream)" }}>{t.name}</td>
@@ -188,7 +217,7 @@ export default function Leaderboard({
               </table></div>
             )
           ) : (
-            overallLB.length === 0 ? <div className="empty">No {config.attestRequired ? "approved " : ""}rounds yet.</div> : (
+            flightFilter(overallLB).length === 0 ? <div className="empty">No {config.attestRequired ? "approved " : ""}rounds yet.</div> : (
               <div className="tw"><table>
                 <thead><tr>
                   <th>#</th><th>Player</th>
@@ -197,7 +226,7 @@ export default function Leaderboard({
                   {config.scoresToCount && <th>Counting</th>}
                   <th>{config.scoringFormat === "stableford" ? "Total Pts" : "Avg Net"}</th>
                 </tr></thead>
-                <tbody>{overallLB.map((p, i) => (
+                <tbody>{flightFilter(overallLB).map((p, i) => (
                   <tr key={p.id}>
                     {rankEl(i)}
                     <td>
@@ -280,7 +309,7 @@ export default function Leaderboard({
                     {rankEl(i)}
                     <td><span className="pname">{p.name}</span></td>
                     {config.useHandicap && <td><span className="hcp-badge">{ch}</span></td>}
-                    <td>{p.cr.length}/{config.roundsPerCourse}</td>
+                    <td>{p.cr.length >= config.roundsPerCourse ? `✓ ${config.roundsPerCourse}/${config.roundsPerCourse}` : `${p.cr.length}/${config.roundsPerCourse}`}</td>
                     <td>{netEl(p.best, p.par)}</td>
                     <td style={{ color: "var(--cream-dim)" }}>{p.avg}</td>
                   </tr>
@@ -880,6 +909,36 @@ export default function Leaderboard({
           ? [...tournamentOverallLB].filter(e => e.grossTotal != null).sort((a, b) => a.grossTotal - b.grossTotal)
           : (hasTeams ? teamGrossLB : grossLB);
 
+        // Build per-category LB overrides for tournament round-specific payouts
+        const lbOverrides = {};
+        if (config.tournamentMode) {
+          cats.forEach(cat => {
+            if (!cat.tournamentRoundId) return;
+            const rd = tournamentRoundLB[cat.tournamentRoundId];
+            if (!rd) return;
+            lbOverrides[cat.id] = {
+              netLB: rd.standings ?? [],
+              grossLB: rd.grossStandings ?? rd.standings ?? [],
+            };
+          });
+        }
+
+        // Per-flight payout overrides: filter LBs to only players in the specified flight
+        cats.forEach(cat => {
+          if (!cat.flightId) return;
+          const flight = (config.flights ?? []).find(f => f.id === cat.flightId);
+          if (!flight) return;
+          const flightNames = new Set(
+            (flight.memberIds ?? []).map(uid => memberNameById[uid]).filter(Boolean)
+          );
+          const baseNet = lbOverrides[cat.id]?.netLB ?? effectiveNetLB;
+          const baseGross = lbOverrides[cat.id]?.grossLB ?? effectiveGrossLB;
+          lbOverrides[cat.id] = {
+            netLB: baseNet.filter(e => flightNames.has(e.name)),
+            grossLB: baseGross.filter(e => flightNames.has(e.name)),
+          };
+        });
+
         const leaderMap = resolvePayouts({
           cats,
           netLB: effectiveNetLB,
@@ -891,6 +950,7 @@ export default function Leaderboard({
           },
           exclusive: config.exclusiveWinners ?? false,
           precedence: config.exclusivePrecedence ?? "gross",
+          lbOverrides,
         });
         return (
           <div className="card">
@@ -981,18 +1041,24 @@ export default function Leaderboard({
             {/* Overall standings */}
             {tournamentRoundTab === "overall" && (() => {
               const isGross = tournamentNetGross === "gross";
-              const displayLB = isGross
+              const displayLB = flightFilter(isGross
                 ? [...tournamentOverallLB].filter(e => e.grossTotal != null).sort((a, b) => a.grossTotal - b.grossTotal)
-                : tournamentOverallLB;
+                : tournamentOverallLB);
               return (
                 <div className="card">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: flights.length > 0 ? 8 : 14, flexWrap: "wrap", gap: 8 }}>
                     <div className="card-hdr" style={{ marginBottom: 0 }}><Trophy size={15} />Overall Tournament Standings</div>
                     <div style={{ display: "flex", gap: 4 }}>
                       <button className={`btn btn-sm ${!isGross ? "btn-gold" : "btn-ghost"}`} onClick={() => setTournamentNetGross("net")}>Net</button>
                       <button className={`btn btn-sm ${isGross ? "btn-gold" : "btn-ghost"}`} onClick={() => setTournamentNetGross("gross")}>Gross</button>
                     </div>
                   </div>
+                  {flights.length > 0 && (
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 14 }}>
+                      <button className={`btn btn-sm ${activeFlight === "all" ? "btn-gold" : "btn-ghost"}`} onClick={() => setActiveFlight("all")}>All</button>
+                      {flights.map(f => <button key={f.id} className={`btn btn-sm ${activeFlight === f.id ? "btn-gold" : "btn-ghost"}`} onClick={() => setActiveFlight(f.id)}>{f.name}</button>)}
+                    </div>
+                  )}
                   {displayLB.length === 0 ? (
                     <div className="empty">No scores posted yet.</div>
                   ) : (
@@ -1048,16 +1114,22 @@ export default function Leaderboard({
               const rd = tournamentRoundLB[tournamentRoundTab];
               if (!rd) return <div className="empty">No scores for this round yet.</div>;
               const isRdGross = roundNetGross === "gross";
-              const displayStandings = isRdGross ? (rd.grossStandings ?? rd.standings) : rd.standings;
+              const displayStandings = flightFilter(isRdGross ? (rd.grossStandings ?? rd.standings) : rd.standings);
               return (
                 <div className="card">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: flights.length > 0 ? 8 : 14, flexWrap: "wrap", gap: 8 }}>
                     <div className="card-hdr" style={{ marginBottom: 0 }}><Flag size={15} />{rd.label} — {FORMAT_LABELS[rd.format] ?? rd.format} · {rd.holes}H</div>
                     <div style={{ display: "flex", gap: 4 }}>
                       <button className={`btn btn-sm ${!isRdGross ? "btn-gold" : "btn-ghost"}`} onClick={() => setRoundNetGross("net")}>Net</button>
                       <button className={`btn btn-sm ${isRdGross ? "btn-gold" : "btn-ghost"}`} onClick={() => setRoundNetGross("gross")}>Gross</button>
                     </div>
                   </div>
+                  {flights.length > 0 && (
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 14 }}>
+                      <button className={`btn btn-sm ${activeFlight === "all" ? "btn-gold" : "btn-ghost"}`} onClick={() => setActiveFlight("all")}>All</button>
+                      {flights.map(f => <button key={f.id} className={`btn btn-sm ${activeFlight === f.id ? "btn-gold" : "btn-ghost"}`} onClick={() => setActiveFlight(f.id)}>{f.name}</button>)}
+                    </div>
+                  )}
                   {displayStandings.length === 0 ? (
                     <div className="empty">No scores posted yet.</div>
                   ) : rd.isTeam ? (

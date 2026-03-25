@@ -4,7 +4,7 @@ import { DEFAULT_CONFIG, FORMAT_LABELS } from "../constants/config.js";
 import { calcCourseHcp, calcStableford } from "../utils/golf.js";
 import Toggle from "../components/Toggle.jsx";
 import GhinLink from "../components/GhinLink.jsx";
-import { Settings, Users, Flag, ClipboardList, BarChart2, FileText, Mail, Trophy, DollarSign, AlertTriangle, Check, X, Clock } from "lucide-react";
+import { Settings, Users, Flag, ClipboardList, BarChart2, FileText, Mail, Trophy, DollarSign, AlertTriangle, Check, X, Clock, Camera } from "lucide-react";
 
 export default function AdminTab({
   session, activeLeague,
@@ -21,6 +21,8 @@ export default function AdminTab({
   const [addMsg, setAddMsg] = useState("");
   const [newCourse, setNewCourse] = useState({ name: "", par: "", holes: "18", slope: "", rating: "" });
   const [showAddCourse, setShowAddCourse] = useState(false);
+  const [courseSearch, setCourseSearch] = useState({ open: false, query: "", results: [], loading: false, scanLoading: false, error: "", selected: null, selectedTee: null });
+  const scorecardInputRef = useRef(null);
   const [editMemberHcp, setEditMemberHcp] = useState(null);
   const [emailDraft, setEmailDraft] = useState({ subject: "", message: "" });
   const [emailSending, setEmailSending] = useState(false);
@@ -52,6 +54,142 @@ export default function AdminTab({
     await supabase.from("league_settings").upsert({ league_id: activeLeague.id, config: newCfg, payouts }, { onConflict: "league_id" });
     setConfig(newCfg);
     setConfigDraft(null);
+  };
+
+  // ── Course Search ──
+  const searchGolfCourses = async (query) => {
+    if (!query.trim()) return;
+    setCourseSearch(s => ({ ...s, loading: true, error: "", results: [], selected: null, selectedTee: null }));
+
+    const normalize = (s) => s?.toLowerCase() ?? "";
+    const matchesQuery = (c, q) => {
+      const haystack = normalize(c.club_name) + " " + normalize(c.course_name);
+      return q.trim().split(/\s+/).every(w => haystack.includes(normalize(w)));
+    };
+
+    const cacheToDB = async (courses) => {
+      if (!courses.length) return;
+      await supabase.from("course_cache").upsert(
+        courses.map(c => ({ api_id: c.id, club_name: c.club_name, course_name: c.course_name, location: c.location, tees: c.tees })),
+        { onConflict: "api_id", ignoreDuplicates: true }
+      );
+    };
+
+    const fetchFromAPI = async (q) => {
+      const res = await fetch(`/api/search-courses?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Search failed");
+      const courses = data.courses ?? [];
+      cacheToDB(courses);
+      return courses;
+    };
+
+    try {
+      // 1. Check local cache first
+      const q = query.trim();
+      const { data: cached } = await supabase
+        .from("course_cache")
+        .select("api_id, club_name, course_name, location, tees")
+        .or(`club_name.ilike.%${q}%,course_name.ilike.%${q}%`)
+        .limit(20);
+
+      let results = (cached ?? []).map(c => ({ id: c.api_id, club_name: c.club_name, course_name: c.course_name, location: c.location, tees: c.tees }));
+
+      // 2. If cache has hits, return them immediately; still fetch API in background to keep cache fresh
+      if (results.length >= 3) {
+        setCourseSearch(s => ({ ...s, loading: false, results }));
+        fetchFromAPI(q).catch(() => {});
+        return;
+      }
+
+      // 3. Cache miss — hit the API
+      let apiResults = await fetchFromAPI(q);
+
+      // 4. If multi-word query returns nothing, retry with first word + filter client-side
+      if (apiResults.length === 0) {
+        const words = q.split(/\s+/);
+        if (words.length > 1) {
+          const broader = await fetchFromAPI(words[0]);
+          apiResults = broader.filter(c => matchesQuery(c, q));
+        }
+      }
+
+      // 5. Merge cache + API results, dedupe by api_id
+      const seen = new Set(results.map(r => r.id));
+      for (const c of apiResults) {
+        if (!seen.has(c.id)) { results.push(c); seen.add(c.id); }
+      }
+
+      setCourseSearch(s => ({ ...s, loading: false, results }));
+    } catch (e) {
+      setCourseSearch(s => ({ ...s, loading: false, error: e.message }));
+    }
+  };
+
+  const scanScorecard = async (file) => {
+    if (!file) return;
+    setCourseSearch(s => ({ ...s, scanLoading: true, error: "", selected: null, selectedTee: null }));
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch("/api/parse-scorecard-course", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageData: base64, mediaType: file.type }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Scan failed");
+      const { course } = data;
+      // Shape into the same format as API results so the tee picker works identically
+      const synthetic = {
+        id: null,
+        club_name: course.club_name,
+        course_name: course.course_name,
+        location: null,
+        tees: {
+          male: course.tees.map(t => ({
+            tee_name: t.tee_name,
+            par_total: t.par_total,
+            number_of_holes: t.number_of_holes ?? 18,
+            slope_rating: t.slope_rating,
+            course_rating: t.course_rating,
+            total_yards: null,
+            holes: [],
+          })),
+          female: [],
+        },
+      };
+      setCourseSearch(s => ({ ...s, scanLoading: false, selected: synthetic, results: [] }));
+    } catch (e) {
+      setCourseSearch(s => ({ ...s, scanLoading: false, error: e.message ?? "Scan failed. Try a clearer photo." }));
+    }
+  };
+
+  const confirmCourseFromSearch = async () => {
+    const { selected, selectedTee } = courseSearch;
+    if (!selected || !selectedTee) return;
+    const tee = selectedTee;
+    const courseName = selected.club_name === selected.course_name
+      ? selected.club_name
+      : `${selected.club_name} — ${selected.course_name}`;
+    const { data } = await supabase.from("courses").insert({
+      league_id: activeLeague.id,
+      name: courseName,
+      par: tee.par_total,
+      holes: tee.number_of_holes,
+      slope: tee.slope_rating,
+      rating: tee.course_rating,
+    }).select().single();
+    if (data) {
+      setCourses(p => [...p, data]);
+      setAddMsg(`${courseName} added!`);
+      setTimeout(() => setAddMsg(""), 3000);
+    }
+    setCourseSearch({ open: false, query: "", results: [], loading: false, error: "", selected: null, selectedTee: null });
   };
 
   // ── Courses ──
@@ -365,6 +503,63 @@ setConfirmClear(false);
     ? <span className="ab auto">Auto ✓</span>
     : <span className={`ab ${status}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>{status === "approved" ? "✓ Approved" : status === "rejected" ? "✗ Rejected" : <><Clock size={11} />Pending</>}</span>;
 
+  // Reusable team builder — shared across Groups and Tournament per-round tabs
+  const renderTeamBuilder = (teams, setTeamsFn, teamSize) => {
+    const resolveRef = (ref) => {
+      if (!ref) return null;
+      const m = members.find(mb => mb.user_id === ref);
+      return m?.profile?.name ?? ref;
+    };
+    const normalizedTeams = teams.map(t => ({ ...t, players: (t.players ?? []).map(resolveRef).filter(Boolean) }));
+    const assignedPlayers = new Set(normalizedTeams.flatMap(t => t.players ?? []));
+    const unassigned = members.filter(m => m.profile && !assignedPlayers.has(m.profile.name));
+    return (
+      <>
+        {normalizedTeams.length === 0 && <p className="note" style={{ marginBottom: 8 }}>No teams yet. Add a team below.</p>}
+        {normalizedTeams.map((team, ti) => (
+          <div key={team.id} style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8, padding: "12px 14px", marginBottom: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              <input type="text" value={team.name} placeholder="Team name"
+                onChange={e => setTeamsFn(normalizedTeams.map((t, i) => i === ti ? { ...t, name: e.target.value } : t))}
+                style={{ flex: "1 1 120px", fontSize: ".86rem" }} />
+              <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: ".7rem" }}
+                onClick={() => setTeamsFn(normalizedTeams.filter((_, i) => i !== ti))}>✕ Remove</button>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {Array.from({ length: teamSize }).map((_, si) => {
+                const assigned = team.players?.[si] ?? null;
+                const opts = members.filter(m => m.profile && (m.profile.name === assigned || !assignedPlayers.has(m.profile.name)));
+                return (
+                  <select key={si} value={assigned ?? ""}
+                    onChange={e => {
+                      const newPlayers = [...(team.players ?? [])];
+                      newPlayers[si] = e.target.value || null;
+                      setTeamsFn(normalizedTeams.map((t, i) => i === ti ? { ...t, players: newPlayers.filter(Boolean) } : t));
+                    }}
+                    style={{ flex: "1 1 130px", minWidth: 110, fontSize: ".82rem" }}>
+                    <option value="">— Player {si + 1} —</option>
+                    {opts.map(m => <option key={m.user_id} value={m.profile.name}>{m.profile.name}</option>)}
+                  </select>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+          <button className="btn btn-ghost btn-sm" style={{ fontSize: ".65rem" }}
+            onClick={() => setTeamsFn([...normalizedTeams, { id: `team_${Date.now()}`, name: `Team ${normalizedTeams.length + 1}`, players: [] }])}>
+            + Add Team
+          </button>
+          {unassigned.length > 0 && (
+            <span style={{ fontSize: ".72rem", color: "var(--cream-dim)" }}>
+              {unassigned.length} unassigned: {unassigned.map(m => m.profile.name).join(", ")}
+            </span>
+          )}
+        </div>
+      </>
+    );
+  };
+
   return (
     <>
       {/* Edit Round Modal */}
@@ -458,13 +653,16 @@ setConfirmClear(false);
         <div className="stabs">
           {[
             ["config", <><Settings size={13} />Config</>],
+            ["league", "League Info"],
+            ...((configDraft ?? config).tournamentMode ? [["tournament", <><Trophy size={13} />Tournament</>]] : []),
+            ["groups", <><Users size={13} />Groups</>],
+            ["payouts", <><DollarSign size={13} />Payouts</>],
             ["members", <><Users size={13} />Members{pendingJoins.length > 0 ? ` (${pendingJoins.length})` : ""}</>],
             ["courses", <><Flag size={13} />Courses</>],
             ["rounds", <><ClipboardList size={13} />All Rounds</>],
             ["export", <><BarChart2 size={13} />Export</>],
             ["bylaws", <><FileText size={13} />Bylaws</>],
             ["email", <><Mail size={13} />Email Members</>],
-            ["league", "League Info"],
           ].map(([k, l]) => (
             <button key={k} className={`stab${adminTab === k ? " active" : ""}`} onClick={() => setAdminTab(k)}>{l}</button>
           ))}
@@ -481,64 +679,6 @@ setConfirmClear(false);
         const totalPayoutPct = payoutCats.reduce((s, c) => s + (Number(c.pct) || 0), 0);
         const payoutOverLimit = totalPayoutPct > 100;
 
-        // Reusable team builder — used both in global Teams section and inside per-round config
-        const renderTeamBuilder = (teams, setTeams, teamSize) => {
-          // Resolve any UUID references to names (seed/API data may store user_id instead of name)
-          const resolveRef = (ref) => {
-            if (!ref) return null;
-            const m = members.find(mb => mb.user_id === ref);
-            return m?.profile?.name ?? ref;
-          };
-          const normalizedTeams = teams.map(t => ({ ...t, players: (t.players ?? []).map(resolveRef).filter(Boolean) }));
-
-          const assignedPlayers = new Set(normalizedTeams.flatMap(t => t.players ?? []));
-          const unassigned = members.filter(m => m.profile && !assignedPlayers.has(m.profile.name));
-          return (
-            <>
-              {normalizedTeams.length === 0 && <p className="note" style={{ marginBottom: 8 }}>No teams yet. Add a team below.</p>}
-              {normalizedTeams.map((team, ti) => (
-                <div key={team.id} style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8, padding: "12px 14px", marginBottom: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-                    <input type="text" value={team.name} placeholder="Team name"
-                      onChange={e => setTeams(normalizedTeams.map((t, i) => i === ti ? { ...t, name: e.target.value } : t))}
-                      style={{ flex: "1 1 120px", fontSize: ".86rem" }} />
-                    <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: ".7rem" }}
-                      onClick={() => setTeams(normalizedTeams.filter((_, i) => i !== ti))}>✕ Remove</button>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {Array.from({ length: teamSize }).map((_, si) => {
-                      const assigned = team.players?.[si] ?? null;
-                      const opts = members.filter(m => m.profile && (m.profile.name === assigned || !assignedPlayers.has(m.profile.name)));
-                      return (
-                        <select key={si} value={assigned ?? ""}
-                          onChange={e => {
-                            const newPlayers = [...(team.players ?? [])];
-                            newPlayers[si] = e.target.value || null;
-                            setTeams(normalizedTeams.map((t, i) => i === ti ? { ...t, players: newPlayers.filter(Boolean) } : t));
-                          }}
-                          style={{ flex: "1 1 130px", minWidth: 110, fontSize: ".82rem" }}>
-                          <option value="">— Player {si + 1} —</option>
-                          {opts.map(m => <option key={m.user_id} value={m.profile.name}>{m.profile.name}</option>)}
-                        </select>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                <button className="btn btn-ghost btn-sm" style={{ fontSize: ".65rem" }}
-                  onClick={() => setTeams([...normalizedTeams, { id: `team_${Date.now()}`, name: `Team ${normalizedTeams.length + 1}`, players: [] }])}>
-                  + Add Team
-                </button>
-                {unassigned.length > 0 && (
-                  <span style={{ fontSize: ".72rem", color: "var(--cream-dim)" }}>
-                    {unassigned.length} unassigned: {unassigned.map(m => m.profile.name).join(", ")}
-                  </span>
-                )}
-              </div>
-            </>
-          );
-        };
         return (
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
@@ -574,154 +714,6 @@ setConfirmClear(false);
               </div>
             </div>
 
-            {/* ── Tournament rounds (only when Tournament is selected) ── */}
-            {d.scoringFormat === "tournament" && (() => {
-                const tRounds = d.tournamentRounds ?? [];
-                const setRounds = (rounds) => set("tournamentRounds", rounds);
-                const FORMAT_HCP_DEFAULTS = {
-                  scramble:       { handicapPct: 25,  scrambleHcpMethod: "lowest" },
-                  texas_scramble: { handicapPct: 50,  scrambleHcpMethod: "each" },
-                  best_ball:      { handicapPct: 100, scrambleHcpMethod: "each" },
-                  stroke:         { handicapPct: 100, scrambleHcpMethod: "each" },
-                  stableford:     { handicapPct: 100, scrambleHcpMethod: "each" },
-                };
-                const addRound = () => setRounds([...tRounds, {
-                  id: `tr_${Date.now()}`, day: tRounds.length + 1,
-                  label: `Round ${tRounds.length + 1}`, holes: 18,
-                  format: "stroke", teamSize: 2, texasScrambleMode: "individual", courseId: null,
-                  handicapPct: 100, scrambleHcpMethod: "each",
-                }]);
-                const updRound = (idx, patch) => setRounds(tRounds.map((r, i) => i === idx ? { ...r, ...patch } : r));
-                const remRound = (idx) => setRounds(tRounds.filter((_, i) => i !== idx));
-                const TEAM_FMTS = ["scramble", "texas_scramble", "best_ball"];
-                return (
-                  <div className="cfg-section">
-                    <div className="cfg-section-title">Tournament Rounds</div>
-                    <div className="cfg-row" style={{ marginBottom: 8 }}>
-                      <div><div className="cfg-label">Teams stay the same across all rounds</div><div className="cfg-desc">Off = teams can be reconfigured per round</div></div>
-                      <Toggle checked={d.teamsFixed ?? true} onChange={v => set("teamsFixed", v)} />
-                    </div>
-                    {tRounds.length === 0 && <p className="note" style={{ marginBottom: 8 }}>No rounds yet. Add a round below.</p>}
-                    {tRounds.map((tr, idx) => (
-                      <div key={tr.id} style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8, padding: "12px 14px", marginBottom: 8 }}>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 120px", minWidth: 100 }}>
-                            <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Label</label>
-                            <input type="text" value={tr.label} onChange={e => updRound(idx, { label: e.target.value })} style={{ fontSize: ".85rem" }} />
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "0 0 60px" }}>
-                            <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Holes</label>
-                            <select value={tr.holes} onChange={e => updRound(idx, { holes: Number(e.target.value) })} style={{ fontSize: ".82rem" }}>
-                              <option value={9}>9</option>
-                              <option value={18}>18</option>
-                            </select>
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px", minWidth: 130 }}>
-                            <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Format</label>
-                            <select value={tr.format} onChange={e => { const fmt = e.target.value; updRound(idx, { format: fmt, ...(FORMAT_HCP_DEFAULTS[fmt] ?? { handicapPct: 100, scrambleHcpMethod: "each" }) }); }} style={{ fontSize: ".82rem" }}>
-                              <option value="stroke">Stroke Play</option>
-                              <option value="stableford">Stableford</option>
-                              <option value="scramble">Scramble</option>
-                              <option value="texas_scramble">Texas Scramble</option>
-                              <option value="best_ball">Best Ball</option>
-                            </select>
-                          </div>
-                          {TEAM_FMTS.includes(tr.format) && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "0 0 80px" }}>
-                              <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Team Size</label>
-                              <select value={tr.teamSize ?? 2} onChange={e => updRound(idx, { teamSize: Number(e.target.value) })} style={{ fontSize: ".82rem" }}>
-                                <option value={2}>2-man</option>
-                                <option value={4}>4-man</option>
-                              </select>
-                            </div>
-                          )}
-                          {tr.format === "texas_scramble" && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px", minWidth: 130 }}>
-                              <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Scoring</label>
-                              <select value={tr.texasScrambleMode ?? "individual"} onChange={e => updRound(idx, { texasScrambleMode: e.target.value })} style={{ fontSize: ".82rem" }}>
-                                <option value="individual">Each score counts</option>
-                                <option value="best">Team takes best score</option>
-                              </select>
-                            </div>
-                          )}
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 140px", minWidth: 120 }}>
-                            <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Course</label>
-                            <select value={tr.courseId ?? ""} onChange={e => updRound(idx, { courseId: e.target.value ? Number(e.target.value) : null })} style={{ fontSize: ".82rem" }}>
-                              <option value="">— TBD —</option>
-                              {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
-                          </div>
-                          {config.useHandicap && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "0 0 70px" }}>
-                              <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Hcp %</label>
-                              <input type="number" min={0} max={100} value={tr.handicapPct ?? 100} onChange={e => updRound(idx, { handicapPct: Number(e.target.value) })} style={{ fontSize: ".82rem", width: "100%" }} />
-                            </div>
-                          )}
-                          {config.useHandicap && TEAM_FMTS.includes(tr.format) && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 140px", minWidth: 120 }}>
-                              <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Hcp Method</label>
-                              <select value={tr.scrambleHcpMethod ?? "each"} onChange={e => updRound(idx, { scrambleHcpMethod: e.target.value })} style={{ fontSize: ".82rem" }}>
-                                <option value="each">Each player</option>
-                                <option value="lowest">Lowest</option>
-                                <option value="average">Average</option>
-                                <option value="combined">Combined (weighted)</option>
-                              </select>
-                            </div>
-                          )}
-                          <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: ".7rem", alignSelf: "flex-end" }} onClick={() => remRound(idx)}>✕</button>
-                        </div>
-                        {/* Per-round team builder when teamsFixed is off */}
-                        {!(d.teamsFixed ?? true) && TEAM_FMTS.includes(tr.format) && (
-                          <div style={{ marginTop: 12, borderTop: "1px solid var(--navy-border)", paddingTop: 12 }}>
-                            <div style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)", marginBottom: 8 }}>
-                              Teams for this round
-                            </div>
-                            {renderTeamBuilder(
-                              tr.teams ?? [],
-                              (t) => updRound(idx, { teams: t }),
-                              tr.teamSize ?? 2
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    <button className="btn btn-ghost btn-sm" style={{ fontSize: ".65rem", marginTop: 4 }} onClick={addRound}>+ Add Round</button>
-                  </div>
-                );
-              })()}
-
-            {/* ── Teams ── (global — hidden when tournament + teamsFixed is off, since teams are per-round in that case) */}
-            {(["scramble", "texas_scramble", "best_ball"].includes(d.scoringFormat) ||
-              (d.tournamentMode && (d.teamsFixed ?? true) && (d.tournamentRounds ?? []).some(r => ["scramble", "texas_scramble", "best_ball"].includes(r.format)))) && (
-              <div className="cfg-section">
-                <div className="cfg-section-title">Teams</div>
-                {!d.tournamentMode && (
-                  <div className="cfg-row" style={{ marginBottom: 12 }}>
-                    <div><div className="cfg-label">Team size</div><div className="cfg-desc">Players per team</div></div>
-                    <select value={d.scrambleTeamSize ?? 2} onChange={e => set("scrambleTeamSize", Number(e.target.value))} style={{ width: 90 }}>
-                      <option value={2}>2-man</option>
-                      <option value={4}>4-man</option>
-                    </select>
-                  </div>
-                )}
-                {d.tournamentMode && (
-                  <p className="note" style={{ marginBottom: 12 }}>
-                    Teams are shared across all rounds. Make sure all team sizes match the rounds above.
-                  </p>
-                )}
-                {(() => {
-                  const TEAM_FMTS2 = ["scramble", "texas_scramble", "best_ball"];
-                  const teamSize = d.tournamentMode
-                    ? Math.max(2, ...(d.tournamentRounds ?? []).filter(r => TEAM_FMTS2.includes(r.format)).map(r => r.teamSize ?? 2))
-                    : d.scrambleTeamSize ?? 2;
-                  return renderTeamBuilder(
-                    d.scrambleTeams ?? [],
-                    (t) => set("scrambleTeams", t),
-                    teamSize
-                  );
-                })()}
-              </div>
-            )}
 
             <div className="cfg-section">
               <div className="cfg-section-title">Round Rules</div>
@@ -800,107 +792,6 @@ setConfirmClear(false);
             </div>
 
             <div className="cfg-section">
-              <div className="cfg-section-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><DollarSign size={13} />Payouts & Entry Fee</div>
-              <div className="cfg-row">
-                <div><div className="cfg-label">Entry fee per player</div><div className="cfg-desc">Used to calculate the total prize pool</div></div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ color: "var(--cream-dim)" }}>$</span>
-                  <input type="number" min={0} placeholder="0" value={d.entryFee ?? ""} onChange={e => set("entryFee", e.target.value ? Number(e.target.value) : null)} style={{ width: 90 }} />
-                </div>
-              </div>
-              {d.entryFee > 0 && members.length > 0 && (() => {
-                const paidCnt = members.filter(m => m.paid).length;
-                return <div style={{ padding: "10px 0 4px", fontSize: ".82rem", color: "var(--cream-dim)" }}><span style={{ color: "var(--gold-light)", fontFamily: "var(--font-d)" }}>${(d.entryFee * paidCnt).toLocaleString()}</span> collected so far ({paidCnt} of {members.length} players paid)</div>;
-              })()}
-              <div className="cfg-row" style={{ marginTop: 12 }}>
-                <div><div className="cfg-label">One award per player</div><div className="cfg-desc">A player cannot win both a net and a gross category</div></div>
-                <Toggle checked={d.exclusiveWinners ?? false} onChange={v => set("exclusiveWinners", v)} />
-              </div>
-              {(d.exclusiveWinners ?? false) && (
-                <div className="cfg-row">
-                  <div><div className="cfg-label">Precedence</div><div className="cfg-desc">Which category wins when a player qualifies for both</div></div>
-                  <select value={d.exclusivePrecedence ?? "gross"} onChange={e => set("exclusivePrecedence", e.target.value)} style={{ width: 160 }}>
-                    <option value="gross">Gross over Net</option>
-                    <option value="net">Net over Gross</option>
-                    <option value="highest">Highest Payout Wins</option>
-                  </select>
-                </div>
-              )}
-              <div style={{ marginTop: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
-                  <div style={{ fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)" }}>Payout Categories</div>
-                  <button className="btn btn-ghost btn-sm" style={{ fontSize: ".65rem" }} onClick={() => {
-                    const cats = d.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
-                    set("payoutCategories", [...cats, { id: `custom_${Date.now()}`, label: "New Category", pct: 0, mapTo: "none", mapRank: 1 }]);
-                  }}>+ Add Category</button>
-                </div>
-                <p className="note" style={{ marginBottom: 12 }}>Map each category to a specific placement so winners are tracked automatically. Set the % of the prize pool for each.</p>
-                {(() => {
-                  const legacyIdToType = { champion: "playoff_1", runnerUp: "playoff_2", thirdPlace: "playoff_3", regularNet: "net_1", regularGross: "gross_1" };
-                  const cats = (d.payoutCategories ?? DEFAULT_CONFIG.payoutCategories).map(cat => {
-                    if (cat.mapTo !== undefined) return cat;
-                    const type = cat.type ?? legacyIdToType[cat.id];
-                    if (!type || type === "none") return { ...cat, mapTo: "none", mapRank: 1 };
-                    const m = type.match(/^(playoff|net|gross)_(\d+)$/);
-                    return m ? { ...cat, mapTo: m[1], mapRank: Number(m[2]) } : { ...cat, mapTo: "none", mapRank: 1 };
-                  });
-                  const totalPct = cats.reduce((s, c) => s + (Number(c.pct) || 0), 0);
-                  const pool = (d.entryFee ?? 0) * members.filter(m => m.paid).length;
-                  const overLimit = totalPct > 100;
-                  const remaining = 100 - totalPct;
-                  return <>
-                    {cats.map((cat, idx) => {
-                      const amt = pool > 0 ? Math.round(pool * cat.pct / 100) : null;
-                      const upd = (patch) => set("payoutCategories", cats.map((c, i) => i === idx ? { ...c, ...patch } : c));
-                      return (
-                        <div key={cat.id} className="payout-cat-row" style={{ flexWrap: "wrap", gap: 8 }}>
-                          <input type="text" value={cat.label} placeholder="Category name"
-                            style={{ flex: "1 1 130px", minWidth: 100, fontSize: ".86rem" }}
-                            onChange={e => upd({ label: e.target.value })} />
-                          <select value={cat.mapTo ?? "none"} onChange={e => upd({ mapTo: e.target.value, mapRank: cat.mapRank ?? 1 })}
-                            style={{ flex: "1 1 130px", minWidth: 120, fontSize: ".82rem" }}>
-                            <option value="none">— Side game —</option>
-                            <option value="playoff">Playoff</option>
-                            <option value="net">Net standings</option>
-                            <option value="gross">Gross standings</option>
-                          </select>
-                          {(cat.mapTo ?? "none") !== "none" ? (
-                            <input type="number" min={1} max={99} value={cat.mapRank ?? 1}
-                              onChange={e => upd({ mapRank: Math.max(1, Number(e.target.value) || 1) })}
-                              style={{ width: 52, fontSize: ".82rem", textAlign: "center" }}
-                              title="Rank (1 = 1st place, 2 = 2nd place, etc.)" />
-                          ) : (
-                            <select value={cat.winner ?? ""} onChange={e => upd({ winner: e.target.value || null })}
-                              style={{ flex: "1 1 130px", minWidth: 120, fontSize: ".82rem" }}>
-                              <option value="">— Assign winner —</option>
-                              {members.filter(m => m.profile).map(m => <option key={m.user_id} value={m.profile.name}>{m.profile.name}</option>)}
-                            </select>
-                          )}
-                          <div className="payout-pct-input">
-                            <input type="number" min={0} max={100} step={1} value={cat.pct || ""} placeholder="0"
-                              style={{ borderColor: overLimit && cat.pct > 0 ? "rgba(224,92,92,.5)" : undefined }}
-                              onChange={e => { const val = Math.max(0, Math.min(100, Number(e.target.value) || 0)); upd({ pct: val }); }} />
-                            <span style={{ color: "var(--cream-dim)" }}>%</span>
-                          </div>
-                          <div className="payout-amount">{amt != null && cat.pct > 0 ? `$${amt.toLocaleString()}` : <span style={{ color: "#4b5563" }}>—</span>}</div>
-                          <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: ".7rem", flexShrink: 0 }} onClick={() => set("payoutCategories", cats.filter((_, i) => i !== idx))}>✕</button>
-                        </div>
-                      );
-                    })}
-                    <div className="pct-bar-wrap"><div className="pct-bar" style={{ width: `${Math.min(totalPct, 100)}%`, background: overLimit ? "var(--red)" : totalPct === 100 ? "var(--green)" : "linear-gradient(90deg,var(--gold),var(--gold-light))" }} /></div>
-                    <div className="pct-total-row">
-                      <span style={{ color: "var(--cream-dim)" }}>Total allocated</span>
-                      <span className={overLimit ? "pct-total-over" : totalPct === 100 ? "pct-total-ok" : "pct-total-under"}>
-                        {overLimit ? `${totalPct}% — exceeds 100%` : totalPct === 100 ? `✓ ${totalPct}% — fully allocated` : `${totalPct}% (${remaining}% remaining)`}
-                      </span>
-                    </div>
-                    {overLimit && <div className="alert-d" style={{ marginTop: 10, fontSize: ".8rem" }}>Total exceeds 100%. Please reduce before saving.</div>}
-                  </>;
-                })()}
-              </div>
-            </div>
-
-            <div className="cfg-section">
               <div className="cfg-section-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><Trophy size={13} />Playoffs</div>
               <div className="cfg-row"><div><div className="cfg-label">Enable playoffs</div><div className="cfg-desc">Adds a Playoffs tab to the leaderboard</div></div><Toggle checked={d.playoffEnabled ?? true} onChange={v => set("playoffEnabled", v)} /></div>
               {(d.playoffEnabled ?? true) && <>
@@ -924,6 +815,497 @@ setConfirmClear(false);
             {dirty && (
               <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
                 <button className="btn btn-gold" onClick={() => saveConfig(configDraft)} disabled={payoutOverLimit}>Save Changes</button>
+                <button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── TOURNAMENT ── */}
+      {adminTab === "tournament" && (() => {
+        const d = configDraft ?? config;
+        const set = (k, v) => setConfigDraft(prev => ({ ...(prev ?? config), [k]: v }));
+        const dirty = configDraft !== null;
+        const tRounds = d.tournamentRounds ?? [];
+        const setTRounds = (rounds) => set("tournamentRounds", rounds);
+        const FORMAT_HCP_DEFAULTS = {
+          scramble:       { handicapPct: 25,  scrambleHcpMethod: "lowest" },
+          texas_scramble: { handicapPct: 50,  scrambleHcpMethod: "each" },
+          best_ball:      { handicapPct: 100, scrambleHcpMethod: "each" },
+          stroke:         { handicapPct: 100, scrambleHcpMethod: "each" },
+          stableford:     { handicapPct: 100, scrambleHcpMethod: "each" },
+        };
+        const addTRound = () => setTRounds([...tRounds, {
+          id: `tr_${Date.now()}`, day: tRounds.length + 1,
+          label: `Round ${tRounds.length + 1}`, holes: 18,
+          format: "stroke", teamSize: 2, texasScrambleMode: "individual", courseId: null,
+          handicapPct: 100, scrambleHcpMethod: "each",
+        }]);
+        const updTRound = (idx, patch) => setTRounds(tRounds.map((r, i) => i === idx ? { ...r, ...patch } : r));
+        const remTRound = (idx) => setTRounds(tRounds.filter((_, i) => i !== idx));
+        const TEAM_FMTS = ["scramble", "texas_scramble", "best_ball"];
+        return (
+          <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+              <div className="card-hdr" style={{ marginBottom: 0 }}><Trophy size={15} />Tournament Rounds</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {dirty && <>
+                  <button className="btn btn-gold" onClick={() => saveConfig(configDraft)}>Save Changes</button>
+                  <button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button>
+                </>}
+                {!dirty && <span style={{ fontSize: ".76rem", color: "var(--green)", fontFamily: "var(--font-d)", letterSpacing: "1px" }}>✓ Saved</span>}
+              </div>
+            </div>
+            <div className="cfg-section">
+              <div className="cfg-row" style={{ marginBottom: 8 }}>
+                <div><div className="cfg-label">Teams stay the same across all rounds</div><div className="cfg-desc">Off = teams can be reconfigured per round</div></div>
+                <Toggle checked={d.teamsFixed ?? true} onChange={v => set("teamsFixed", v)} />
+              </div>
+              {tRounds.length === 0 && <p className="note" style={{ marginBottom: 8 }}>No rounds yet. Add a round below.</p>}
+              {tRounds.map((tr, idx) => (
+                <div key={tr.id} style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8, padding: "12px 14px", marginBottom: 8 }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 120px", minWidth: 100 }}>
+                      <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Label</label>
+                      <input type="text" value={tr.label} onChange={e => updTRound(idx, { label: e.target.value })} style={{ fontSize: ".85rem" }} />
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "0 0 60px" }}>
+                      <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Holes</label>
+                      <select value={tr.holes} onChange={e => updTRound(idx, { holes: Number(e.target.value) })} style={{ fontSize: ".82rem" }}>
+                        <option value={9}>9</option>
+                        <option value={18}>18</option>
+                      </select>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px", minWidth: 130 }}>
+                      <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Format</label>
+                      <select value={tr.format} onChange={e => { const fmt = e.target.value; updTRound(idx, { format: fmt, ...(FORMAT_HCP_DEFAULTS[fmt] ?? { handicapPct: 100, scrambleHcpMethod: "each" }) }); }} style={{ fontSize: ".82rem" }}>
+                        <option value="stroke">Stroke Play</option>
+                        <option value="stableford">Stableford</option>
+                        <option value="scramble">Scramble</option>
+                        <option value="texas_scramble">Texas Scramble</option>
+                        <option value="best_ball">Best Ball</option>
+                      </select>
+                    </div>
+                    {TEAM_FMTS.includes(tr.format) && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "0 0 80px" }}>
+                        <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Team Size</label>
+                        <select value={tr.teamSize ?? 2} onChange={e => updTRound(idx, { teamSize: Number(e.target.value) })} style={{ fontSize: ".82rem" }}>
+                          <option value={2}>2-man</option>
+                          <option value={4}>4-man</option>
+                        </select>
+                      </div>
+                    )}
+                    {tr.format === "texas_scramble" && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px", minWidth: 130 }}>
+                        <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Scoring</label>
+                        <select value={tr.texasScrambleMode ?? "individual"} onChange={e => updTRound(idx, { texasScrambleMode: e.target.value })} style={{ fontSize: ".82rem" }}>
+                          <option value="individual">Each score counts</option>
+                          <option value="best">Team takes best score</option>
+                        </select>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 140px", minWidth: 120 }}>
+                      <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Course</label>
+                      <select value={tr.courseId ?? ""} onChange={e => updTRound(idx, { courseId: e.target.value ? Number(e.target.value) : null })} style={{ fontSize: ".82rem" }}>
+                        <option value="">— TBD —</option>
+                        {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </div>
+                    {d.useHandicap && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "0 0 70px" }}>
+                        <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Hcp %</label>
+                        <input type="number" min={0} max={100} value={tr.handicapPct ?? 100} onChange={e => updTRound(idx, { handicapPct: Number(e.target.value) })} style={{ fontSize: ".82rem", width: "100%" }} />
+                      </div>
+                    )}
+                    {d.useHandicap && TEAM_FMTS.includes(tr.format) && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 140px", minWidth: 120 }}>
+                        <label style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)" }}>Hcp Method</label>
+                        <select value={tr.scrambleHcpMethod ?? "each"} onChange={e => updTRound(idx, { scrambleHcpMethod: e.target.value })} style={{ fontSize: ".82rem" }}>
+                          <option value="each">Each player</option>
+                          <option value="lowest">Lowest</option>
+                          <option value="average">Average</option>
+                          <option value="combined">Combined (weighted)</option>
+                        </select>
+                      </div>
+                    )}
+                    <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: ".7rem", alignSelf: "flex-end" }} onClick={() => remTRound(idx)}>✕</button>
+                  </div>
+                  {!(d.teamsFixed ?? true) && TEAM_FMTS.includes(tr.format) && (
+                    <div style={{ marginTop: 12, borderTop: "1px solid var(--navy-border)", paddingTop: 12 }}>
+                      <div style={{ fontSize: ".6rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)", marginBottom: 8 }}>Teams for this round</div>
+                      {renderTeamBuilder(tr.teams ?? [], (t) => updTRound(idx, { teams: t }), tr.teamSize ?? 2)}
+                    </div>
+                  )}
+                </div>
+              ))}
+              <button className="btn btn-ghost btn-sm" style={{ fontSize: ".65rem", marginTop: 4 }} onClick={addTRound}>+ Add Round</button>
+            </div>
+            {dirty && (
+              <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                <button className="btn btn-gold" onClick={() => saveConfig(configDraft)}>Save Changes</button>
+                <button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── GROUPS ── */}
+      {adminTab === "groups" && (() => {
+        const d = configDraft ?? config;
+        const set = (k, v) => setConfigDraft(prev => ({ ...(prev ?? config), [k]: v }));
+        const dirty = configDraft !== null;
+        const TEAM_FMTS = ["scramble", "texas_scramble", "best_ball"];
+        const showTeams = TEAM_FMTS.includes(d.scoringFormat) ||
+          (d.tournamentMode && (d.teamsFixed ?? true) && (d.tournamentRounds ?? []).some(r => TEAM_FMTS.includes(r.format)));
+
+        const teamSize = d.tournamentMode
+          ? Math.max(2, ...(d.tournamentRounds ?? []).filter(r => TEAM_FMTS.includes(r.format)).map(r => r.teamSize ?? 2))
+          : d.scrambleTeamSize ?? 2;
+        const teams = d.scrambleTeams ?? [];
+        const resolvePlayerRef = (ref) => {
+          if (!ref) return null;
+          const m = members.find(mb => mb.user_id === ref);
+          return m?.profile?.name ?? ref;
+        };
+        const normTeams = teams.map(t => ({ ...t, players: (t.players ?? []).map(resolvePlayerRef).filter(Boolean) }));
+        const assignedInTeams = new Set(normTeams.flatMap(t => t.players ?? []));
+
+        const flights = d.flights ?? [];
+        const assignedIds = new Set(flights.flatMap(f => f.memberIds ?? []));
+        const unassignedFlights = members.filter(m => m.profile && !assignedIds.has(m.user_id));
+
+        const FLIGHT_COLORS = ["var(--gold)", "#7c9ef5", "#7be0a0", "#f09090", "#c084fc", "#fb923c"];
+
+        return (
+          <>
+            {/* ── TEAMS ── */}
+            {showTeams && (
+              <div className="card" style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
+                  <div className="card-hdr" style={{ marginBottom: 0 }}>Teams</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    {dirty && <>
+                      <button className="btn btn-gold" onClick={() => saveConfig(configDraft)}>Save</button>
+                      <button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button>
+                    </>}
+                    {!dirty && <span style={{ fontSize: ".76rem", color: "var(--green)", fontFamily: "var(--font-d)", letterSpacing: "1px" }}>✓ Saved</span>}
+                  </div>
+                </div>
+                <p className="note" style={{ marginBottom: 14 }}>
+                  {d.tournamentMode
+                    ? "Teams are shared across all rounds — match team sizes to the formats in Tournament tab."
+                    : "Assign players to teams for the scramble season."}
+                </p>
+
+                {!d.tournamentMode && (
+                  <div className="cfg-row" style={{ marginBottom: 16 }}>
+                    <div><div className="cfg-label">Team size</div><div className="cfg-desc">Players per team</div></div>
+                    <select value={d.scrambleTeamSize ?? 2} onChange={e => set("scrambleTeamSize", Number(e.target.value))} style={{ width: 90 }}>
+                      <option value={2}>2-man</option>
+                      <option value={4}>4-man</option>
+                    </select>
+                  </div>
+                )}
+
+                {normTeams.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "24px 0", color: "var(--cream-dim)", fontSize: ".85rem" }}>
+                    No teams yet. Add your first team below.
+                  </div>
+                )}
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
+                  {normTeams.map((team, ti) => {
+                    return (
+                      <div key={team.id} style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 10, overflow: "hidden" }}>
+                        {/* Team header */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid var(--navy-border)", background: "rgba(255,255,255,.02)" }}>
+                          <div style={{ width: 30, height: 30, borderRadius: 8, background: "var(--gold-dim)", border: "1px solid var(--gold-border)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-d)", fontSize: ".85rem", color: "var(--gold)", flexShrink: 0 }}>
+                            {(team.name?.[0] ?? "T").toUpperCase()}
+                          </div>
+                          <input type="text" value={team.name} placeholder="Team name"
+                            onChange={e => set("scrambleTeams", normTeams.map((t, i) => i === ti ? { ...t, name: e.target.value } : t))}
+                            style={{ flex: 1, fontSize: ".9rem", fontWeight: 500, background: "transparent", border: "none", color: "var(--white)", padding: 0, outline: "none" }} />
+                          <button className="btn btn-danger" style={{ padding: "3px 10px", fontSize: ".72rem", flexShrink: 0 }}
+                            onClick={() => set("scrambleTeams", normTeams.filter((_, i) => i !== ti))}>Remove</button>
+                        </div>
+                        {/* Player slots */}
+                        <div style={{ padding: "10px 14px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {Array.from({ length: teamSize }).map((_, si) => {
+                            const assigned = team.players?.[si] ?? null;
+                            const opts = members.filter(m => m.profile && (m.profile.name === assigned || !assignedInTeams.has(m.profile.name)));
+                            return (
+                              <div key={si} style={{ flex: "1 1 140px", minWidth: 120 }}>
+                                <div style={{ fontSize: ".58rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)", marginBottom: 4 }}>
+                                  Player {si + 1}
+                                </div>
+                                <select value={assigned ?? ""}
+                                  onChange={e => {
+                                    const newPlayers = [...(team.players ?? [])];
+                                    newPlayers[si] = e.target.value || null;
+                                    set("scrambleTeams", normTeams.map((t, i) => i === ti ? { ...t, players: newPlayers.filter(Boolean) } : t));
+                                  }}
+                                  style={{ width: "100%", fontSize: ".85rem" }}>
+                                  <option value="">— Select player —</option>
+                                  {opts.map(m => <option key={m.user_id} value={m.profile.name}>{m.profile.name}</option>)}
+                                </select>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <button className="btn btn-ghost btn-sm"
+                    onClick={() => set("scrambleTeams", [...normTeams, { id: `team_${Date.now()}`, name: `Team ${normTeams.length + 1}`, players: [] }])}>
+                    + Add Team
+                  </button>
+                  {(() => {
+                    const unassigned = members.filter(m => m.profile && !assignedInTeams.has(m.profile.name));
+                    return unassigned.length > 0
+                      ? <span style={{ fontSize: ".72rem", color: "var(--cream-dim)" }}>{unassigned.length} unassigned: {unassigned.map(m => m.profile.name).join(", ")}</span>
+                      : normTeams.length > 0 ? <span style={{ fontSize: ".72rem", color: "var(--green)" }}>✓ All players assigned</span> : null;
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {/* ── FLIGHTS ── */}
+            <div className="card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div className="card-hdr" style={{ marginBottom: 0 }}>Flights</div>
+                  <span style={{ fontSize: ".7rem", color: "var(--cream-dim)", fontFamily: "var(--font-b)" }}>optional</span>
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  {dirty && !showTeams && <>
+                    <button className="btn btn-gold" onClick={() => saveConfig(configDraft)}>Save</button>
+                    <button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button>
+                  </>}
+                  {!dirty && !showTeams && <span style={{ fontSize: ".76rem", color: "var(--green)", fontFamily: "var(--font-d)", letterSpacing: "1px" }}>✓ Saved</span>}
+                  <button className="btn btn-ghost btn-sm"
+                    onClick={() => set("flights", [...flights, { id: `flight_${Date.now()}`, name: `Flight ${flights.length + 1}`, memberIds: [] }])}>
+                    + Add Flight
+                  </button>
+                </div>
+              </div>
+              <p className="note" style={{ marginBottom: 14 }}>
+                Flights divide players into separate divisions on the leaderboard. Each player can only be in one flight.
+              </p>
+
+              {flights.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "24px 0", color: "var(--cream-dim)", fontSize: ".85rem" }}>
+                  No flights yet. Add a flight above to create divisions.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
+                  {flights.map((flight, fi) => {
+                    const count = (flight.memberIds ?? []).length;
+                    const color = FLIGHT_COLORS[fi % FLIGHT_COLORS.length];
+                    return (
+                      <div key={flight.id} style={{ border: `1px solid var(--navy-border)`, borderRadius: 10, overflow: "hidden" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid var(--navy-border)", background: "rgba(255,255,255,.02)" }}>
+                          <div style={{ width: 10, height: 10, borderRadius: "50%", background: color, flexShrink: 0 }} />
+                          <input type="text" value={flight.name} placeholder="Flight name"
+                            onChange={e => set("flights", flights.map((f, i) => i === fi ? { ...f, name: e.target.value } : f))}
+                            style={{ flex: 1, fontSize: ".9rem", fontWeight: 500, background: "transparent", border: "none", color: "var(--white)", padding: 0, outline: "none" }} />
+                          <span style={{ fontSize: ".72rem", color, fontFamily: "var(--font-d)", letterSpacing: "1px", flexShrink: 0 }}>{count} player{count !== 1 ? "s" : ""}</span>
+                          <button className="btn btn-danger" style={{ padding: "3px 10px", fontSize: ".72rem", flexShrink: 0 }}
+                            onClick={() => set("flights", flights.filter((_, i) => i !== fi))}>Remove</button>
+                        </div>
+                        <div style={{ padding: "10px 14px" }}>
+                          <div style={{ fontSize: ".62rem", letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--cream-dim)", marginBottom: 8 }}>Click to assign / remove</div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {members.filter(m => m.profile).map(m => {
+                              const inThis = (flight.memberIds ?? []).includes(m.user_id);
+                              const inOther = !inThis && assignedIds.has(m.user_id);
+                              if (inOther) return null;
+                              return (
+                                <button key={m.user_id}
+                                  style={{
+                                    display: "inline-flex", alignItems: "center", gap: 6,
+                                    padding: "5px 10px", borderRadius: 20, fontSize: ".78rem",
+                                    border: `1px solid ${inThis ? color : "rgba(255,255,255,.1)"}`,
+                                    background: inThis ? `${color}22` : "transparent",
+                                    color: inThis ? color : "var(--cream-dim)",
+                                    cursor: "pointer", transition: "all .15s",
+                                  }}
+                                  onClick={() => {
+                                    const ids = flight.memberIds ?? [];
+                                    const newIds = inThis ? ids.filter(id => id !== m.user_id) : [...ids, m.user_id];
+                                    set("flights", flights.map((f, i) => i === fi ? { ...f, memberIds: newIds } : f));
+                                  }}>
+                                  <span style={{ width: 18, height: 18, borderRadius: "50%", background: inThis ? color : "rgba(255,255,255,.1)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: ".6rem", color: inThis ? "#000" : "var(--cream-dim)", fontFamily: "var(--font-d)", fontWeight: 700 }}>
+                                    {(m.profile.name?.[0] ?? "?").toUpperCase()}
+                                  </span>
+                                  {m.profile.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {unassignedFlights.length > 0 && flights.length > 0 && (
+                <p className="note" style={{ marginTop: 4 }}>
+                  {unassignedFlights.length} not in any flight: {unassignedFlights.map(m => m.profile.name).join(", ")}
+                </p>
+              )}
+
+              {dirty && (
+                <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                  <button className="btn btn-gold" onClick={() => saveConfig(configDraft)}>Save Changes</button>
+                  <button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button>
+                </div>
+              )}
+            </div>
+          </>
+        );
+      })()}
+
+      {/* ── PAYOUTS ── */}
+      {adminTab === "payouts" && (() => {
+        const d = configDraft ?? config;
+        const set = (k, v) => setConfigDraft(prev => ({ ...(prev ?? config), [k]: v }));
+        const dirty = configDraft !== null;
+        const legacyIdToType = { champion: "playoff_1", runnerUp: "playoff_2", thirdPlace: "playoff_3", regularNet: "net_1", regularGross: "gross_1" };
+        const cats = (d.payoutCategories ?? DEFAULT_CONFIG.payoutCategories).map(cat => {
+          if (cat.mapTo !== undefined) return cat;
+          const type = cat.type ?? legacyIdToType[cat.id];
+          if (!type || type === "none") return { ...cat, mapTo: "none", mapRank: 1 };
+          const m = type.match(/^(playoff|net|gross)_(\d+)$/);
+          return m ? { ...cat, mapTo: m[1], mapRank: Number(m[2]) } : { ...cat, mapTo: "none", mapRank: 1 };
+        });
+        const totalPct = cats.reduce((s, c) => s + (Number(c.pct) || 0), 0);
+        const overLimit = totalPct > 100;
+        const pool = (d.entryFee ?? 0) * members.filter(m => m.paid).length;
+        return (
+          <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+              <div className="card-hdr" style={{ marginBottom: 0 }}><DollarSign size={15} />Payouts</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {dirty && <>
+                  <button className="btn btn-gold" onClick={() => saveConfig(configDraft)} disabled={overLimit}>Save Changes</button>
+                  <button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button>
+                </>}
+                {!dirty && <span style={{ fontSize: ".76rem", color: "var(--green)", fontFamily: "var(--font-d)", letterSpacing: "1px" }}>✓ Saved</span>}
+              </div>
+            </div>
+
+            <div className="cfg-section">
+              <div className="cfg-section-title">Entry Fee</div>
+              <div className="cfg-row">
+                <div><div className="cfg-label">Entry fee per player</div><div className="cfg-desc">Used to calculate the total prize pool</div></div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ color: "var(--cream-dim)" }}>$</span>
+                  <input type="number" min={0} placeholder="0" value={d.entryFee ?? ""} onChange={e => set("entryFee", e.target.value ? Number(e.target.value) : null)} style={{ width: 90 }} />
+                </div>
+              </div>
+              {d.entryFee > 0 && members.length > 0 && (() => {
+                const paidCnt = members.filter(m => m.paid).length;
+                return <div style={{ padding: "10px 0 4px", fontSize: ".82rem", color: "var(--cream-dim)" }}><span style={{ color: "var(--gold-light)", fontFamily: "var(--font-d)" }}>${(d.entryFee * paidCnt).toLocaleString()}</span> collected so far ({paidCnt} of {members.length} players paid)</div>;
+              })()}
+            </div>
+
+            <div className="cfg-section">
+              <div className="cfg-section-title">Award Rules</div>
+              <div className="cfg-row">
+                <div><div className="cfg-label">One award per player</div><div className="cfg-desc">A player cannot win both a net and a gross category</div></div>
+                <Toggle checked={d.exclusiveWinners ?? false} onChange={v => set("exclusiveWinners", v)} />
+              </div>
+              {(d.exclusiveWinners ?? false) && (
+                <div className="cfg-row">
+                  <div><div className="cfg-label">Precedence</div><div className="cfg-desc">Which category wins when a player qualifies for both</div></div>
+                  <select value={d.exclusivePrecedence ?? "gross"} onChange={e => set("exclusivePrecedence", e.target.value)} style={{ width: 160 }}>
+                    <option value="gross">Gross over Net</option>
+                    <option value="net">Net over Gross</option>
+                    <option value="highest">Highest Payout Wins</option>
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="cfg-section">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                <div className="cfg-section-title" style={{ marginBottom: 0 }}>Payout Categories</div>
+                <button className="btn btn-ghost btn-sm" style={{ fontSize: ".65rem" }} onClick={() => {
+                  set("payoutCategories", [...cats, { id: `custom_${Date.now()}`, label: "New Category", pct: 0, mapTo: "none", mapRank: 1 }]);
+                }}>+ Add Category</button>
+              </div>
+              <p className="note" style={{ marginBottom: 12 }}>Map each category to a placement so winners are tracked automatically. Set the % of the prize pool for each.</p>
+              {cats.map((cat, idx) => {
+                const amt = pool > 0 ? Math.round(pool * cat.pct / 100) : null;
+                const upd = (patch) => set("payoutCategories", cats.map((c, i) => i === idx ? { ...c, ...patch } : c));
+                return (
+                  <div key={cat.id} className="payout-cat-row" style={{ flexWrap: "wrap", gap: 8 }}>
+                    <input type="text" value={cat.label} placeholder="Category name"
+                      style={{ flex: "1 1 130px", minWidth: 100, fontSize: ".86rem" }}
+                      onChange={e => upd({ label: e.target.value })} />
+                    <select value={cat.mapTo ?? "none"} onChange={e => upd({ mapTo: e.target.value, mapRank: cat.mapRank ?? 1 })}
+                      style={{ flex: "1 1 130px", minWidth: 120, fontSize: ".82rem" }}>
+                      <option value="none">— Side game —</option>
+                      <option value="playoff">Playoff</option>
+                      <option value="net">Net standings</option>
+                      <option value="gross">Gross standings</option>
+                    </select>
+                    {d.tournamentMode && (cat.mapTo === "net" || cat.mapTo === "gross") && (
+                      <select value={cat.tournamentRoundId ?? ""} onChange={e => upd({ tournamentRoundId: e.target.value || null })}
+                        style={{ flex: "1 1 130px", minWidth: 120, fontSize: ".82rem" }}>
+                        <option value="">Overall</option>
+                        {(d.tournamentRounds ?? []).map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                      </select>
+                    )}
+                    {(d.flights ?? []).length > 0 && (cat.mapTo === "net" || cat.mapTo === "gross") && (
+                      <select value={cat.flightId ?? ""} onChange={e => upd({ flightId: e.target.value || null })}
+                        style={{ flex: "1 1 130px", minWidth: 120, fontSize: ".82rem" }}>
+                        <option value="">All flights</option>
+                        {(d.flights ?? []).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                      </select>
+                    )}
+                    {(cat.mapTo ?? "none") !== "none" ? (
+                      <input type="number" min={1} max={99} value={cat.mapRank ?? 1}
+                        onChange={e => upd({ mapRank: Math.max(1, Number(e.target.value) || 1) })}
+                        style={{ width: 52, fontSize: ".82rem", textAlign: "center" }}
+                        title="Rank (1 = 1st place, 2 = 2nd place, etc.)" />
+                    ) : (
+                      <select value={cat.winner ?? ""} onChange={e => upd({ winner: e.target.value || null })}
+                        style={{ flex: "1 1 130px", minWidth: 120, fontSize: ".82rem" }}>
+                        <option value="">— Assign winner —</option>
+                        {members.filter(m => m.profile).map(m => <option key={m.user_id} value={m.profile.name}>{m.profile.name}</option>)}
+                      </select>
+                    )}
+                    <div className="payout-pct-input">
+                      <input type="number" min={0} max={100} step={1} value={cat.pct || ""} placeholder="0"
+                        style={{ borderColor: overLimit && cat.pct > 0 ? "rgba(224,92,92,.5)" : undefined }}
+                        onChange={e => { const val = Math.max(0, Math.min(100, Number(e.target.value) || 0)); upd({ pct: val }); }} />
+                      <span style={{ color: "var(--cream-dim)" }}>%</span>
+                    </div>
+                    <div className="payout-amount">{amt != null && cat.pct > 0 ? `$${amt.toLocaleString()}` : <span style={{ color: "#4b5563" }}>—</span>}</div>
+                    <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: ".7rem", flexShrink: 0 }} onClick={() => set("payoutCategories", cats.filter((_, i) => i !== idx))}>✕</button>
+                  </div>
+                );
+              })}
+              <div className="pct-bar-wrap"><div className="pct-bar" style={{ width: `${Math.min(totalPct, 100)}%`, background: overLimit ? "var(--red)" : totalPct === 100 ? "var(--green)" : "linear-gradient(90deg,var(--gold),var(--gold-light))" }} /></div>
+              <div className="pct-total-row">
+                <span style={{ color: "var(--cream-dim)" }}>Total allocated</span>
+                <span className={overLimit ? "pct-total-over" : totalPct === 100 ? "pct-total-ok" : "pct-total-under"}>
+                  {overLimit ? `${totalPct}% — exceeds 100%` : totalPct === 100 ? `✓ ${totalPct}% — fully allocated` : `${totalPct}% (${100 - totalPct}% remaining)`}
+                </span>
+              </div>
+              {overLimit && <div className="alert-d" style={{ marginTop: 10, fontSize: ".8rem" }}>Total exceeds 100%. Please reduce before saving.</div>}
+            </div>
+
+            {dirty && (
+              <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                <button className="btn btn-gold" onClick={() => saveConfig(configDraft)} disabled={overLimit}>Save Changes</button>
                 <button className="btn btn-ghost" onClick={() => setConfigDraft(null)}>Cancel</button>
               </div>
             )}
@@ -1077,6 +1459,108 @@ setConfirmClear(false);
         </div>
       )}
 
+      {/* ── COURSE SEARCH MODAL ── */}
+      {courseSearch.open && (
+        <div className="modal-bg" onClick={() => setCourseSearch(s => ({ ...s, open: false }))}>
+          <div className="modal" style={{ maxWidth: 520, width: "100%" }} onClick={e => e.stopPropagation()}>
+            <div className="modal-title" style={{ marginBottom: 14 }}>Search Golf Course</div>
+
+            {/* Scan scorecard */}
+            <input
+              ref={scorecardInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: "none" }}
+              onChange={e => scanScorecard(e.target.files?.[0])}
+            />
+            <button
+              className="btn btn-ghost"
+              style={{ width: "100%", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, border: "1px dashed rgba(212,168,67,.35)", color: "var(--gold-light)" }}
+              onClick={() => scorecardInputRef.current?.click()}
+              disabled={courseSearch.scanLoading}
+            >
+              {courseSearch.scanLoading
+                ? <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⟳</span> Scanning scorecard…</>
+                : <><Camera size={14} /> Scan Scorecard with AI</>}
+            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <div style={{ flex: 1, height: 1, background: "var(--navy-border)" }} />
+              <span style={{ fontSize: ".7rem", color: "var(--cream-dim)", letterSpacing: "1px" }}>OR SEARCH BY NAME</span>
+              <div style={{ flex: 1, height: 1, background: "var(--navy-border)" }} />
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <input
+                type="text"
+                placeholder="Course or club name..."
+                value={courseSearch.query}
+                onChange={e => setCourseSearch(s => ({ ...s, query: e.target.value }))}
+                onKeyDown={e => e.key === "Enter" && searchGolfCourses(courseSearch.query)}
+                style={{ flex: 1 }}
+                autoFocus
+              />
+              <button className="btn btn-gold" onClick={() => searchGolfCourses(courseSearch.query)} disabled={courseSearch.loading}>
+                {courseSearch.loading ? "Searching…" : "Search"}
+              </button>
+            </div>
+            {courseSearch.error && <div style={{ color: "#f09090", fontSize: ".82rem", marginBottom: 10 }}>{courseSearch.error}</div>}
+
+            {/* Results list */}
+            {!courseSearch.selected && courseSearch.results.length > 0 && (
+              <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                {courseSearch.results.map(c => (
+                  <button key={c.id} className="btn btn-ghost" style={{ textAlign: "left", padding: "10px 12px", borderRadius: 8 }}
+                    onClick={() => setCourseSearch(s => ({ ...s, selected: c, selectedTee: null }))}>
+                    <div style={{ fontWeight: 600, color: "var(--cream)" }}>{c.club_name}</div>
+                    {c.course_name !== c.club_name && <div style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>{c.course_name}</div>}
+                    <div style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginTop: 2 }}>{c.location?.city}{c.location?.state ? `, ${c.location.state}` : ""}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {!courseSearch.selected && courseSearch.results.length === 0 && !courseSearch.loading && courseSearch.query && !courseSearch.error && (
+              <div style={{ color: "var(--cream-dim)", fontSize: ".84rem" }}>No results. Try a different name.</div>
+            )}
+
+            {/* Tee picker */}
+            {courseSearch.selected && (() => {
+              const c = courseSearch.selected;
+              const allTees = [...(c.tees?.male ?? []), ...(c.tees?.female ?? [])];
+              return (
+                <div>
+                  <button className="btn btn-ghost btn-sm" style={{ marginBottom: 12 }} onClick={() => setCourseSearch(s => ({ ...s, selected: null, selectedTee: null }))}>← Back to results</button>
+                  <div style={{ fontWeight: 600, color: "var(--cream)", marginBottom: 4 }}>{c.club_name}</div>
+                  {c.course_name !== c.club_name && <div style={{ fontSize: ".82rem", color: "var(--cream-dim)", marginBottom: 10 }}>{c.course_name}</div>}
+                  <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "var(--gold)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 8 }}>Select Tee Box</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 260, overflowY: "auto" }}>
+                    {allTees.map((tee, i) => {
+                      const sel = courseSearch.selectedTee === tee;
+                      return (
+                        <button key={i} className={`btn ${sel ? "btn-gold" : "btn-ghost"}`}
+                          style={{ textAlign: "left", padding: "10px 12px", borderRadius: 8 }}
+                          onClick={() => setCourseSearch(s => ({ ...s, selectedTee: tee }))}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontWeight: 600 }}>{tee.tee_name}</span>
+                            <span style={{ fontSize: ".75rem", color: sel ? "rgba(255,255,255,.8)" : "var(--cream-dim)" }}>
+                              Par {tee.par_total} · {tee.number_of_holes} holes · Slope {tee.slope_rating} · Rating {tee.course_rating}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                    <button className="btn btn-gold" onClick={confirmCourseFromSearch} disabled={!courseSearch.selectedTee}>Add Course</button>
+                    <button className="btn btn-ghost" onClick={() => setCourseSearch({ open: false, query: "", results: [], loading: false, error: "", selected: null, selectedTee: null })}>Cancel</button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* ── COURSES ── */}
       {adminTab === "courses" && (
         <div className="card">
@@ -1100,7 +1584,10 @@ setConfirmClear(false);
             </div>
           ))}
           {!showAddCourse ? (
-            <button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={() => setShowAddCourse(true)}>+ Add Course</button>
+            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              <button className="btn btn-gold btn-sm" onClick={() => setCourseSearch(s => ({ ...s, open: true }))}>Search & Add Course</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowAddCourse(true)}>+ Add Manually</button>
+            </div>
           ) : (
             <div style={{ marginTop: 14 }}>
               <div className="fgrid" style={{ marginBottom: 12 }}>

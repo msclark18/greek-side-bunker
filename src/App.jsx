@@ -400,15 +400,36 @@ export default function App() {
     return players.map(p => ({
       ...p,
       cs: regularCourses.map(c => { const played = scored.filter(r => r.player_id === p.id && r.course_id === c.id).length; return { ...c, played, done: played >= config.roundsPerCourse }; }),
-      done: scored.filter(r => r.player_id === p.id && regularCourses.some(c => c.id === r.course_id)).length,
+      done: Math.min(scored.filter(r => r.player_id === p.id && regularCourses.some(c => c.id === r.course_id)).length, total),
       total,
-      pct: total ? Math.round(scored.filter(r => r.player_id === p.id && regularCourses.some(c => c.id === r.course_id)).length / total * 100) : 0,
+      pct: total ? Math.min(100, Math.round(scored.filter(r => r.player_id === p.id && regularCourses.some(c => c.id === r.course_id)).length / total * 100)) : 0,
     }));
   }, [players, scored, regularCourses, config]);
 
-  const approvedCount = scored.length;
-  const totalRequired = players.length * regularCourses.length * config.roundsPerCourse;
-  const leaguePct = totalRequired ? Math.round(approvedCount / totalRequired * 100) : 0;
+  const TEAM_FORMATS_APP = ["scramble", "texas_scramble", "best_ball"];
+  const hasTeamsApp = (config.scrambleTeams ?? []).length > 0 && TEAM_FORMATS_APP.includes(config.scoringFormat);
+  // For team leagues: sum up rounds per team+course capped at roundsPerCourse; for individual count rounds
+  const approvedCount = hasTeamsApp
+    ? (() => {
+        const m = {};
+        scored.filter(r => r.team_id).forEach(r => {
+          const k = `${r.team_id}_${r.course_id}`;
+          m[k] = (m[k] ?? 0) + 1;
+        });
+        return Object.values(m).reduce((s, n) => s + Math.min(n, config.roundsPerCourse), 0);
+      })()
+    : scored.length;
+  // For tournament leagues the target is 1 round per participant per tournament round
+  const tRoundsCount = config.tournamentMode ? (config.tournamentRounds?.length ?? 0) : 0;
+  const tTeams = config.scrambleTeams ?? [];
+  const tAllTeam = config.tournamentMode && config.tournamentRounds?.length > 0 &&
+    config.tournamentRounds.every(tr => TEAM_FORMATS_APP.includes(tr.format)) && tTeams.length > 0;
+  const totalRequired = config.tournamentMode
+    ? (tAllTeam ? tTeams.length : players.length) * tRoundsCount
+    : (hasTeamsApp
+        ? (config.scrambleTeams ?? []).length * regularCourses.length * config.roundsPerCourse
+        : players.length * regularCourses.length * config.roundsPerCourse);
+  const leaguePct = totalRequired ? Math.min(100, Math.round(approvedCount / totalRequired * 100)) : 0;
 
   const isProfileIncomplete = config.useHandicap && (
     (!profile?.handicap && profile?.handicap !== 0) ||

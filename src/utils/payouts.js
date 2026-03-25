@@ -27,6 +27,7 @@ export const resolveCatMap = (cat) => {
  * @param {object} opts.playoffResults - { champion, runnerUp, thirdPlace } — all nullable
  * @param {boolean} opts.exclusive     - one award per player/team
  * @param {string}  opts.precedence    - "net" | "gross" | "highest" (only when exclusive)
+ * @param {object}  opts.lbOverrides   - { [catId]: { netLB, grossLB } } per-category LB override
  * @returns {{ [catId]: string | null }}
  */
 export const resolvePayouts = ({
@@ -36,6 +37,7 @@ export const resolvePayouts = ({
   playoffResults = {},
   exclusive = false,
   precedence = "gross",
+  lbOverrides = {},
 }) => {
   const { champion = null, runnerUp = null, thirdPlace = null } = playoffResults;
 
@@ -45,7 +47,8 @@ export const resolvePayouts = ({
       const cands = [champion, runnerUp, thirdPlace];
       return cands[mapRank - 1] ?? null;
     }
-    const lb = mapTo === "gross" ? grossLB : netLB;
+    const ovr = lbOverrides[cat.id];
+    const lb = mapTo === "gross" ? (ovr?.grossLB ?? grossLB) : (ovr?.netLB ?? netLB);
     let rank = 0;
     for (const entry of lb) {
       if (!skip.has(entry.name)) {

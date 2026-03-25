@@ -11,6 +11,8 @@ export const DEFAULT_CONFIG = {
   scrambleTeamSize: 2,
   scrambleTeams: [],
   teamsFixed: true,
+  // Flights (optional grouping for any league type)
+  flights: [],
   // Tournament mode
   tournamentMode: false,
   tournamentRounds: [],

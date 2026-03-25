@@ -232,6 +232,25 @@ CREATE TABLE IF NOT EXISTS league_invites (
 CREATE INDEX IF NOT EXISTS idx_league_invites_email ON league_invites(email);
 
 
+-- ── COURSE CACHE ─────────────────────────────────────────────
+-- Global cache of courses from GolfCourseAPI — shared across all leagues.
+-- Populated automatically when users search for courses.
+-- api_id = the external API's course ID (prevents duplicate inserts).
+CREATE TABLE IF NOT EXISTS course_cache (
+  id          bigserial PRIMARY KEY,
+  api_id      integer UNIQUE NOT NULL,
+  club_name   text NOT NULL,
+  course_name text NOT NULL,
+  location    jsonb,
+  tees        jsonb,
+  cached_at   timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_course_cache_search
+  ON course_cache USING gin(to_tsvector('english', club_name || ' ' || course_name));
+CREATE INDEX IF NOT EXISTS idx_course_cache_api_id ON course_cache(api_id);
+
+
 -- ── INDEXES ──────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_league_members_league_id ON league_members(league_id);
 CREATE INDEX IF NOT EXISTS idx_league_members_user_id ON league_members(user_id);
