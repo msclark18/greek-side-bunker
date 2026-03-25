@@ -996,13 +996,22 @@ export default function Leaderboard({
                   {displayLB.length === 0 ? (
                     <div className="empty">No scores posted yet.</div>
                   ) : (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", marginBottom: 10 }}>
+                      {tRounds.map((r, ri) => (
+                        <span key={r.id} style={{ fontSize: ".72rem", color: "var(--cream-dim)" }}>
+                          <span style={{ color: "var(--gold)", fontFamily: "var(--font-d)" }}>R{ri + 1}</span> {r.label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {displayLB.length === 0 ? null : (
                     <div className="tw">
                       <table>
                         <thead>
                           <tr>
                             <th>#</th>
                             <th>Name</th>
-                            {tRounds.map((r, ri) => <th key={r.id} title={r.label} style={{ fontSize: ".72rem", whiteSpace: "nowrap" }}>R{ri + 1}</th>)}
+                            {tRounds.map((r, ri) => <th key={r.id} style={{ fontSize: ".72rem", whiteSpace: "nowrap" }}>R{ri + 1}</th>)}
                             <th>Total</th>
                           </tr>
                         </thead>
