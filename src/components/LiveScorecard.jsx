@@ -1082,6 +1082,30 @@ export default function LiveScorecard({
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
+  // Guard: if the course was deleted, show an error screen instead of crashing
+  if (!course) {
+    return (
+      <div style={{
+        position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+        width: "100vw", height: "100vh", zIndex: 999999,
+        background: "var(--navy, #0a0e1a)", display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center", gap: 16, padding: 24,
+      }}>
+        <div style={{ fontSize: "0.95rem", color: "var(--cream)", textAlign: "center", fontFamily: "var(--font-d)", fontWeight: 700 }}>
+          Course not found
+        </div>
+        <div style={{ fontSize: "0.8rem", color: "var(--cream-dim)", textAlign: "center" }}>
+          The course for this round may have been removed. You can abandon the round from the Post Score tab.
+        </div>
+        <button onClick={onClose} style={{
+          padding: "10px 24px", borderRadius: 8, border: "none",
+          background: "var(--gold)", color: "var(--navy)",
+          fontFamily: "var(--font-d)", fontWeight: 700, cursor: "pointer",
+        }}>Close</button>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       position: "fixed", top: 0, left: 0, right: 0, bottom: 0,

@@ -36,9 +36,10 @@ export default function PostScore({
     }
   }, [companionIds, scoringMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Any in-progress round this player has in this league
+  // Any in-progress round this player has in this league (only if the course still exists)
   const inProgressRound = rounds.find(
     r => r.player_id === session?.user.id && r.round_status === "in_progress"
+      && courses.some(c => c.id === r.course_id)
   ) ?? null;
 
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
