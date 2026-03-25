@@ -21,7 +21,7 @@ export default function AdminTab({
   const [addMsg, setAddMsg] = useState("");
   const [newCourse, setNewCourse] = useState({ name: "", par: "", holes: "18", slope: "", rating: "" });
   const [showAddCourse, setShowAddCourse] = useState(false);
-  const [courseSearch, setCourseSearch] = useState({ open: false, query: "", results: [], loading: false, scanLoading: false, error: "", selected: null, selectedTee: null });
+  const [courseSearch, setCourseSearch] = useState({ open: false, query: "", results: [], loading: false, scanLoading: false, error: "", selected: null, selectedTee: null, teeDraft: {} });
   const scorecardInputRef = useRef(null);
   const [editMemberHcp, setEditMemberHcp] = useState(null);
   const [emailDraft, setEmailDraft] = useState({ subject: "", message: "" });
@@ -170,26 +170,38 @@ export default function AdminTab({
   };
 
   const confirmCourseFromSearch = async () => {
-    const { selected, selectedTee } = courseSearch;
+    const { selected, selectedTee, teeDraft } = courseSearch;
     if (!selected || !selectedTee) return;
     const tee = selectedTee;
+    const slope = Number(teeDraft.slope ?? tee.slope_rating);
+    const rating = Number(teeDraft.rating ?? tee.course_rating);
+    const par = Number(teeDraft.par ?? tee.par_total);
+    const holes = Number(teeDraft.holes ?? tee.number_of_holes ?? 18);
+    if (!slope || !rating || !par) {
+      setCourseSearch(s => ({ ...s, error: "Please fill in all missing values (slope, rating, par) before adding." }));
+      return;
+    }
     const courseName = selected.club_name === selected.course_name
       ? selected.club_name
       : `${selected.club_name} — ${selected.course_name}`;
-    const { data } = await supabase.from("courses").insert({
+    const { data, error } = await supabase.from("courses").insert({
       league_id: activeLeague.id,
       name: courseName,
-      par: tee.par_total,
-      holes: tee.number_of_holes,
-      slope: tee.slope_rating,
-      rating: tee.course_rating,
+      par,
+      holes,
+      slope,
+      rating,
     }).select().single();
+    if (error) {
+      setCourseSearch(s => ({ ...s, error: error.message }));
+      return;
+    }
     if (data) {
       setCourses(p => [...p, data]);
       setAddMsg(`${courseName} added!`);
       setTimeout(() => setAddMsg(""), 3000);
     }
-    setCourseSearch({ open: false, query: "", results: [], loading: false, error: "", selected: null, selectedTee: null });
+    setCourseSearch({ open: false, query: "", results: [], loading: false, scanLoading: false, error: "", selected: null, selectedTee: null, teeDraft: {} });
   };
 
   // ── Courses ──
@@ -1533,23 +1545,64 @@ setConfirmClear(false);
                   <div style={{ fontWeight: 600, color: "var(--cream)", marginBottom: 4 }}>{c.club_name}</div>
                   {c.course_name !== c.club_name && <div style={{ fontSize: ".82rem", color: "var(--cream-dim)", marginBottom: 10 }}>{c.course_name}</div>}
                   <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "var(--gold)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 8 }}>Select Tee Box</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 260, overflowY: "auto" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 200, overflowY: "auto" }}>
                     {allTees.map((tee, i) => {
                       const sel = courseSearch.selectedTee === tee;
+                      const missingCount = [tee.slope_rating, tee.course_rating, tee.par_total].filter(v => v == null).length;
                       return (
                         <button key={i} className={`btn ${sel ? "btn-gold" : "btn-ghost"}`}
                           style={{ textAlign: "left", padding: "10px 12px", borderRadius: 8 }}
-                          onClick={() => setCourseSearch(s => ({ ...s, selectedTee: tee }))}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                          onClick={() => setCourseSearch(s => ({ ...s, selectedTee: tee, teeDraft: {}, error: "" }))}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                             <span style={{ fontWeight: 600 }}>{tee.tee_name}</span>
                             <span style={{ fontSize: ".75rem", color: sel ? "rgba(255,255,255,.8)" : "var(--cream-dim)" }}>
-                              Par {tee.par_total} · {tee.number_of_holes} holes · Slope {tee.slope_rating} · Rating {tee.course_rating}
+                              Par {tee.par_total ?? "?"} · {tee.number_of_holes ?? 18} holes · Slope {tee.slope_rating ?? "?"} · Rating {tee.course_rating ?? "?"}
+                              {missingCount > 0 && <span style={{ color: "#f0c96a", marginLeft: 6 }}>({missingCount} missing)</span>}
                             </span>
                           </div>
                         </button>
                       );
                     })}
                   </div>
+
+                  {/* Fill in missing values for selected tee */}
+                  {courseSearch.selectedTee && (() => {
+                    const tee = courseSearch.selectedTee;
+                    const missing = [];
+                    if (tee.slope_rating == null) missing.push("slope");
+                    if (tee.course_rating == null) missing.push("rating");
+                    if (tee.par_total == null) missing.push("par");
+                    if (missing.length === 0) return null;
+                    return (
+                      <div style={{ marginTop: 12, background: "rgba(240,201,106,.07)", border: "1px solid rgba(240,201,106,.2)", borderRadius: 8, padding: "12px 14px" }}>
+                        <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "var(--gold)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 10 }}>Fill in missing values</div>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                          {missing.includes("slope") && (
+                            <div className="fg" style={{ flex: "1 1 80px" }}>
+                              <label>Slope</label>
+                              <input type="number" placeholder="113" value={courseSearch.teeDraft.slope ?? ""}
+                                onChange={e => setCourseSearch(s => ({ ...s, teeDraft: { ...s.teeDraft, slope: e.target.value } }))} />
+                            </div>
+                          )}
+                          {missing.includes("rating") && (
+                            <div className="fg" style={{ flex: "1 1 80px" }}>
+                              <label>Rating</label>
+                              <input type="number" step=".1" placeholder="72.0" value={courseSearch.teeDraft.rating ?? ""}
+                                onChange={e => setCourseSearch(s => ({ ...s, teeDraft: { ...s.teeDraft, rating: e.target.value } }))} />
+                            </div>
+                          )}
+                          {missing.includes("par") && (
+                            <div className="fg" style={{ flex: "1 1 80px" }}>
+                              <label>Par</label>
+                              <input type="number" placeholder="72" value={courseSearch.teeDraft.par ?? ""}
+                                onChange={e => setCourseSearch(s => ({ ...s, teeDraft: { ...s.teeDraft, par: e.target.value } }))} />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
                     <button className="btn btn-gold" onClick={confirmCourseFromSearch} disabled={!courseSearch.selectedTee}>Add Course</button>
                     <button className="btn btn-ghost" onClick={() => setCourseSearch({ open: false, query: "", results: [], loading: false, error: "", selected: null, selectedTee: null })}>Cancel</button>
