@@ -7,7 +7,8 @@
   --green:#4caf7d;--blue:#5b8de8;--red:#e05c5c;--purple:#9b7fe8;
   --font-d:'Cinzel',serif;--font-b:'EB Garamond',Georgia,serif;--r:10px;
 }
-html,body{height:100%;background:var(--navy);color:var(--cream);font-family:var(--font-b);font-size:16px;overflow-x:hidden;max-width:100vw}
+html,body{height:100%;background:var(--navy);color:var(--cream);font-family:var(--font-b);font-size:16px}
+body{overflow-x:clip}
 ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:rgba(212,168,67,.3);border-radius:3px}
 @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}

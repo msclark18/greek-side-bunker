@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Trophy, Pencil, Clock, Settings, FileText, AlertTriangle } from "lucide-react";
 import { supabase } from "./supabase.js";
 import { DEFAULT_CONFIG, FORMAT_LABELS } from "./constants/config.js";
@@ -13,6 +14,7 @@ import PostScore from "./tabs/PostScore.jsx";
 import AttestTab from "./tabs/AttestTab.jsx";
 import AdminTab from "./tabs/AdminTab.jsx";
 import HelpModal from "./components/HelpModal.jsx";
+import LiveScorecard from "./components/LiveScorecard.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import "./styles/app.css";
 
@@ -59,6 +61,7 @@ export default function App() {
   const creatingLeague = useRef(false);
 
   // ── Post score state ──
+  const [liveRound, setLiveRound] = useState(null);
   const [form, setForm] = useState({ courseId: "", score: "", attesterId: "", date: new Date().toISOString().split("T")[0], teamId: "", tournamentRoundId: "" });
   const [formMsg, setFormMsg] = useState({ type: "", text: "" });
   const [cardFile, setCardFile] = useState(null);
@@ -179,6 +182,32 @@ export default function App() {
     }
     setDataLoaded(true);
   }, []);
+
+  // ── Realtime rounds subscription ────────────────────────────────────────────
+  // Keeps the leaderboard live as players enter hole-by-hole scores or submit rounds.
+  // Supabase Realtime must be enabled for the rounds table in the Supabase dashboard
+  // (Database → Replication → rounds).
+  useEffect(() => {
+    if (!activeLeague?.id) return;
+    const channel = supabase
+      .channel(`rounds-${activeLeague.id}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "rounds",
+        filter: `league_id=eq.${activeLeague.id}`,
+      }, ({ eventType, new: next, old: prev }) => {
+        if (eventType === "INSERT") {
+          setRounds(p => [next, ...p.filter(r => r.id !== next.id)]);
+        } else if (eventType === "UPDATE") {
+          setRounds(p => p.map(r => r.id === next.id ? { ...r, ...next } : r));
+        } else if (eventType === "DELETE") {
+          setRounds(p => p.filter(r => r.id !== prev.id));
+        }
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [activeLeague?.id]);
 
   const selectLeague = (league) => {
     setActiveMembership(myMemberships.find(m => m.league_id === league.id));
@@ -741,6 +770,7 @@ export default function App() {
             aiResult={aiResult} setAiResult={setAiResult}
             setRounds={setRounds}
             setViewCardModal={setViewCardModal}
+            liveRound={liveRound} setLiveRound={setLiveRound}
           />
         )}
 
@@ -766,6 +796,33 @@ export default function App() {
           />
         )}
       </div>
+
+      {/* LiveScorecard via portal — renders into document.body to escape any CSS stacking context */}
+      {liveRound && createPortal(
+        <LiveScorecard
+          round={liveRound}
+          course={courses.find(c => c.id === liveRound.course_id)}
+          courseHandicap={liveRound.course_handicap}
+          config={config}
+          profile={profile}
+          members={members}
+          activeLeague={activeLeague}
+          setRounds={setRounds}
+          onComplete={(updated) => {
+            setLiveRound(null);
+            setForm(f => ({ ...f, score: "", courseId: "", attesterId: "", teamId: "", tournamentRoundId: "" }));
+            setFormMsg({
+              type: "s",
+              text: config.attestRequired
+                ? `Submitted! Attestation sent to ${updated.attester_name}.`
+                : "Round submitted and approved!",
+            });
+            setTimeout(() => setFormMsg({ type: "", text: "" }), 5000);
+          }}
+          onClose={() => setLiveRound(null)}
+        />,
+        document.body
+      )}
     </>
   );
 }

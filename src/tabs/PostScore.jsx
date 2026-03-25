@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../supabase.js";
 import { calcCourseHcp, calcStableford, toPM, pmCls } from "../utils/golf.js";
 import { FORMAT_LABELS } from "../constants/config.js";
-import { Pencil, Camera, BarChart2, FileText, AlertTriangle, Ban, Clock } from "lucide-react";
+import { Pencil, Camera, BarChart2, FileText, AlertTriangle, Ban, Clock, Radio, AlignJustify } from "lucide-react";
 
 export default function PostScore({
   session, profile, setProfile, activeLeague,
@@ -16,9 +16,19 @@ export default function PostScore({
   aiResult, setAiResult,
   setRounds,
   setViewCardModal,
+  liveRound, setLiveRound,
 }) {
   const [showHcpModal, setShowHcpModal] = useState(false);
   const [hcpDraft, setHcpDraft] = useState("");
+  const [scoringMode, setScoringMode] = useState(null); // null | "total" | "live"
+
+  // When the live round clears (submitted or closed from App level), reset mode
+  useEffect(() => { if (!liveRound) setScoringMode(null); }, [liveRound]);
+
+  // Any in-progress round this player has in this league
+  const inProgressRound = rounds.find(
+    r => r.player_id === session?.user.id && r.round_status === "in_progress"
+  ) ?? null;
 
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
@@ -121,6 +131,54 @@ export default function PostScore({
     if (!form.courseId) return false;
     if (isActiveTeamFormat && teams.length > 0 && !form.teamId) return false;
     return myActiveOnCourse(Number(form.courseId)).length < config.roundsPerCourse;
+  };
+
+  const canStartLive = () => {
+    if (!isOpen || missingProfile) return false;
+    if (config.attestRequired && !form.attesterId) return false;
+    if (!form.date) return false;
+    if (config.tournamentMode) return !!form.tournamentRoundId;
+    return !!form.courseId;
+  };
+
+  const startLiveRound = async () => {
+    if (!canStartLive()) return;
+    const course = selectedCourse;
+    const hcp = autoHcp;
+    const attester = config.attestRequired
+      ? members.find(m => m.user_id === form.attesterId && m.profile)
+      : null;
+    const { data: inserted, error } = await supabase.from("rounds").insert({
+      league_id: activeLeague.id,
+      player_id: session.user.id,
+      player_name: profile.name,
+      attester_id: attester?.user_id ?? null,
+      attester_name: attester?.profile?.name ?? null,
+      attester_email: attester?.profile?.email ?? null,
+      course_id: course.id,
+      course_name: course.name,
+      gross: 0,
+      net: 0,
+      course_handicap: hcp,
+      par: course.par,
+      date: form.date,
+      scoring_format: activeFmt,
+      attest_status: "pending",
+      round_status: "in_progress",
+      team_id: (isActiveTeamFormat && myTeam) ? myTeam.id : (form.teamId || null),
+      tournament_round_id: form.tournamentRoundId || null,
+    }).select().single();
+    if (error || !inserted) {
+      setFormMsg({ type: "d", text: "Error starting round." });
+      return;
+    }
+    setRounds(p => [inserted, ...p]);
+    setLiveRound(inserted);
+  };
+
+  const cancelLiveRound = async (round) => {
+    await supabase.from("rounds").delete().eq("id", round.id);
+    setRounds(p => p.filter(r => r.id !== round.id));
   };
 
   const netEl = (net, par) => config.useHandicap
@@ -276,7 +334,46 @@ export default function PostScore({
 
 
 
-      <div className="card" style={{ opacity: isOpen ? 1 : .65, pointerEvents: isOpen ? "auto" : "none" }}>
+      {/* ── Resume in-progress round ── */}
+      {isOpen && inProgressRound && !liveRound && (
+        <div className="card" style={{ marginBottom: 12, borderColor: "rgba(76,175,125,.3)", background: "rgba(76,175,125,.04)" }}>
+          <div className="card-hdr" style={{ color: "#6ee7a0" }}>
+            <Radio size={14} /> Round In Progress
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontWeight: 600, color: "var(--cream)" }}>{inProgressRound.course_name}</div>
+              <div style={{ fontSize: "0.75rem", color: "var(--cream-dim)", marginTop: 2 }}>
+                Thru {(inProgressRound.hole_scores ?? []).filter(s => s != null).length} holes · {inProgressRound.date}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => cancelLiveRound(inProgressRound)}>Abandon</button>
+              <button className="btn btn-gold" onClick={() => setLiveRound(inProgressRound)}>Resume Round</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Scoring mode choice ── */}
+      {isOpen && !inProgressRound && !scoringMode && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="card-hdr">How would you like to post your score?</div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button className="btn btn-gold" style={{ flex: 1 }} onClick={() => setScoringMode("live")}>
+              <Radio size={15} /> Live Scoring
+            </button>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setScoringMode("total")}>
+              <AlignJustify size={15} /> Post Total Score
+            </button>
+          </div>
+          <p className="note" style={{ marginTop: 8, textAlign: "center" }}>
+            Live scoring lets you enter your score hole by hole as you play
+          </p>
+        </div>
+      )}
+
+      <div className="card" style={{ opacity: isOpen ? 1 : .65, pointerEvents: isOpen ? "auto" : "none", display: isOpen && !inProgressRound && !scoringMode ? "none" : undefined }}>
         <div className="card-hdr">
           <Pencil size={15} />Post Your Round
           {activeFmt !== "stroke" && (
@@ -433,10 +530,12 @@ export default function PostScore({
             </div>
           )}
 
-          <div className="fg">
-            <label>Gross Score</label>
-            <input type="number" min={50} max={200} placeholder="e.g. 88" value={form.score} onChange={setF("score")} />
-          </div>
+          {scoringMode !== "live" && (
+            <div className="fg">
+              <label>Gross Score</label>
+              <input type="number" min={50} max={200} placeholder="e.g. 88" value={form.score} onChange={setF("score")} />
+            </div>
+          )}
 
           <div className="fg">
             <label>Date Played</label>
@@ -493,11 +592,20 @@ export default function PostScore({
         })()}
 
         <div style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <button className="btn btn-gold" onClick={() => {
-            if (!canSubmit()) return;
-            setHcpDraft(String(profile?.handicap ?? ""));
-            setShowHcpModal(true);
-          }} disabled={!canSubmit()}>Submit Round</button>
+          {scoringMode === "live" ? (
+            <button className="btn btn-gold" onClick={startLiveRound} disabled={!canStartLive()}>
+              <Radio size={14} /> Start Live Round
+            </button>
+          ) : (
+            <button className="btn btn-gold" onClick={() => {
+              if (!canSubmit()) return;
+              setHcpDraft(String(profile?.handicap ?? ""));
+              setShowHcpModal(true);
+            }} disabled={!canSubmit()}>Submit Round</button>
+          )}
+          {scoringMode && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setScoringMode(null)}>Change</button>
+          )}
           {formMsg.text && <div className={`alert-${formMsg.type}`}>{formMsg.text}</div>}
         </div>
         <p className="note" style={{ marginTop: 8 }}>

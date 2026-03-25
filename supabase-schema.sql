@@ -143,6 +143,9 @@ CREATE TABLE IF NOT EXISTS rounds (
   attest_at       timestamptz,
   attest_note     text,
   scorecard_url   text,
+  hole_scores     jsonb DEFAULT NULL,
+  round_status    text DEFAULT 'not_started'
+                    CHECK (round_status IN ('not_started', 'in_progress', 'completed')),
   created_at      timestamptz DEFAULT now()
 );
 

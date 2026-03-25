@@ -4,7 +4,7 @@ import { calcCourseHcp, toPM, pmCls, ini } from "../utils/golf.js";
 import { DEFAULT_CONFIG, FORMAT_LABELS } from "../constants/config.js";
 import { resolveCatMap, resolvePayouts } from "../utils/payouts.js";
 import GhinLink from "../components/GhinLink.jsx";
-import { Trophy, Star, ClipboardList, FileText, BarChart2, Flag, DollarSign, MapPin, AlertTriangle, Clock } from "lucide-react";
+import { Trophy, Star, ClipboardList, FileText, BarChart2, Flag, DollarSign, MapPin, AlertTriangle, Clock, Radio } from "lucide-react";
 
 export default function Leaderboard({
   config, courses, members, rounds, payouts,
@@ -171,6 +171,37 @@ export default function Leaderboard({
                 </table>
               </div>
             </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Live rounds banner ── */}
+      {(() => {
+        const live = rounds.filter(r => r.round_status === "in_progress");
+        if (!live.length) return null;
+        return (
+          <div className="card" style={{ marginBottom: 12, borderColor: "rgba(76,175,125,.3)", background: "rgba(76,175,125,.04)" }}>
+            <div className="card-hdr" style={{ color: "#6ee7a0" }}>
+              <Radio size={14} /> Live Now
+            </div>
+            {live.map(r => {
+              const thru = (r.hole_scores ?? []).filter(s => s != null).length;
+              const gross = r.hole_scores?.filter(s => s != null).reduce((a, b) => a + b, 0) ?? 0;
+              return (
+                <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                  <div>
+                    <span style={{ fontWeight: 600, color: "var(--cream)", fontSize: "0.88rem" }}>{r.player_name}</span>
+                    <span style={{ fontSize: "0.72rem", color: "var(--cream-dim)", marginLeft: 8 }}>{r.course_name}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    {gross > 0 && <span style={{ fontSize: "0.8rem", color: "var(--cream)", fontFamily: "var(--font-d)" }}>Gross {gross}</span>}
+                    <span style={{ fontSize: "0.7rem", color: "#6ee7a0", fontFamily: "var(--font-d)", padding: "2px 9px", border: "1px solid rgba(76,175,125,.4)", borderRadius: 20, whiteSpace: "nowrap" }}>
+                      Thru {thru}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         );
       })()}

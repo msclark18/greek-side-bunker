@@ -239,6 +239,32 @@ export default function AdminTab({
       setCourseSearch(s => ({ ...s, error: "Please fill in all missing values (slope, rating, par) before adding." }));
       return;
     }
+    // Fetch hole-by-hole data if this is a real API course (not a scanned result)
+    let scorecard = null;
+    if (selected.id) {
+      try {
+        const resp = await fetch(`/api/get-course?id=${selected.id}`);
+        if (resp.ok) {
+          const detail = await resp.json();
+          const allTees = [
+            ...(detail.course?.tees?.male ?? []),
+            ...(detail.course?.tees?.female ?? []),
+          ];
+          const matchedTee = allTees.find(t => t.tee_name === tee.tee_name);
+          if (matchedTee?.holes?.length) {
+            scorecard = {
+              tee_name: tee.tee_name,
+              holes: matchedTee.holes.map(h => ({
+                hole: h.hole_number,
+                par: h.par,
+                stroke_index: h.handicap ?? h.stroke_index ?? null,
+              })),
+            };
+          }
+        }
+      } catch (_) { /* non-fatal — live scoring will show par as unknown */ }
+    }
+
     const courseName = selected.club_name === selected.course_name
       ? selected.club_name
       : `${selected.club_name} — ${selected.course_name}`;
@@ -249,6 +275,7 @@ export default function AdminTab({
       holes,
       slope,
       rating,
+      scorecard,
     }).select().single();
     if (error) {
       setCourseSearch(s => ({ ...s, error: error.message }));
