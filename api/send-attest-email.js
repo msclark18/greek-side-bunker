@@ -8,6 +8,13 @@
 //   SUPABASE_URL     — your Supabase project URL
 //   SUPABASE_SERVICE_KEY — service role key (not anon key)
 
+const escapeHtml = (str) => {
+  if (str == null) return "";
+  return String(str).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c])
+  );
+};
+
 export default async function handler(req, res) {
   // Only allow POST
   if (req.method !== "POST") {
@@ -32,6 +39,12 @@ export default async function handler(req, res) {
   if (!attesterEmail || !playerName || !roundId) {
     return res.status(400).json({ error: "Missing required fields" });
   }
+
+  const safeAttesterName = escapeHtml(attesterName);
+  const safePlayerName   = escapeHtml(playerName);
+  const safeCourseName   = escapeHtml(courseName);
+  const safeLeagueName   = escapeHtml(leagueName);
+  const safeDate         = escapeHtml(date);
 
   // Generate a secure attest token and save it to the round
   const token = crypto.randomUUID();
@@ -71,7 +84,7 @@ export default async function handler(req, res) {
     body: JSON.stringify({
       from: process.env.FROM_EMAIL,
       to: attesterEmail,
-      subject: `⛳ Attest ${playerName}'s round at ${courseName}`,
+      subject: `⛳ Attest ${safePlayerName}'s round at ${safeCourseName}`,
       html: `
 <!DOCTYPE html>
 <html>
@@ -87,25 +100,25 @@ export default async function handler(req, res) {
     <div style="text-align:center;margin-bottom:32px;">
       <img src="https://ngesupnegqzoytucipii.supabase.co/storage/v1/object/public/assets/icon-512.png" width="64" height="64" alt="Greek Side Bunker" style="border-radius:50%;margin-bottom:8px;display:block;margin-left:auto;margin-right:auto;" />
       <div style="font-family:'Georgia',serif;font-size:1.3rem;letter-spacing:3px;color:#faf9f6;font-weight:700;">GREEK SIDE BUNKER</div>
-      <div style="font-size:.8rem;color:#c8bfa8;letter-spacing:2px;text-transform:uppercase;margin-top:4px;">${leagueName}</div>
+      <div style="font-size:.8rem;color:#c8bfa8;letter-spacing:2px;text-transform:uppercase;margin-top:4px;">${safeLeagueName}</div>
     </div>
 
     <!-- Main card -->
     <div style="background:#161d2e;border:1px solid rgba(212,168,67,0.3);border-radius:12px;padding:28px;margin-bottom:20px;">
       <div style="font-size:.7rem;letter-spacing:2px;text-transform:uppercase;color:#d4a843;font-family:Georgia,serif;margin-bottom:6px;">Attestation Request</div>
       <div style="font-size:1.1rem;color:#faf9f6;margin-bottom:20px;">
-        Hi <strong>${attesterName}</strong>, <strong>${playerName}</strong> has listed you as their playing partner and needs you to attest their round.
+        Hi <strong>${safeAttesterName}</strong>, <strong>${safePlayerName}</strong> has listed you as their playing partner and needs you to attest their round.
       </div>
 
       <!-- Score details -->
       <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:16px;margin-bottom:20px;">
         <div style="margin-bottom:14px;">
           <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Date</div>
-          <div style="font-size:1rem;color:#faf9f6;margin-top:2px;">${date}</div>
+          <div style="font-size:1rem;color:#faf9f6;margin-top:2px;">${safeDate}</div>
         </div>
         <div style="margin-bottom:14px;">
           <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Course</div>
-          <div style="font-size:1rem;color:#faf9f6;margin-top:2px;">${courseName}</div>
+          <div style="font-size:1rem;color:#faf9f6;margin-top:2px;">${safeCourseName}</div>
         </div>
         <div style="display:flex;gap:20px;flex-wrap:wrap;">
           <div style="text-align:center;background:rgba(212,168,67,0.1);border:1px solid rgba(212,168,67,0.25);border-radius:8px;padding:10px 20px;">
@@ -124,7 +137,7 @@ export default async function handler(req, res) {
       </div>
 
       <!-- Action buttons -->
-      <div style="font-size:.82rem;color:#c8bfa8;margin-bottom:16px;">Did you play with ${playerName} and confirm this score is accurate?</div>
+      <div style="font-size:.82rem;color:#c8bfa8;margin-bottom:16px;">Did you play with ${safePlayerName} and confirm this score is accurate?</div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;">
         <a href="${approveUrl}" style="display:inline-block;padding:13px 28px;background:linear-gradient(135deg,#d4a843,#f0c96a);color:#0a0e1a;text-decoration:none;border-radius:8px;font-family:Georgia,serif;font-size:.85rem;font-weight:700;letter-spacing:1px;">✓ Approve Round</a>
         <a href="${rejectUrl}" style="display:inline-block;padding:13px 28px;background:rgba(224,92,92,0.15);color:#f09090;text-decoration:none;border-radius:8px;font-family:Georgia,serif;font-size:.85rem;border:1px solid rgba(224,92,92,0.3);letter-spacing:1px;">✗ Reject</a>
@@ -133,7 +146,7 @@ export default async function handler(req, res) {
 
     <!-- Footer -->
     <div style="text-align:center;font-size:.72rem;color:#4b5563;line-height:1.6;">
-      <p>You received this because ${playerName} listed you as their playing partner in ${leagueName}.</p>
+      <p>You received this because ${safePlayerName} listed you as their playing partner in ${safeLeagueName}.</p>
       <p>You can also <a href="${appUrl}" style="color:#d4a843;">log in to the app</a> to attest rounds from the Attest tab.</p>
     </div>
 

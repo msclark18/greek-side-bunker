@@ -898,7 +898,6 @@ export default function App() {
           activeLeague={activeLeague}
           setRounds={setRounds}
           companions={companionRounds}
-          setCompanionRounds={setCompanionRounds}
           onComplete={(updated) => {
             setCompanionRounds([]);
             setLiveRound(null);

@@ -8,6 +8,13 @@
 //   FROM_EMAIL
 //   APP_URL — public app URL, e.g. https://greeksidebunker.com
 
+const escapeHtml = (str) => {
+  if (str == null) return "";
+  return String(str).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c])
+  );
+};
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -20,6 +27,14 @@ export default async function handler(req, res) {
   }
 
   const normalEmail = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalEmail)) {
+    return res.status(400).json({ error: "Invalid email format" });
+  }
+
+  const safeName       = escapeHtml(name);
+  const safeLeague     = escapeHtml(leagueName);
+  const safeInvitedBy  = escapeHtml(invitedBy);
+  const safeEmail      = escapeHtml(normalEmail);
 
   // Send invite email via Resend
   const appUrl = process.env.APP_URL ?? process.env.VITE_APP_URL ?? "https://greeksidebunker.com";
@@ -33,7 +48,7 @@ export default async function handler(req, res) {
     body: JSON.stringify({
       from:    process.env.FROM_EMAIL,
       to:      normalEmail,
-      subject: `You've been invited to join ${leagueName} on Greek Side Bunker`,
+      subject: `You've been invited to join ${safeLeague} on Greek Side Bunker`,
       html: `
 <!DOCTYPE html>
 <html>
@@ -53,10 +68,10 @@ export default async function handler(req, res) {
 
     <div style="background:#161d2e;border:1px solid rgba(212,168,67,0.3);border-radius:12px;padding:28px;margin-bottom:16px;">
       <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#d4a843;margin-bottom:10px;">League Invitation</div>
-      <p style="font-size:1.05rem;font-weight:700;color:#faf9f6;margin:0 0 12px;">Hey ${name}, you've been invited!</p>
+      <p style="font-size:1.05rem;font-weight:700;color:#faf9f6;margin:0 0 12px;">Hey ${safeName}, you've been invited!</p>
       <p style="font-size:.9rem;color:#c8bfa8;line-height:1.7;margin:0 0 20px;">
-        ${invitedBy ? `<strong style="color:#faf9f6">${invitedBy}</strong> has invited you` : "You've been invited"} to join
-        <strong style="color:#d4a843">${leagueName}</strong> on Greek Side Bunker — the golf league management app.
+        ${safeInvitedBy ? `<strong style="color:#faf9f6">${safeInvitedBy}</strong> has invited you` : "You've been invited"} to join
+        <strong style="color:#d4a843">${safeLeague}</strong> on Greek Side Bunker — the golf league management app.
       </p>
       <div style="text-align:center;">
         <a href="${appUrl}" style="display:inline-block;background:#d4a843;color:#0a0e1a;font-weight:700;font-size:.9rem;padding:12px 28px;border-radius:8px;text-decoration:none;letter-spacing:1px;">
@@ -68,8 +83,8 @@ export default async function handler(req, res) {
     <div style="background:#161d2e;border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:16px 20px;margin-bottom:16px;">
       <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#6b7280;margin-bottom:8px;">How it works</div>
       <ol style="font-size:.83rem;color:#c8bfa8;line-height:2;margin:0;padding-left:20px;">
-        <li>Click the button above and sign up with <strong style="color:#faf9f6">${normalEmail}</strong></li>
-        <li>You'll automatically be added to <strong style="color:#d4a843">${leagueName}</strong></li>
+        <li>Click the button above and sign up with <strong style="color:#faf9f6">${safeEmail}</strong></li>
+        <li>You'll automatically be added to <strong style="color:#d4a843">${safeLeague}</strong></li>
         <li>Start posting scores and competing!</li>
       </ol>
     </div>

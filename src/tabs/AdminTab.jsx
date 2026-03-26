@@ -472,12 +472,14 @@ export default function AdminTab({
     setEmailMsg("");
     try {
       const apiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
+      const { data: { session: s } } = await supabase.auth.getSession();
+      const authHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${s?.access_token}` };
       await Promise.all(incomplete.map(async m => {
         const played = rounds.filter(r => r.player_id === m.user_id && regularCourses.some(c => c.id === r.course_id) && r.attest_status !== "rejected").length;
         const remaining = total - played;
         await fetch(`${apiUrl}/api/send-league-email`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders,
           body: JSON.stringify({
             leagueId: activeLeague.id, leagueName: activeLeague.name,
             subject: `Reminder: ${remaining} round${remaining !== 1 ? "s" : ""} still needed in ${activeLeague.name}`,
@@ -553,9 +555,10 @@ setConfirmClear(false);
     setEmailMsg("");
     try {
       const apiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
+      const { data: { session: s } } = await supabase.auth.getSession();
       const res = await fetch(`${apiUrl}/api/send-league-email`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${s?.access_token}` },
         body: JSON.stringify({
           leagueId: activeLeague.id,
           leagueName: activeLeague.name,

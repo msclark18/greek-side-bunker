@@ -145,7 +145,6 @@ export default function LiveScorecard({
   round, course, courseHandicap, config, profile,
   members, activeLeague, setRounds, onComplete, onClose,
   companions = [],
-  setCompanionRounds,
 }) {
   const numHoles = course?.holes ?? 18;
   // Per-hole par fallback when course has no hole-by-hole scorecard data
@@ -209,6 +208,8 @@ export default function LiveScorecard({
     }))
   );
   const [pendingStats, setPendingStats] = useState({ putts: 2, fairway: null, mishit: false, penalties: [] });
+  const [showAttestPicker, setShowAttestPicker] = useState(false);
+  const [selectedAttesterId, setSelectedAttesterId] = useState(null);
   const statsTimeout = useRef(null);
 
   // How many strokes does this player get (positive) or give (negative) on a hole?
@@ -308,7 +309,7 @@ export default function LiveScorecard({
   };
 
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (submitLoading) return;
     const missing = scores.map((s, i) => s == null ? i + 1 : null).filter(Boolean);
     if (missing.length > 0) {
@@ -318,7 +319,18 @@ export default function LiveScorecard({
       return;
     }
     setMissingAlert(null);
+    if (config.attestRequired) {
+      // Pre-select first companion if available
+      setSelectedAttesterId(companions[0]?.round.player_id ?? null);
+      setShowAttestPicker(true);
+    } else {
+      doSubmit(null);
+    }
+  };
+
+  const doSubmit = async (attesterId) => {
     setSubmitLoading(true);
+    setShowAttestPicker(false);
     const gross = scores.filter(s => s != null).reduce((a, b) => a + b, 0);
     const net = gross - courseHandicap;
     const pts = config.scoringFormat === "stableford" && course
@@ -332,14 +344,15 @@ export default function LiveScorecard({
       net,
       stableford_pts: pts,
       round_status: "completed",
+      ...(config.attestRequired ? { attester_id: attesterId, attest_status: "pending" } : { attest_status: "approved" }),
     }).eq("id", round.id).select().single();
 
     if (error) { setSubmitLoading(false); return; }
 
     // Send attestation email if required
-    if (config.attestRequired && round.attester_id) {
+    if (config.attestRequired && attesterId) {
       try {
-        const attester = members.find(m => m.user_id === round.attester_id && m.profile);
+        const attester = members.find(m => m.user_id === attesterId && m.profile);
         if (attester) {
           const apiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
           const ccEmails = config.ccCommissioner
@@ -366,24 +379,6 @@ export default function LiveScorecard({
     }
 
     setRounds(p => p.map(r => r.id === round.id ? { ...r, ...updated } : r));
-
-    // Submit companion rounds
-    for (let i = 0; i < companions.length; i++) {
-      const cRound = companions[i].round;
-      const cScores = companionScores[i] ?? [];
-      const cGross = cScores.filter(s => s != null).reduce((a, b) => a + b, 0);
-      const cHcp = cRound.course_handicap ?? 0;
-      const cNet = cGross - cHcp;
-      await supabase.from("rounds").update({
-        hole_scores: cScores,
-        gross: cGross,
-        net: cNet,
-        round_status: "completed",
-      }).eq("id", cRound.id);
-      setRounds(p => p.map(r => r.id === cRound.id ? { ...r, hole_scores: cScores, gross: cGross, net: cNet, round_status: "completed" } : r));
-    }
-    if (setCompanionRounds) setCompanionRounds([]);
-
     setSubmitLoading(false);
     onComplete(updated);
   };
@@ -1462,6 +1457,58 @@ export default function LiveScorecard({
               : `${numHoles - thru} hole${numHoles - thru !== 1 ? "s" : ""} remaining`}
         </button>
       </div>
+
+      {/* Attester picker modal */}
+      {showAttestPicker && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1000001, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "flex-end" }}>
+          <div style={{ width: "100%", background: "var(--navy-card)", borderRadius: "18px 18px 0 0", padding: "24px 20px 40px", maxHeight: "70vh", display: "flex", flexDirection: "column" }}>
+            <div style={{ fontFamily: "var(--font-d)", fontWeight: 900, fontSize: "1rem", color: "var(--cream)", marginBottom: 4 }}>
+              Who's attesting your round?
+            </div>
+            <div style={{ fontSize: "0.72rem", color: "var(--cream-dim)", marginBottom: 20 }}>
+              Select a playing partner who can confirm your score.
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+              {[...companions.map(c => ({ id: c.round.player_id, name: c.member.profile?.name ?? "Player" })),
+                ...members.filter(m => m.profile && m.user_id !== profile?.id && !companions.some(c => c.round.player_id === m.user_id)).map(m => ({ id: m.user_id, name: m.profile.name }))
+              ].map(({ id, name }) => (
+                <button
+                  key={id}
+                  onClick={() => setSelectedAttesterId(id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "12px 14px", borderRadius: 10, border: "none", cursor: "pointer",
+                    background: selectedAttesterId === id ? "rgba(212,168,67,.15)" : "rgba(255,255,255,.04)",
+                    outline: selectedAttesterId === id ? "1.5px solid var(--gold)" : "1.5px solid transparent",
+                    textAlign: "left",
+                  }}
+                >
+                  <div style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-d)", fontWeight: 700, fontSize: "0.8rem", color: "var(--cream)", flexShrink: 0 }}>
+                    {name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
+                  </div>
+                  <span style={{ color: "var(--cream)", fontWeight: 600, fontSize: "0.88rem" }}>{name}</span>
+                  {selectedAttesterId === id && <span style={{ marginLeft: "auto", color: "var(--gold)", fontSize: "1rem" }}>✓</span>}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setShowAttestPicker(false)}
+                style={{ flex: 1, padding: "13px", borderRadius: 10, border: "1px solid var(--navy-border)", background: "transparent", color: "var(--cream-dim)", fontFamily: "var(--font-d)", fontWeight: 700, fontSize: "0.88rem", cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => doSubmit(selectedAttesterId)}
+                disabled={!selectedAttesterId}
+                style={{ flex: 2, padding: "13px", borderRadius: 10, border: "none", background: selectedAttesterId ? "var(--gold)" : "rgba(255,255,255,.06)", color: selectedAttesterId ? "var(--navy)" : "var(--cream-dim)", fontFamily: "var(--font-d)", fontWeight: 700, fontSize: "0.88rem", cursor: selectedAttesterId ? "pointer" : "not-allowed" }}
+              >
+                Submit Round
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

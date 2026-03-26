@@ -52,6 +52,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         attest_status: action,
         attest_at: new Date().toISOString(),
+        attest_token: null,
       }),
     }
   );
