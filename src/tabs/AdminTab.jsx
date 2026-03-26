@@ -215,8 +215,13 @@ export default function AdminTab({
             number_of_holes: t.number_of_holes ?? 18,
             slope_rating: t.slope_rating,
             course_rating: t.course_rating,
-            total_yards: null,
-            holes: [],
+            total_yards: t.total_yards ?? null,
+            holes: (t.holes ?? []).map(h => ({
+              hole_number: h.hole_number,
+              par: h.par ?? null,
+              handicap: h.stroke_index ?? null,
+              yardage: h.yards ?? null,
+            })),
           })),
           female: [],
         },
@@ -241,7 +246,18 @@ export default function AdminTab({
     }
     // Fetch hole-by-hole data if this is a real API course (not a scanned result)
     let scorecard = null;
-    if (selected.id) {
+    if (!selected.id && tee.holes?.length) {
+      // Scanned course — use holes captured by AI
+      scorecard = {
+        tee_name: tee.tee_name,
+        holes: tee.holes.map(h => ({
+          hole: h.hole_number,
+          par: h.par ?? null,
+          stroke_index: h.handicap ?? null,
+          yardage: h.yardage ?? null,
+        })),
+      };
+    } else if (selected.id) {
       try {
         const resp = await fetch(`/api/get-course?id=${selected.id}`);
         if (resp.ok) {
