@@ -18,8 +18,20 @@ export default function HelpModal({ onClose }) {
         { heading: "Go to Post Score", body: "Tap the Post Score tab at the top of the screen." },
         { heading: "Fill in your round", body: "Select the course, enter your gross score, choose the date, and select your playing partner (attester)." },
         { heading: "Upload your scorecard", body: "Take a photo of your scorecard. The app will use AI to automatically read your gross score, course, and date — filling in the fields for you." },
-        { heading: "Confirm your handicap", body: "Before submitting, a modal will show your current Handicap Index and the calculated course handicap. Update your index if it has changed recently, then hit Confirm & Submit." },
+        { heading: "Enter your Handicap Index", body: "Type in your current Handicap Index — this is your true index from GHIN or TheGrint, not your course handicap. The app calculates course handicap automatically. You must enter this before submitting." },
         { heading: "Attestation email", body: "Your playing partner receives an email to approve or reject your round. They can also attest from the Attest tab inside the app." },
+      ]
+    },
+    {
+      icon: <Flag size={18} />,
+      title: "Live Scoring",
+      steps: [
+        { heading: "Start a live round", body: "From the Post Score tab, tap Start Live Round. Select your course and add any playing partners in your group. Live scoring tracks everyone hole by hole in real time." },
+        { heading: "Enter scores", body: "Tap the Enter Score button to open the numpad for the current hole. Tap any hole dot at the bottom to jump directly to that hole. The app blocks submission if any holes are missing a score." },
+        { heading: "Handicap dots", body: "Gold dots on the Enter Score button show which holes you receive strokes on. Red dots mean you give a stroke (plus handicap). The scorecard shows gross scores with NET automatically calculated." },
+        { heading: "Scorecard columns", body: "The live scorecard shows OUT, IN, TOTAL, HDCP, and NET columns. Tap ▼ MORE to expand yardage and stroke index (HDCP) rows for the course." },
+        { heading: "Player stats", body: "Tap a player's name on the scorecard to expand their hole-by-hole stats: Putts, Driving accuracy, GIR%, and Penalties — tracked alongside their scores." },
+        { heading: "Finish the round", body: "Once all holes have scores, submit the round. It posts directly to the leaderboard and goes through the normal attestation flow." },
       ]
     },
     {
@@ -44,11 +56,13 @@ export default function HelpModal({ onClose }) {
       ]
     },
     {
-      icon: <Flag size={18} />,
+      icon: <Trophy size={18} />,
       title: "Handicaps",
       steps: [
-        { heading: "What to enter", body: "Enter your total Handicap Index from GHIN or TheGrint — not your course handicap. The app calculates course handicap automatically using the USGA formula: Handicap Index × (Slope ÷ 113) + (Course Rating − Par)." },
-        { heading: "Keep it current", body: "Update your Handicap Index in your profile whenever it changes. You'll also be prompted to confirm it every time you post a score." },
+        { heading: "What to enter", body: "Enter your Handicap Index from GHIN or TheGrint — not your course handicap. The app calculates course handicap automatically using the USGA formula: Index × (Slope ÷ 113) + (Course Rating − Par)." },
+        { heading: "Plus handicaps", body: "If you're a plus handicapper (e.g. +2), enter it as a negative number (-2). The app displays it correctly as +2 and gives strokes on the easiest holes, shown as red dots on the scorecard." },
+        { heading: "Scratch players", body: "A handicap of 0 shows as 0 on the scorecard. Net score equals gross score — no strokes given or received." },
+        { heading: "Keep it current", body: "You enter your Handicap Index each time you post a score. Update it if it has changed since your last round." },
         { heading: "Frozen at submission", body: "Your handicap is locked in at the time you submit. If you update it later, past rounds are not affected." },
       ]
     },

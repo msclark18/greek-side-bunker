@@ -89,8 +89,12 @@ export default function App() {
   // synthetic entries are never at the bare start_url, preventing the close.
   useEffect(() => {
     const appHref = location.origin + location.pathname + '#app';
-    history.replaceState(null, '', appHref);
-    history.pushState(null, '', appHref);
+    // Don't touch the hash if Supabase put OAuth tokens in it
+    const isOAuthCallback = location.hash.includes('access_token') || location.hash.includes('refresh_token') || location.hash.includes('error_description');
+    if (!isOAuthCallback) {
+      history.replaceState(null, '', appHref);
+      history.pushState(null, '', appHref);
+    }
     const onPop = () => {
       if (activeLeagueRef.current) {
         setActiveLeague(null);
