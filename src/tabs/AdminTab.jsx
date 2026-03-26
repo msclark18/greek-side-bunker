@@ -184,15 +184,33 @@ export default function AdminTab({
     }
   };
 
+  const compressImage = (file, maxWidth = 1600, quality = 0.8) =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const scale = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Compression failed")), "image/jpeg", quality);
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
+
   const scanScorecard = async (file) => {
     if (!file) return;
     setCourseSearch(s => ({ ...s, scanLoading: true, error: "", selected: null, selectedTee: null }));
     try {
+      const compressed = await compressImage(file);
       const base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result.split(",")[1]);
         reader.onerror = reject;
-        reader.readAsDataURL(file);
+        reader.readAsDataURL(compressed);
       });
       const res = await fetch("/api/parse-scorecard-course", {
         method: "POST",
