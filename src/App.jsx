@@ -84,18 +84,20 @@ export default function App() {
   }, []);
 
   // ── Trap back button so it navigates within the app instead of closing it ──
-  // Uses null state + explicit href — the canonical pattern for Android Chrome PWA.
+  // On Android WebAPK the OS closes the app when the history entry is at start_url ("/").
+  // We replace the initial entry with "/#app" (a hash, same page, no reload) so our
+  // synthetic entries are never at the bare start_url, preventing the close.
   useEffect(() => {
-    history.replaceState(null, '', location.href);
-    history.pushState(null, '', location.href);
-    history.pushState(null, '', location.href);
+    const appHref = location.origin + location.pathname + '#app';
+    history.replaceState(null, '', appHref);
+    history.pushState(null, '', appHref);
     const onPop = () => {
       if (activeLeagueRef.current) {
         setActiveLeague(null);
         setDataLoaded(false);
         sessionStorage.removeItem("gsb_league_id");
       }
-      history.pushState(null, '', location.href);
+      history.pushState(null, '', appHref);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -260,7 +262,7 @@ export default function App() {
     loadLeagueData(league);
     setShowProfileGate(true);
     sessionStorage.setItem("gsb_league_id", String(league.id));
-    history.pushState(null, '', location.href);
+    history.pushState(null, '', location.origin + location.pathname + '#app');
   };
 
   const createLeague = async (newLeague) => {
