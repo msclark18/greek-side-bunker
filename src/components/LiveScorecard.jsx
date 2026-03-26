@@ -868,7 +868,7 @@ export default function LiveScorecard({
               </tr>
               {/* Hole number row */}
               <tr style={{ background: "rgba(255,255,255,.03)" }}>
-                <th style={{ ...th({ textAlign: "left", paddingLeft: 10,
+                <th style={{ ...th({ textAlign: "left", paddingLeft: 10, width: 1,
                   position: "sticky", left: 0, background: "rgba(16,20,36,1)", zIndex: 2,
                   color: "var(--cream-dim)", fontSize: "0.55rem", letterSpacing: "1.5px" })
                 }}>
@@ -1004,7 +1004,7 @@ export default function LiveScorecard({
                       <td style={td({ textAlign: "left", paddingLeft: 8, color: "var(--cream)",
                         fontFamily: "var(--font-d)", fontSize: "0.6rem", fontWeight: 700,
                         letterSpacing: "0.5px", position: "sticky", left: 0,
-                        background: stickyBg, zIndex: 1 })}>
+                        background: stickyBg, zIndex: 1, whiteSpace: "nowrap", width: 1 })}>
                         {firstName}
                         {useHcp && <span style={{ color: "rgba(212,168,67,.6)", fontWeight: 400,
                           fontSize: "0.5rem", marginLeft: 3 }}>[{p.hcp < 0 ? `+${Math.abs(p.hcp)}` : (p.hcp ?? 0)}]</span>}
