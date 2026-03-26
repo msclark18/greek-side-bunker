@@ -967,14 +967,34 @@ export default function LiveScorecard({
               )}
             </thead>
             <tbody>
-              {/* Player rows */}
-              {players.map((p, pi) => {
-                const halfScores = p.scores.slice(startIdx, startIdx + 9);
+              {/* Compute unique display names across all players */}
+              {(() => {
+                const displayNames = players.map((p, i) => {
+                  const parts = p.name.trim().split(/\s+/);
+                  const first = parts[0].toUpperCase();
+                  const last = parts.length > 1 ? parts[parts.length - 1].toUpperCase() : "";
+                  const sameFirst = players.filter((q, j) => j !== i &&
+                    q.name.trim().split(/\s+/)[0].toUpperCase() === first);
+                  if (!sameFirst.length) return first;
+                  // try adding last initial
+                  if (last) {
+                    const sameInit = sameFirst.filter(q => {
+                      const qp = q.name.trim().split(/\s+/);
+                      return qp.length > 1 && qp[qp.length - 1][0].toUpperCase() === last[0];
+                    });
+                    if (!sameInit.length) return `${first} ${last[0]}`;
+                    // try two letters of last name
+                    return `${first} ${last.slice(0, 2)}`;
+                  }
+                  return first;
+                });
+                return players.map((p, pi) => {
+              const halfScores = p.scores.slice(startIdx, startIdx + 9);
                 const halfGross = halfScores.reduce((a, s) => a + (s ?? 0), 0);
                 const fullGross = p.scores.reduce((a, s) => a + (s ?? 0), 0);
                 const fullStrokes = holeData.reduce((a, h, i) => a + (p.scores[i] != null ? p.getS(h.stroke_index) : 0), 0);
                 const fullNet = fullGross - fullStrokes;
-                const firstName = p.name.split(" ")[0].toUpperCase().slice(0, 7);
+                const firstName = displayNames[pi];
                 const rowBg = pi % 2 === 0 ? "rgba(255,255,255,.025)" : "rgba(255,255,255,.01)";
                 const stickyBg = pi % 2 === 0 ? "rgba(18,22,40,1)" : "rgba(14,18,32,1)";
                 return (
@@ -1026,7 +1046,8 @@ export default function LiveScorecard({
                     </tr>
                   </React.Fragment>
                 );
-              })}
+              });
+              })()}
             </tbody>
           </table>
         </div>
