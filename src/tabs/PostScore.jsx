@@ -506,7 +506,7 @@ export default function PostScore({
         </div>
       )}
 
-      <div className="card" style={{ opacity: isOpen ? 1 : .65, pointerEvents: isOpen ? "auto" : "none", display: isOpen && !inProgressRound && !scoringMode ? "none" : undefined }}>
+      <div className="card" style={{ opacity: 1, display: !isOpen || (isOpen && !inProgressRound && !scoringMode) ? "none" : undefined }}>
         <div className="card-hdr">
           <Pencil size={15} />Post Your Round
           {activeFmt !== "stroke" && (
