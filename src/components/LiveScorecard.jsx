@@ -853,7 +853,7 @@ export default function LiveScorecard({
 
       return (
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          <table style={{ borderCollapse: "collapse", fontSize: "0.7rem", tableLayout: "fixed",
+          <table style={{ borderCollapse: "collapse", fontSize: "0.7rem",
             minWidth: useHcp ? (showTotals ? 640 : 520) : (showTotals ? 540 : 420) }}>
             {/* ── Header ── */}
             <thead>
@@ -868,7 +868,7 @@ export default function LiveScorecard({
               </tr>
               {/* Hole number row */}
               <tr style={{ background: "rgba(255,255,255,.03)" }}>
-                <th style={{ ...th({ textAlign: "left", paddingLeft: 10, width: 52,
+                <th style={{ ...th({ textAlign: "left", paddingLeft: 10,
                   position: "sticky", left: 0, background: "rgba(16,20,36,1)", zIndex: 2,
                   color: "var(--cream-dim)", fontSize: "0.55rem", letterSpacing: "1.5px" })
                 }}>
