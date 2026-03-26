@@ -184,7 +184,7 @@ export default function AdminTab({
     }
   };
 
-  const compressImage = (file, maxWidth = 1600, quality = 0.8) =>
+  const compressImage = (file, maxWidth = 1200, quality = 0.65) =>
     new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
@@ -217,7 +217,9 @@ export default function AdminTab({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageData: base64, mediaType: "image/jpeg" }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error(`Server error: ${text.slice(0, 120)}`); }
       if (!res.ok) throw new Error(data.error ?? "Scan failed");
       const { course } = data;
       // Shape into the same format as API results so the tee picker works identically
