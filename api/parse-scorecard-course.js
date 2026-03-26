@@ -90,12 +90,15 @@ Rules:
 
     const data = await resp.json();
     const text = data.content?.find(b => b.type === "text")?.text ?? "";
-    const cleaned = text.replace(/^```[a-z]*\n?/i, "").replace(/```$/m, "").trim();
+    const jsonStart = text.indexOf("{");
+    const jsonEnd = text.lastIndexOf("}");
 
     let course;
     try {
-      course = JSON.parse(cleaned);
+      if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON found");
+      course = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
     } catch {
+      console.error("Raw Claude response:", text);
       return res.status(422).json({ error: "Could not parse scorecard. Try a clearer photo." });
     }
 
