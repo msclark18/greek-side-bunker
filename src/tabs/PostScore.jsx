@@ -159,6 +159,7 @@ export default function PostScore({
     if (!canStartLive()) return;
     const course = selectedCourse;
     const hcp = autoHcp;
+    const groupId = crypto.randomUUID();
     const attester = config.attestRequired
       ? members.find(m => m.user_id === form.attesterId && m.profile)
       : null;
@@ -179,6 +180,7 @@ export default function PostScore({
       scoring_format: activeFmt,
       attest_status: "pending",
       round_status: "in_progress",
+      group_id: groupId,
       team_id: (isActiveTeamFormat && myTeam) ? myTeam.id : (form.teamId || null),
       tournament_round_id: form.tournamentRoundId || null,
     }).select().single();
@@ -214,6 +216,7 @@ export default function PostScore({
         attest_status: config.attestRequired ? "pending" : "approved",
         round_status: "in_progress",
         tracking_only: trackingOnly,
+        group_id: groupId,
         team_id: null,
         tournament_round_id: form.tournamentRoundId || null,
       }).select().single();
@@ -228,19 +231,36 @@ export default function PostScore({
   };
 
   const cancelLiveRound = async (round) => {
-    await supabase.from("rounds").delete().eq("id", round.id);
-    setRounds(p => p.filter(r => r.id !== round.id));
+    // Delete all rounds in the same group
+    if (round.group_id) {
+      const { data: groupRounds } = await supabase
+        .from("rounds").select("id").eq("group_id", round.group_id);
+      const idsToDelete = (groupRounds ?? []).map(r => r.id);
+      if (idsToDelete.length > 0) {
+        await supabase.from("rounds").delete().in("id", idsToDelete);
+        setRounds(p => p.filter(r => !idsToDelete.includes(r.id)));
+      }
+    } else {
+      // Fallback for older rounds without group_id
+      await supabase.from("rounds").delete().eq("id", round.id);
+      setRounds(p => p.filter(r => r.id !== round.id));
+    }
   };
 
   const resumeRound = (round) => {
-    // Find other in-progress rounds from the same group (same date, course, league)
-    const groupRounds = rounds.filter(r =>
-      r.player_id !== session?.user.id &&
-      r.round_status === "in_progress" &&
-      r.date === round.date &&
-      r.course_id === round.course_id &&
-      r.league_id === round.league_id
-    );
+    // Find companion rounds by group_id (preferred) or fall back to date/course/league match
+    const groupRounds = round.group_id
+      ? rounds.filter(r =>
+          r.player_id !== session?.user.id &&
+          r.group_id === round.group_id
+        )
+      : rounds.filter(r =>
+          r.player_id !== session?.user.id &&
+          r.round_status === "in_progress" &&
+          r.date === round.date &&
+          r.course_id === round.course_id &&
+          r.league_id === round.league_id
+        );
     const companions = groupRounds
       .map(r => {
         const member = members.find(m => m.user_id === r.player_id);

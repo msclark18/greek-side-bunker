@@ -148,6 +148,7 @@ CREATE TABLE IF NOT EXISTS rounds (
   round_status    text DEFAULT 'not_started'
                     CHECK (round_status IN ('not_started', 'in_progress', 'completed')),
   tracking_only   boolean DEFAULT false,  -- true = scores tracked but don't count toward standings
+  group_id        uuid DEFAULT NULL,      -- links all rounds started together in a live group
   created_at      timestamptz DEFAULT now()
 );
 
