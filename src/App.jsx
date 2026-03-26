@@ -83,22 +83,19 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ── Trap back-swipe so it navigates within the app instead of closing it ──
+  // ── Trap back button so it navigates within the app instead of closing it ──
+  // Uses null state + explicit href — the canonical pattern for Android Chrome PWA.
   useEffect(() => {
-    // Replace the initial history entry (the real page URL) with a gsb entry
-    // so there is no underlying "real" page the user can navigate back to.
-    // Then push a second entry on top as a buffer — the user must pop both
-    // before we even need to re-push, making the trap robust after a refresh.
-    history.replaceState({ gsb: true }, "");
-    history.pushState({ gsb: true }, "");
+    history.replaceState(null, '', location.href);
+    history.pushState(null, '', location.href);
+    history.pushState(null, '', location.href);
     const onPop = () => {
       if (activeLeagueRef.current) {
         setActiveLeague(null);
         setDataLoaded(false);
         sessionStorage.removeItem("gsb_league_id");
       }
-      // Always re-push so the next swipe is also trapped
-      history.pushState({ gsb: true }, "");
+      history.pushState(null, '', location.href);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -159,7 +156,8 @@ export default function App() {
         setActiveLeague(saved);
         loadLeagueData(saved);
         setShowProfileGate(true);
-        history.pushState({ gsbLeague: saved.id }, "");
+        // Don't pushState here — the mount effect already seeded the history buffer,
+        // and an async push after a refresh can confuse iOS WebKit's native nav stack.
       } else {
         sessionStorage.removeItem("gsb_league_id");
       }
@@ -262,7 +260,7 @@ export default function App() {
     loadLeagueData(league);
     setShowProfileGate(true);
     sessionStorage.setItem("gsb_league_id", String(league.id));
-    history.pushState({ gsbLeague: league.id }, "");
+    history.pushState(null, '', location.href);
   };
 
   const createLeague = async (newLeague) => {
