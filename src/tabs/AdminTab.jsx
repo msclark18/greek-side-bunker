@@ -4,7 +4,7 @@ import { DEFAULT_CONFIG, FORMAT_LABELS } from "../constants/config.js";
 import { calcCourseHcp, calcStableford } from "../utils/golf.js";
 import Toggle from "../components/Toggle.jsx";
 import GhinLink from "../components/GhinLink.jsx";
-import { Settings, Users, Flag, ClipboardList, BarChart2, FileText, Mail, Trophy, DollarSign, AlertTriangle, Check, X, Clock, Camera, Lock } from "lucide-react";
+import { Settings, Users, Flag, ClipboardList, BarChart2, FileText, Mail, Trophy, DollarSign, AlertTriangle, Check, X, Clock, Camera, Lock, Info } from "lucide-react";
 
 export default function AdminTab({
   session, activeLeague,
@@ -22,6 +22,7 @@ export default function AdminTab({
   const [newCourse, setNewCourse] = useState({ name: "", par: "", holes: "18", slope: "", rating: "" });
   const [showAddCourse, setShowAddCourse] = useState(false);
   const [courseSearch, setCourseSearch] = useState({ open: false, query: "", results: [], loading: false, scanLoading: false, error: "", selected: null, selectedTee: null, teeDraft: {} });
+  const [holePreviewTee, setHolePreviewTee] = useState(null);
   const scorecardInputRef = useRef(null);
   const [editMemberHcp, setEditMemberHcp] = useState(null);
   const [emailDraft, setEmailDraft] = useState({ subject: "", message: "" });
@@ -217,14 +218,13 @@ export default function AdminTab({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageData: base64, mediaType: "image/jpeg" }),
       });
-      const text = await res.text();
-      let data;
-      try { data = JSON.parse(text); } catch { throw new Error(`Server error: ${text.slice(0, 120)}`); }
+      const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Scan failed");
-      const { course } = data;
+      const { course, cacheId } = data;
       // Shape into the same format as API results so the tee picker works identically
       const synthetic = {
         id: null,
+        cacheId,
         club_name: course.club_name,
         course_name: course.course_name,
         location: null,
@@ -266,6 +266,10 @@ export default function AdminTab({
     }
     // Fetch hole-by-hole data if this is a real API course (not a scanned result)
     let scorecard = null;
+    if (!selected.id && (teeDraft.city || teeDraft.state) && selected.cacheId) {
+      const location = { city: teeDraft.city ?? null, state: teeDraft.state ?? null };
+      await supabase.from("course_cache").update({ location }).eq("api_id", selected.cacheId);
+    }
     if (!selected.id && tee.holes?.length) {
       // Scanned course — use holes captured by AI
       scorecard = {
@@ -1724,24 +1728,38 @@ setConfirmClear(false);
                 <div>
                   <button className="btn btn-ghost btn-sm" style={{ marginBottom: 12 }} onClick={() => setCourseSearch(s => ({ ...s, selected: null, selectedTee: null }))}>← Back to results</button>
                   <div style={{ fontWeight: 600, color: "var(--cream)", marginBottom: 4 }}>{c.club_name}</div>
-                  {c.course_name !== c.club_name && <div style={{ fontSize: ".82rem", color: "var(--cream-dim)", marginBottom: 10 }}>{c.course_name}</div>}
+                  {c.course_name !== c.club_name && <div style={{ fontSize: ".82rem", color: "var(--cream-dim)", marginBottom: 6 }}>{c.course_name}</div>}
+                  {c.id === null && (
+                    <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                      <input className="inp" placeholder="City" value={courseSearch.teeDraft.city ?? ""} onChange={e => setCourseSearch(s => ({ ...s, teeDraft: { ...s.teeDraft, city: e.target.value } }))} style={{ flex: 2 }} />
+                      <input className="inp" placeholder="State" maxLength={2} value={courseSearch.teeDraft.state ?? ""} onChange={e => setCourseSearch(s => ({ ...s, teeDraft: { ...s.teeDraft, state: e.target.value.toUpperCase() } }))} style={{ flex: 1 }} />
+                    </div>
+                  )}
                   <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "var(--gold)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 8 }}>Select Tee Box</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 200, overflowY: "auto" }}>
                     {allTees.map((tee, i) => {
                       const sel = courseSearch.selectedTee === tee;
                       const missingCount = [tee.slope_rating, tee.course_rating, tee.par_total].filter(v => v == null).length;
                       return (
-                        <button key={i} className={`btn ${sel ? "btn-gold" : "btn-ghost"}`}
-                          style={{ textAlign: "left", padding: "10px 12px", borderRadius: 8 }}
-                          onClick={() => setCourseSearch(s => ({ ...s, selectedTee: tee, teeDraft: {}, error: "" }))}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                            <span style={{ fontWeight: 600 }}>{tee.tee_name}</span>
-                            <span style={{ fontSize: ".75rem", color: sel ? "rgba(255,255,255,.8)" : "var(--cream-dim)" }}>
-                              Par {tee.par_total ?? "?"} · {tee.number_of_holes ?? 18} holes · Slope {tee.slope_rating ?? "?"} · Rating {tee.course_rating ?? "?"}
-                              {missingCount > 0 && <span style={{ color: "#f0c96a", marginLeft: 6 }}>({missingCount} missing)</span>}
-                            </span>
-                          </div>
-                        </button>
+                        <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <button className={`btn ${sel ? "btn-gold" : "btn-ghost"}`}
+                            style={{ textAlign: "left", padding: "10px 12px", borderRadius: 8, flex: 1 }}
+                            onClick={() => setCourseSearch(s => ({ ...s, selectedTee: tee, teeDraft: {}, error: "" }))}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                              <span style={{ fontWeight: 600 }}>{tee.tee_name}</span>
+                              <span style={{ fontSize: ".75rem", color: sel ? "rgba(255,255,255,.8)" : "var(--cream-dim)" }}>
+                                Par {tee.par_total ?? "?"} · {tee.number_of_holes ?? 18} holes · Slope {tee.slope_rating ?? "?"} · Rating {tee.course_rating ?? "?"}
+                                {missingCount > 0 && <span style={{ color: "#f0c96a", marginLeft: 6 }}>({missingCount} missing)</span>}
+                              </span>
+                            </div>
+                          </button>
+                          {tee.holes?.length > 0 && (
+                            <button className="btn btn-ghost" style={{ padding: "8px 10px", borderRadius: 8, flexShrink: 0 }}
+                              onClick={e => { e.stopPropagation(); setHolePreviewTee(tee); }}>
+                              <Info size={14} />
+                            </button>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -2194,6 +2212,45 @@ setConfirmRemoveBylaws(false);
             <div>Handicap: <span style={{ color: "var(--white)" }}>{config.useHandicap ? `${config.handicapPct}%${config.useSlopeRating ? " (USGA slope/rating)" : " (flat)"}${config.maxHandicap ? ` · max ${config.maxHandicap}` : ""}` : "Gross only"}</span></div>
             <div>Attestation: <span style={{ color: "var(--white)" }}>{config.attestRequired ? "Required" : "Off"}</span></div>
             <div>Created: <span style={{ color: "var(--white)" }}>{new Date(activeLeague.created_at).toLocaleDateString()}</span></div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Hole preview modal ── */}
+      {holePreviewTee && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+          onClick={() => setHolePreviewTee(null)}>
+          <div style={{ background: "var(--card)", borderRadius: 12, padding: 20, maxWidth: 480, width: "100%", maxHeight: "80vh", overflowY: "auto" }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div>
+                <div style={{ fontFamily: "var(--font-d)", fontSize: "1rem", color: "var(--gold)", letterSpacing: 1 }}>{holePreviewTee.tee_name} Tees</div>
+                <div style={{ fontSize: ".75rem", color: "var(--cream-dim)", marginTop: 2 }}>
+                  Par {holePreviewTee.par_total} · Slope {holePreviewTee.slope_rating} · Rating {holePreviewTee.course_rating}
+                </div>
+              </div>
+              <button className="btn btn-ghost" style={{ padding: "4px 8px" }} onClick={() => setHolePreviewTee(null)}><X size={14} /></button>
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".8rem" }}>
+              <thead>
+                <tr style={{ color: "var(--gold)", fontFamily: "var(--font-d)", letterSpacing: 1, fontSize: ".7rem" }}>
+                  <th style={{ textAlign: "center", padding: "4px 6px" }}>HOLE</th>
+                  <th style={{ textAlign: "center", padding: "4px 6px" }}>PAR</th>
+                  <th style={{ textAlign: "center", padding: "4px 6px" }}>SI</th>
+                  <th style={{ textAlign: "center", padding: "4px 6px" }}>YARDS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {holePreviewTee.holes.map((h, i) => (
+                  <tr key={i} style={{ borderTop: "1px solid rgba(255,255,255,.06)", color: i % 2 === 0 ? "var(--cream)" : "var(--cream-dim)" }}>
+                    <td style={{ textAlign: "center", padding: "5px 6px" }}>{h.hole_number}</td>
+                    <td style={{ textAlign: "center", padding: "5px 6px" }}>{h.par ?? "—"}</td>
+                    <td style={{ textAlign: "center", padding: "5px 6px" }}>{h.handicap ?? "—"}</td>
+                    <td style={{ textAlign: "center", padding: "5px 6px" }}>{h.yardage ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

@@ -98,7 +98,7 @@ Rules:
       if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON found");
       course = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
     } catch {
-      return res.status(422).json({ error: `Parse failed. Claude said: ${text.slice(0, 300)}` });
+      return res.status(422).json({ error: "Could not parse scorecard. Try a clearer photo." });
     }
 
     if (!course.club_name || !Array.isArray(course.tees) || course.tees.length === 0) {
@@ -143,7 +143,7 @@ Rules:
       }
     );
 
-    return res.status(200).json({ course });
+    return res.status(200).json({ course, cacheId: sentinelId });
 
   } catch (e) {
     console.error("parse-scorecard-course error:", e);
