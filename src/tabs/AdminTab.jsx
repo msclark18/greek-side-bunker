@@ -215,7 +215,7 @@ export default function AdminTab({
       const res = await fetch("/api/parse-scorecard-course", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageData: base64, mediaType: file.type }),
+        body: JSON.stringify({ imageData: base64, mediaType: "image/jpeg" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Scan failed");
