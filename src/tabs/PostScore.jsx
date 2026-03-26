@@ -994,10 +994,15 @@ export default function PostScore({
               })()}
             </div>
 
+            {hcpDraft !== "" && (isNaN(Number(hcpDraft)) || Number(hcpDraft) < 0 || Number(hcpDraft) > 54) && (
+              <p style={{ fontSize: ".78rem", color: "#ef4444", marginBottom: 10 }}>
+                Enter a valid handicap index between 0 and 54.
+              </p>
+            )}
             <div style={{ display: "flex", gap: 10 }}>
               <button
                 className="btn btn-gold"
-                disabled={!hcpDraft}
+                disabled={!hcpDraft || isNaN(Number(hcpDraft)) || Number(hcpDraft) < 0 || Number(hcpDraft) > 54}
                 onClick={async () => {
                   // Save updated handicap if it changed
                   if (String(hcpDraft) !== String(profile?.handicap)) {
