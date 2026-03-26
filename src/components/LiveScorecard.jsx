@@ -509,12 +509,14 @@ export default function LiveScorecard({
                       setNumPadOpen(true);
                     }}
                     style={{
-                      padding: "8px 14px", borderRadius: 8, border: "none",
+                      width: 72, height: 72, borderRadius: 10, border: "none",
                       background: "var(--gold)", color: "var(--navy)",
-                      fontFamily: "var(--font-d)", fontWeight: 700, fontSize: "0.78rem",
-                      cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap",
+                      fontFamily: "var(--font-d)", fontWeight: 700, fontSize: "0.7rem",
+                      cursor: "pointer", flexShrink: 0,
+                      display: "flex", flexDirection: "column", alignItems: "center",
+                      justifyContent: "center", textAlign: "center", lineHeight: 1.3,
                     }}
-                  >Add Score</button>
+                  ><span>Enter</span><span>Score</span></button>
                 )}
               </div>
             );
@@ -832,12 +834,12 @@ export default function LiveScorecard({
 
     // Reusable cell styles
     const th = (extra = {}) => ({
-      padding: "6px 5px", textAlign: "center", fontFamily: "var(--font-d)",
+      padding: "5px 2px", textAlign: "center", fontFamily: "var(--font-d)",
       fontSize: "0.58rem", fontWeight: 700, letterSpacing: "0.5px",
       whiteSpace: "nowrap", borderRight: "1px solid rgba(255,255,255,.06)", ...extra,
     });
     const td = (extra = {}) => ({
-      padding: "5px 4px", textAlign: "center", borderRight: "1px solid rgba(255,255,255,.06)",
+      padding: "4px 2px", textAlign: "center", borderRight: "1px solid rgba(255,255,255,.06)",
       borderBottom: "1px solid rgba(255,255,255,.04)", ...extra,
     });
 
@@ -877,7 +879,7 @@ export default function LiveScorecard({
                   const isActive = startIdx + idx === activeHole;
                   return (
                     <th key={idx} style={th({
-                      width: 30,
+                      width: 26,
                       color: isActive ? "var(--gold)" : "var(--cream)",
                       fontWeight: isActive ? 900 : 700,
                       fontSize: "0.75rem",
@@ -979,10 +981,11 @@ export default function LiveScorecard({
                   <React.Fragment key={pi}>
                     {/* Gross score row */}
                     <tr style={{ background: rowBg, borderTop: pi === 0 ? "1px solid rgba(212,168,67,.2)" : "none" }}>
-                      <td style={td({ textAlign: "left", paddingLeft: 10, color: "var(--cream)",
+                      <td style={td({ textAlign: "left", paddingLeft: 8, color: "var(--cream)",
                         fontFamily: "var(--font-d)", fontSize: "0.6rem", fontWeight: 700,
                         letterSpacing: "0.5px", position: "sticky", left: 0,
-                        background: stickyBg, zIndex: 1 })}>
+                        background: stickyBg, zIndex: 1, maxWidth: 52,
+                        overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" })}>
                         {firstName}
                         {useHcp && <span style={{ color: "rgba(212,168,67,.6)", fontWeight: 400,
                           fontSize: "0.5rem", marginLeft: 3 }}>[{p.hcp < 0 ? `+${Math.abs(p.hcp)}` : (p.hcp ?? 0)}]</span>}
@@ -1001,7 +1004,7 @@ export default function LiveScorecard({
                               </div>
                             )}
                             <div style={{ display: "flex", justifyContent: "center" }}>
-                              <ScoreCell score={s} par={holes[i]?.par} size={24} />
+                              <ScoreCell score={s} par={holes[i]?.par} size={22} />
                             </div>
                           </td>
                         );
@@ -1064,15 +1067,17 @@ export default function LiveScorecard({
         </div>
 
         {/* Front 9 */}
-        <div style={{ margin: "0 10px 10px", borderRadius: 12, overflow: "hidden",
-          border: "1px solid var(--navy-border)", background: "var(--navy-card)" }}>
+        <div style={{ margin: "0 10px 10px", borderRadius: 12, overflowX: "auto",
+          border: "1px solid var(--navy-border)", background: "var(--navy-card)",
+          WebkitOverflowScrolling: "touch" }}>
           <HalfTable startIdx={0} showDetails={showDetails} />
         </div>
 
         {/* Back 9 */}
         {numHoles > 9 && (
-          <div style={{ margin: "0 10px 10px", borderRadius: 12, overflow: "hidden",
-            border: "1px solid var(--navy-border)", background: "var(--navy-card)" }}>
+          <div style={{ margin: "0 10px 10px", borderRadius: 12, overflowX: "auto",
+            border: "1px solid var(--navy-border)", background: "var(--navy-card)",
+            WebkitOverflowScrolling: "touch" }}>
             <HalfTable startIdx={9} showTotals={true} showDetails={showDetails} />
           </div>
         )}
