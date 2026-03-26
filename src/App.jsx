@@ -59,6 +59,8 @@ export default function App() {
   const [showMenu, setShowMenu] = useState(false);
   const [dbError, setDbError] = useState(null);
   const creatingLeague = useRef(false);
+  const activeLeagueRef = useRef(null);
+  useEffect(() => { activeLeagueRef.current = activeLeague; }, [activeLeague]);
 
   // ── Post score state ──
   const [liveRound, setLiveRound] = useState(null);
@@ -76,6 +78,22 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session ?? null));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s ?? null));
     return () => subscription.unsubscribe();
+  }, []);
+
+  // ── Trap back-swipe so it navigates within the app instead of closing it ──
+  useEffect(() => {
+    history.pushState({ gsb: true }, "");
+    const onPop = () => {
+      if (activeLeagueRef.current) {
+        setActiveLeague(null);
+        setDataLoaded(false);
+        sessionStorage.removeItem("gsb_league_id");
+      }
+      // Always re-push so the next swipe is also trapped
+      history.pushState({ gsb: true }, "");
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   useEffect(() => {
@@ -121,7 +139,21 @@ export default function App() {
       : { data: [] };
     const tournamentByLeague = Object.fromEntries((settings || []).map(s => [s.league_id, !!(s.config?.tournamentMode)]));
     setMyMemberships(data || []);
-    setLeagues(rawLeagues.map(l => ({ ...l, tournamentMode: tournamentByLeague[l.id] ?? false })));
+    const mappedLeagues = rawLeagues.map(l => ({ ...l, tournamentMode: tournamentByLeague[l.id] ?? false }));
+    setLeagues(mappedLeagues);
+
+    // Restore league from previous session (survives refresh)
+    const savedId = sessionStorage.getItem("gsb_league_id");
+    if (savedId && !activeLeagueRef.current) {
+      const saved = mappedLeagues.find(l => String(l.id) === savedId);
+      if (saved) {
+        setActiveMembership((data || []).find(m => String(m.league_id) === savedId));
+        setActiveLeague(saved);
+        loadLeagueData(saved);
+        setShowProfileGate(true);
+        history.pushState({ gsbLeague: saved.id }, "");
+      }
+    }
   };
 
   // ── Auth actions ──
@@ -155,6 +187,7 @@ export default function App() {
     await supabase.auth.signOut();
     setActiveLeague(null);
     setDataLoaded(false);
+    sessionStorage.removeItem("gsb_league_id");
   };
 
   // ── League actions ──
@@ -216,8 +249,9 @@ export default function App() {
     setActiveLeague(league);
     setTab("leaderboard");
     loadLeagueData(league);
-    // Will check profile after data loads — gate triggered in main app render
     setShowProfileGate(true);
+    sessionStorage.setItem("gsb_league_id", String(league.id));
+    history.pushState({ gsbLeague: league.id }, "");
   };
 
   const createLeague = async (newLeague) => {
