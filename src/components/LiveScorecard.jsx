@@ -61,7 +61,7 @@ function ScoreCell({ score, par, size = 28 }) {
 }
 
 // ── Stroke allocation dots ───────────────────────────────────────────────────
-function StrokeDots({ count }) {
+function StrokeDots({ count, dotColor }) {
   if (!count) return null;
   const giving = count < 0;
   return (
@@ -69,7 +69,7 @@ function StrokeDots({ count }) {
       {Array.from({ length: Math.abs(count) }).map((_, i) => (
         <span key={i} style={{
           width: 5, height: 5, borderRadius: "50%",
-          background: giving ? "#ef4444" : "var(--gold)",
+          background: dotColor ?? (giving ? "#ef4444" : "var(--gold)"),
           display: "inline-block", flexShrink: 0,
           opacity: giving ? 0.8 : 1,
         }} />
@@ -527,7 +527,7 @@ export default function LiveScorecard({
                       gap: 2,
                     }}
                   >
-                    {pStrokes !== 0 && <StrokeDots count={pStrokes} />}
+                    {pStrokes !== 0 && <StrokeDots count={pStrokes} dotColor={pStrokes > 0 ? "var(--navy)" : undefined} />}
                     <span>Enter</span><span>Score</span>
                   </button>
                 )}
