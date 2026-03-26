@@ -658,7 +658,7 @@ export default function Leaderboard({
                         const hasPhoto = !!r.scorecard_url;
                         if (!hasLive && !hasPhoto) return <span style={{ color: "#4b5563", fontSize: ".76rem" }}>—</span>;
                         const roundCourse = courses.find(c => c.id === r.course_id);
-                        const roundPlayer = members.find(m => m.user_id === r.user_id)?.profile?.name;
+                        const roundPlayer = members.find(m => m.user_id === r.player_id)?.profile?.name;
                         return (
                           <div style={{ display: "flex", gap: 4 }}>
                             {hasLive && (
