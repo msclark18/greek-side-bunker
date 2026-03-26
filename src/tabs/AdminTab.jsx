@@ -1849,7 +1849,21 @@ setConfirmClear(false);
                   {config.attestRequired && <td style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>{r.attester_name ?? "—"}</td>}
                   <td>{attestBadge(r.attest_status)}</td>
                   <td style={{ fontSize: ".76rem", color: "var(--cream-dim)" }}>{r.date}</td>
-                  <td>{r.scorecard_url ? <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}><FileText size={13} /></button> : <span style={{ color: "#4b5563" }}>—</span>}</td>
+                  <td>
+                    {(() => {
+                      const hasLive = r.hole_scores?.length > 0;
+                      const hasPhoto = !!r.scorecard_url;
+                      if (!hasLive && !hasPhoto) return <span style={{ color: "#4b5563" }}>—</span>;
+                      const rc = courses.find(c => c.id === r.course_id);
+                      const rp = members.find(m => m.user_id === r.player_id)?.profile?.name;
+                      return (
+                        <div style={{ display: "flex", gap: 4 }}>
+                          {hasLive && <button className="sc-btn" onClick={() => setViewCardModal({ round: r, course: rc, playerName: rp, useHandicap: config.useHandicap })}><FileText size={13} /></button>}
+                          {hasPhoto && <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })}><FileText size={13} /></button>}
+                        </div>
+                      );
+                    })()}
+                  </td>
                   <td>
                     <div style={{ display: "flex", gap: 4, flexWrap: "nowrap" }}>
                       {config.attestRequired && r.attest_status === "pending" && (<>

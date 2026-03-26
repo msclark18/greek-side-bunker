@@ -169,6 +169,23 @@ export default function LiveScorecard({
   });
   const [saving, setSaving] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
+
+  // Round timer — counts up from round.created_at
+  const fmtElapsed = (start) => {
+    const secs = Math.max(0, Math.floor((Date.now() - start) / 1000));
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    return h > 0
+      ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+      : `${m}:${String(s).padStart(2, "0")}`;
+  };
+  const roundStart = useRef(round.created_at ? new Date(round.created_at).getTime() : Date.now());
+  const [elapsed, setElapsed] = useState(() => fmtElapsed(roundStart.current));
+  useEffect(() => {
+    const id = setInterval(() => setElapsed(fmtElapsed(roundStart.current)), 1000);
+    return () => clearInterval(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [missingAlert, setMissingAlert] = useState(null); // array of hole numbers (1-based)
   const saveTimeout = useRef(null);
   const [companionScores, setCompanionScores] = useState(() =>
@@ -634,6 +651,12 @@ export default function LiveScorecard({
                       setHoleStats(nextStats);
                       saveStats(nextStats);
                     }
+                    // Compute post-enter scores for auto-advance check (before async state updates)
+                    const mainScore = activePlayerId === 0 ? pendingScore : scores[activeHole];
+                    const compScoresAfter = companions.map((_, i) =>
+                      activePlayerId === i + 1 ? pendingScore : ((companionScores[i] ?? [])[activeHole] ?? null)
+                    );
+                    const allScored = mainScore != null && compScoresAfter.every(s => s != null);
                     enterScore(activeHole, pendingScore);
                     setMissingAlert(prev => {
                       if (!prev) return null;
@@ -642,6 +665,9 @@ export default function LiveScorecard({
                     });
                     setNumPadOpen(false);
                     setActivePlayerId(0);
+                    if (allScored && activeHole < numHoles - 1) {
+                      setTimeout(() => setActiveHole(h => h + 1), 400);
+                    }
                   }}
                   disabled={pendingScore == null}
                   style={{
@@ -714,12 +740,14 @@ export default function LiveScorecard({
                 ))}
               </div>
 
-              {/* Tee shot target — par 4/5 only */}
-              {(h?.par === 4 || h?.par === 5) && (
+              {/* Tee shot target — all holes */}
+              {h?.par != null && (
                 <div style={{ marginBottom: 20, display: "flex", flexDirection: "column", alignItems: "center" }}>
                   <div style={{ fontSize: "0.62rem", color: "var(--cream-dim)",
                     fontFamily: "var(--font-d)", letterSpacing: "1.5px",
-                    textTransform: "uppercase", marginBottom: 10, textAlign: "center" }}>Tee Shot</div>
+                    textTransform: "uppercase", marginBottom: 10, textAlign: "center" }}>
+                    {h.par === 3 ? "Tee Shot (Green)" : "Tee Shot"}
+                  </div>
                   <TeeTarget
                     value={pendingStats.fairway}
                     onChange={(val) => setPendingStats(s => ({ ...s, fairway: val }))}
@@ -997,9 +1025,9 @@ export default function LiveScorecard({
 
                 // Full-round stat totals
                 const allPutts = holeData.reduce((a, _, i) => a + (p.stats[i]?.putts ?? 0), 0);
-                const drivingElig = holeData.filter((h, i) => (h.par === 4 || h.par === 5) && p.scores[i] != null).length;
+                const drivingElig = holeData.filter((h, i) => h.par != null && p.scores[i] != null).length;
                 const drivingHits = holeData.reduce((a, h, i) =>
-                  a + ((h.par === 4 || h.par === 5) && p.scores[i] != null && p.stats[i]?.fairway === "hit" ? 1 : 0), 0);
+                  a + (h.par != null && p.scores[i] != null && p.stats[i]?.fairway === "hit" ? 1 : 0), 0);
                 const girElig = holeData.filter((_, i) => p.scores[i] != null && p.stats[i]?.putts != null).length;
                 const girHits = holeData.reduce((a, h, i) => {
                   const sc = p.scores[i]; const pu = p.stats[i]?.putts;
@@ -1009,9 +1037,9 @@ export default function LiveScorecard({
 
                 // Half-table stat totals (for OUT/IN column)
                 const hPutts = holes.reduce((a, _, i) => a + (p.stats[startIdx + i]?.putts ?? 0), 0);
-                const hDriveElig = holes.filter((h, i) => (h.par === 4 || h.par === 5) && halfScores[i] != null).length;
+                const hDriveElig = holes.filter((h, i) => h.par != null && halfScores[i] != null).length;
                 const hDriveHits = holes.reduce((a, h, i) =>
-                  a + ((h.par === 4 || h.par === 5) && halfScores[i] != null && p.stats[startIdx + i]?.fairway === "hit" ? 1 : 0), 0);
+                  a + (h.par != null && halfScores[i] != null && p.stats[startIdx + i]?.fairway === "hit" ? 1 : 0), 0);
                 const hGirElig = holes.filter((_, i) => halfScores[i] != null && p.stats[startIdx + i]?.putts != null).length;
                 const hGirHits = holes.reduce((a, h, i) => {
                   const sc = halfScores[i]; const pu = p.stats[startIdx + i]?.putts;
@@ -1083,8 +1111,7 @@ export default function LiveScorecard({
                         background: stickyBg, borderBottom: "1px solid rgba(255,255,255,.04)",
                         whiteSpace: "nowrap", width: 1,
                       };
-                      const driveCell = (f, par) => {
-                        if (par === 3) return <span style={{ opacity: .3 }}>—</span>;
+                      const driveCell = (f) => {
                         if (!f) return <span style={{ opacity: .3 }}>—</span>;
                         const map = { hit: { t: "✓", c: "#4caf7d" }, left: { t: "L", c: "#ef4444" },
                           right: { t: "R", c: "#ef4444" }, farleft: { t: "LL", c: "#ef4444" },
@@ -1111,7 +1138,7 @@ export default function LiveScorecard({
                         },
                         {
                           label: "DRIVING",
-                          cells: holes.map((h, i) => driveCell(p.stats[startIdx + i]?.fairway, h.par)),
+                          cells: holes.map((_, i) => driveCell(p.stats[startIdx + i]?.fairway)),
                           half: hDriveElig > 0 ? `${hDriveHits}/${hDriveElig}` : "—",
                           total: drivingElig > 0 ? `${drivingHits}/${drivingElig}` : "—",
                         },
@@ -1358,18 +1385,24 @@ export default function LiveScorecard({
             ...(playedPar > 0 && runningGross > 0
               ? [{ label: "+/−", value: toPM(runningGross, playedPar), cls: pmCls(runningGross, playedPar) }]
               : []),
-          ].map(({ label, value, cls }) => (
+            ...(config.useHandicap && playedPar > 0 && runningGross > 0
+              ? [{ label: "Net +/−", value: toPM(runningGross - playedStrokes, playedPar), cls: pmCls(runningGross - playedStrokes, playedPar) }]
+              : []),
+          ].map(({ label, value, cls, mono }) => (
             <div key={label}>
               <div style={{ fontSize: "0.55rem", color: "var(--cream-dim)", fontFamily: "var(--font-d)",
                 letterSpacing: "1.5px", textTransform: "uppercase" }}>{label}</div>
-              <div style={{ fontSize: "0.95rem", fontWeight: 700, fontFamily: "var(--font-d)" }}
+              <div style={{ fontSize: "0.95rem", fontWeight: 700, fontFamily: "var(--font-d)",
+                ...(mono ? { fontVariantNumeric: "tabular-nums", minWidth: "3.2ch" } : {}) }}
                 className={cls ?? ""}>{value}</div>
             </div>
           ))}
-          {saving && (
-            <div style={{ marginLeft: "auto", fontSize: "0.62rem", color: "var(--cream-dim)",
-              alignSelf: "flex-end", paddingBottom: 2 }}>Saving...</div>
-          )}
+          <div style={{ marginLeft: "auto", textAlign: "right", flexShrink: 0 }}>
+            <div style={{ fontSize: "0.55rem", color: "var(--cream-dim)", fontFamily: "var(--font-d)",
+              letterSpacing: "1.5px", textTransform: "uppercase" }}>Time</div>
+            <div style={{ fontSize: "0.95rem", fontWeight: 700, fontFamily: "monospace" }}>{elapsed}</div>
+            {saving && <div style={{ fontSize: "0.55rem", color: "var(--cream-dim)", marginTop: 1 }}>Saving...</div>}
+          </div>
         </div>
       </div>
 

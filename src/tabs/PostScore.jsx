@@ -26,6 +26,7 @@ export default function PostScore({
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
   const [playerSearch, setPlayerSearch] = useState("");
   const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
+  const [showGroupModal, setShowGroupModal] = useState(false);
 
   // When the live round clears (submitted or closed from App level), reset mode
   useEffect(() => { if (!liveRound) { setScoringMode(null); setCompanionIds([]); } }, [liveRound]);
@@ -148,7 +149,7 @@ export default function PostScore({
 
   const canStartLive = () => {
     if (!isOpen || missingProfile) return false;
-    if (config.attestRequired && !form.attesterId) return false;
+    // Attestation for live rounds is handled via companions in the group modal — skip check here
     if (!form.date) return false;
     if (config.tournamentMode) return !!form.tournamentRoundId;
     if (!form.courseId) return false;
@@ -161,8 +162,10 @@ export default function PostScore({
     const course = selectedCourse;
     const hcp = autoHcp;
     const groupId = crypto.randomUUID();
+    // For live rounds, use first companion as attester if attestation required
+    const attesterUserId = form.attesterId || companionIds[0] || null;
     const attester = config.attestRequired
-      ? members.find(m => m.user_id === form.attesterId && m.profile)
+      ? members.find(m => m.user_id === attesterUserId && m.profile)
       : null;
     const { data: inserted, error } = await supabase.from("rounds").insert({
       league_id: activeLeague.id,
@@ -343,6 +346,7 @@ export default function PostScore({
       gross, net, stableford_pts: pts, course_handicap: hcp, par: course.par,
       date: form.date, scoring_format: activeFmt,
       attest_status: config.attestRequired ? "pending" : "approved",
+      round_status: "completed",
       team_id: (isActiveTeamFormat && myTeam) ? myTeam.id : (form.teamId || null),
       tournament_round_id: form.tournamentRoundId || null,
     }).select().single();
@@ -726,203 +730,9 @@ export default function PostScore({
           );
         })()}
 
-        {scoringMode === "live" && selectedCourse && (() => {
-          const eligibleMembers = members.filter(m => m.user_id !== session?.user.id && m.profile);
-          const selectedMembers = eligibleMembers.filter(m => companionIds.includes(m.user_id));
-          const filteredMembers = eligibleMembers.filter(m =>
-            m.profile.name?.toLowerCase().includes(playerSearch.toLowerCase())
-          );
-
-          const Avatar = ({ member, size = 40 }) => {
-            const initials = (member.profile.name ?? "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
-            return member.profile.avatar_url
-              ? <img src={member.profile.avatar_url} alt={member.profile.name}
-                  style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
-              : <div style={{
-                  width: size, height: size, borderRadius: "50%", flexShrink: 0,
-                  background: "rgba(212,168,67,.18)", border: "1.5px solid rgba(212,168,67,.35)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontFamily: "var(--font-d)", fontWeight: 700,
-                  fontSize: size > 36 ? "0.82rem" : "0.62rem", color: "var(--gold)",
-                }}>{initials}</div>;
-          };
-
-          return (
-            <div style={{ marginTop: 20, paddingTop: 18, borderTop: "1px solid var(--navy-border)", marginBottom: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                <div style={{ fontSize: "0.72rem", color: "var(--cream-dim)", fontFamily: "var(--font-d)",
-                  letterSpacing: "1.5px", textTransform: "uppercase" }}>
-                  Playing With
-                </div>
-                <div style={{ fontSize: "0.65rem", color: "var(--cream-dim)", fontFamily: "var(--font-d)" }}>
-                  {companionIds.length}/3
-                </div>
-              </div>
-
-              {/* Selected player cards */}
-              {selectedMembers.length > 0 && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-                  {selectedMembers.map(m => {
-                    const hcp = calcCourseHcp(m.profile.handicap ?? 0, selectedCourse.slope, selectedCourse.par, selectedCourse.rating, config);
-                    return (
-                      <div key={m.user_id} style={{
-                        display: "flex", alignItems: "center", gap: 8, padding: "8px 12px 8px 8px",
-                        borderRadius: 40, background: "rgba(212,168,67,.1)",
-                        border: "1px solid rgba(212,168,67,.3)",
-                      }}>
-                        <Avatar member={m} size={32} />
-                        <div style={{ lineHeight: 1.2 }}>
-                          <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--cream)",
-                            fontFamily: "var(--font-d)" }}>{m.profile.name}</div>
-                          {hcp > 0 && <div style={{ fontSize: "0.65rem", color: "rgba(212,168,67,.8)" }}>
-                            Hdcp {hcp}
-                          </div>}
-                        </div>
-                        <button
-                          onClick={() => setCompanionIds(p => p.filter(id => id !== m.user_id))}
-                          style={{ background: "none", border: "none", color: "var(--cream-dim)",
-                            cursor: "pointer", padding: "0 0 0 4px", fontSize: "1rem", lineHeight: 1 }}
-                        >×</button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Add Players button */}
-              <button
-                onClick={() => { setShowPlayerPicker(true); setPlayerSearch(""); }}
-                style={{
-                  display: "flex", alignItems: "center", gap: 8, padding: "10px 16px",
-                  borderRadius: 10, border: "1.5px dashed rgba(255,255,255,.18)",
-                  background: "rgba(255,255,255,.03)", color: "var(--cream-dim)",
-                  cursor: "pointer", fontSize: "0.82rem", fontFamily: "var(--font-d)",
-                }}
-              >
-                <span style={{ fontSize: "1.2rem", lineHeight: 1, color: "var(--gold)" }}>+</span>
-                Add Players
-              </button>
-
-              {/* Player picker sheet */}
-              {showPlayerPicker && (
-                <>
-                  <div onClick={() => setShowPlayerPicker(false)}
-                    style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,.5)" }} />
-                  <div style={{
-                    position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 101,
-                    background: "var(--navy-card)", borderRadius: "18px 18px 0 0",
-                    borderTop: "1px solid var(--navy-border)",
-                    maxHeight: "70vh", display: "flex", flexDirection: "column",
-                  }}>
-                    {/* Sheet header */}
-                    <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid var(--navy-border)",
-                      flexShrink: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
-                        marginBottom: 12 }}>
-                        <span style={{ fontFamily: "var(--font-d)", fontWeight: 700,
-                          fontSize: "0.95rem", color: "var(--cream)" }}>Add Players</span>
-                        <button onClick={() => setShowPlayerPicker(false)}
-                          style={{ background: "none", border: "none", color: "var(--cream-dim)",
-                            cursor: "pointer", fontSize: "1.4rem", lineHeight: 1 }}>×</button>
-                      </div>
-                      {/* Search */}
-                      <input
-                        type="text"
-                        placeholder="Search players..."
-                        value={playerSearch}
-                        onChange={e => setPlayerSearch(e.target.value)}
-                        style={{
-                          width: "100%", padding: "9px 12px", borderRadius: 8,
-                          border: "1px solid var(--navy-border)", background: "rgba(255,255,255,.05)",
-                          color: "var(--cream)", fontSize: "0.88rem", fontFamily: "var(--font-b)",
-                          outline: "none", boxSizing: "border-box",
-                        }}
-                        autoFocus
-                      />
-                    </div>
-
-                    {/* Member list */}
-                    <div style={{ overflowY: "auto", flex: 1, padding: "8px 0 24px" }}>
-                      {filteredMembers.length === 0
-                        ? <div style={{ padding: "24px 16px", textAlign: "center",
-                            color: "var(--cream-dim)", fontSize: "0.82rem" }}>No players found</div>
-                        : filteredMembers.map(m => {
-                          const selected = companionIds.includes(m.user_id);
-                          const atGroupLimit = companionIds.length >= 3 && !selected;
-                          const roundsFull = selectedCourse
-                            ? rounds.filter(r => r.player_id === m.user_id && r.course_id === selectedCourse.id && r.attest_status !== "rejected").length >= config.roundsPerCourse
-                            : false;
-                          const disabled = atGroupLimit || roundsFull;
-                          const hcp = calcCourseHcp(m.profile.handicap ?? 0, selectedCourse.slope, selectedCourse.par, selectedCourse.rating, config);
-                          return (
-                            <button
-                              key={m.user_id}
-                              disabled={disabled}
-                              onClick={() => {
-                                if (roundsFull) return;
-                                setCompanionIds(p => selected ? p.filter(id => id !== m.user_id) : (p.length < 3 ? [...p, m.user_id] : p));
-                              }}
-                              style={{
-                                width: "100%", display: "flex", alignItems: "center", gap: 12,
-                                padding: "12px 16px", background: selected ? "rgba(212,168,67,.08)" : "transparent",
-                                border: "none", borderBottom: "1px solid rgba(255,255,255,.04)",
-                                cursor: disabled ? "not-allowed" : "pointer", textAlign: "left",
-                                opacity: disabled ? 0.4 : 1,
-                              }}
-                            >
-                              <Avatar member={m} size={46} />
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontFamily: "var(--font-d)", fontWeight: 700,
-                                  fontSize: "0.92rem", color: "var(--cream)" }}>{m.profile.name}</div>
-                                <div style={{ fontSize: "0.72rem", color: roundsFull ? "#f87171" : "var(--cream-dim)", marginTop: 2 }}>
-                                  {roundsFull
-                                    ? "Already posted all rounds for this course"
-                                    : hcp > 0 ? `Hdcp ${hcp}` : "Scratch"}
-                                  {!roundsFull && m.profile.handicap > 0 && ` · Index ${m.profile.handicap}`}
-                                </div>
-                              </div>
-                              {/* Checkmark */}
-                              <div style={{
-                                width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-                                border: selected ? "none" : "1.5px solid rgba(255,255,255,.2)",
-                                background: selected ? "var(--gold)" : "transparent",
-                                display: "flex", alignItems: "center", justifyContent: "center",
-                              }}>
-                                {selected && <span style={{ color: "var(--navy)", fontSize: "0.75rem",
-                                  fontWeight: 900 }}>✓</span>}
-                              </div>
-                            </button>
-                          );
-                        })}
-                    </div>
-
-                    {/* Done button */}
-                    {companionIds.length > 0 && (
-                      <div style={{ padding: "12px 16px 28px", borderTop: "1px solid var(--navy-border)",
-                        flexShrink: 0 }}>
-                        <button
-                          onClick={() => setShowPlayerPicker(false)}
-                          style={{
-                            width: "100%", padding: "13px", borderRadius: 10, border: "none",
-                            background: "var(--gold)", color: "var(--navy)",
-                            fontFamily: "var(--font-d)", fontWeight: 700, fontSize: "0.95rem",
-                            cursor: "pointer",
-                          }}
-                        >
-                          Done · {companionIds.length} player{companionIds.length !== 1 ? "s" : ""} added
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          );
-        })()}
-
         <div style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           {scoringMode === "live" ? (
-            <button className="btn btn-gold" onClick={startLiveRound} disabled={!canStartLive()}>
+            <button className="btn btn-gold" onClick={() => { if (canStartLive()) { setCompanionIds([]); setShowGroupModal(true); } }} disabled={!canStartLive()}>
               <Radio size={14} /> Start Live Round
             </button>
           ) : (
@@ -945,6 +755,286 @@ export default function PostScore({
       </div>
 
       {/* ── Handicap Confirmation Modal ── */}
+      {/* ── Group / Player Setup Screen ── */}
+      {showGroupModal && selectedCourse && (() => {
+        const eligibleMembers = members.filter(m => m.user_id !== session?.user.id && m.profile);
+        const filteredMembers = eligibleMembers.filter(m =>
+          m.profile.name?.toLowerCase().includes(playerSearch.toLowerCase())
+        );
+        const MemberAvatar = ({ member, size = 44 }) => {
+          const initials = (member.profile.name ?? "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+          return member.profile.avatar_url
+            ? <img src={member.profile.avatar_url} alt={member.profile.name}
+                style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+            : <div style={{
+                width: size, height: size, borderRadius: "50%", flexShrink: 0,
+                background: "rgba(212,168,67,.18)", border: "1.5px solid rgba(212,168,67,.4)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontFamily: "var(--font-d)", fontWeight: 700,
+                fontSize: size > 36 ? "0.8rem" : "0.62rem", color: "var(--gold)",
+              }}>{initials}</div>;
+        };
+        const myHcp = autoHcp;
+        const teeName = selectedCourse.scorecard?.tee_name ?? null;
+        const TeeBadge = () => teeName ? (
+          <div style={{
+            padding: "3px 9px", borderRadius: 6, border: "1px solid rgba(255,255,255,.2)",
+            fontSize: "0.7rem", color: "var(--cream-dim)", fontFamily: "var(--font-d)",
+            whiteSpace: "nowrap", marginRight: 10, flexShrink: 0,
+          }}>{teeName}</div>
+        ) : null;
+        const playerSlots = [
+          { id: "me", fixed: true },
+          ...Array.from({ length: 3 }, (_, i) => ({ id: companionIds[i] ?? null, fixed: false, slotIdx: i })),
+        ];
+
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "var(--navy)",
+            display: "flex", flexDirection: "column", overflowY: "auto" }}>
+
+            {/* Header */}
+            <div style={{ padding: "16px 16px 0", flexShrink: 0 }}>
+              <button onClick={() => { setShowGroupModal(false); setCompanionIds([]); setShowPlayerPicker(false); }}
+                style={{ background: "none", border: "none", cursor: "pointer", display: "flex",
+                  alignItems: "center", gap: 6, color: "var(--gold)", fontFamily: "var(--font-d)",
+                  fontWeight: 700, fontSize: "0.75rem", letterSpacing: "1.5px", textTransform: "uppercase",
+                  padding: 0, marginBottom: 16 }}>
+                ‹ &nbsp;Player Setup
+              </button>
+              <div style={{ fontSize: "0.78rem", color: "var(--cream-dim)", marginBottom: 14,
+                fontFamily: "var(--font-b)" }}>
+                {selectedCourse.name}
+              </div>
+
+              {/* Column headers */}
+              <div style={{ display: "flex", alignItems: "center", paddingBottom: 8,
+                borderBottom: "1px solid var(--navy-border)",
+                fontSize: "0.62rem", color: "var(--cream-dim)", fontFamily: "var(--font-d)",
+                letterSpacing: "1px", textTransform: "uppercase" }}>
+                <div style={{ flex: 1 }}>Player / Index</div>
+                <div style={{ marginRight: 12 }}>Tee</div>
+                <div>Hcp</div>
+              </div>
+            </div>
+
+            {/* Player rows */}
+            <div style={{ flex: 1, padding: "0 16px" }}>
+              {playerSlots.map((slot, idx) => {
+                if (slot.fixed) {
+                  // Me
+                  const myInitials = (profile?.name ?? "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+                  return (
+                    <div key="me" style={{ display: "flex", alignItems: "center", gap: 12,
+                      padding: "14px 0", borderBottom: "1px solid var(--navy-border)" }}>
+                      <div style={{
+                        width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
+                        background: "rgba(212,168,67,.2)", border: "2px solid rgba(212,168,67,.5)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontFamily: "var(--font-d)", fontWeight: 700, fontSize: "0.82rem", color: "var(--gold)",
+                      }}>{myInitials}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: "var(--font-d)", fontWeight: 700, fontSize: "0.95rem",
+                          color: "var(--cream)" }}>{profile?.name ?? "You"}</div>
+                        <div style={{ fontSize: "0.7rem", color: "var(--cream-dim)", marginTop: 2 }}>
+                          {profile?.handicap != null ? `Index ${profile.handicap}` : "Scratch"}
+                        </div>
+                      </div>
+                      <TeeBadge />
+                      <div style={{
+                        width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+                        background: "var(--gold)", display: "flex", alignItems: "center", justifyContent: "center",
+                        fontFamily: "var(--font-d)", fontWeight: 900, fontSize: "1rem", color: "var(--navy)",
+                      }}>{myHcp}</div>
+                    </div>
+                  );
+                }
+
+                const member = slot.id ? members.find(m => m.user_id === slot.id) : null;
+                if (member) {
+                  const mHcp = calcCourseHcp(member.profile.handicap ?? 0, selectedCourse.slope, selectedCourse.par, selectedCourse.rating, config);
+                  return (
+                    <div key={slot.id} style={{ display: "flex", alignItems: "center", gap: 12,
+                      padding: "14px 0", borderBottom: "1px solid var(--navy-border)" }}>
+                      <MemberAvatar member={member} size={44} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: "var(--font-d)", fontWeight: 700, fontSize: "0.95rem",
+                          color: "var(--cream)" }}>{member.profile.name}</div>
+                        <div style={{ fontSize: "0.7rem", color: "var(--cream-dim)", marginTop: 2 }}>
+                          {member.profile.handicap != null ? `Index ${member.profile.handicap}` : "Scratch"}
+                        </div>
+                      </div>
+                      <TeeBadge />
+                      <div style={{
+                        width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+                        background: "rgba(212,168,67,.15)", border: "1.5px solid rgba(212,168,67,.4)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontFamily: "var(--font-d)", fontWeight: 900, fontSize: "1rem", color: "var(--gold)",
+                      }}>{mHcp}</div>
+                      <button onClick={() => setCompanionIds(p => p.filter(x => x !== slot.id))}
+                        style={{ background: "none", border: "none", color: "var(--cream-dim)",
+                          cursor: "pointer", fontSize: "1.3rem", lineHeight: 1, padding: "0 4px",
+                          marginLeft: 4 }}>×</button>
+                    </div>
+                  );
+                }
+
+                // Empty slot
+                return (
+                  <div key={`slot-${idx}`} style={{ display: "flex", alignItems: "center", gap: 12,
+                    padding: "14px 0", borderBottom: "1px solid var(--navy-border)" }}>
+                    <div style={{
+                      width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
+                      border: "1.5px dashed rgba(255,255,255,.2)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }} />
+                    <div style={{ flex: 1, color: "var(--cream-dim)", fontSize: "0.9rem",
+                      fontFamily: "var(--font-d)" }}>
+                      Player {idx + 1}
+                    </div>
+                    <button
+                      onClick={() => { setShowPlayerPicker(true); setPlayerSearch(""); }}
+                      style={{ background: "none", border: "none", cursor: "pointer",
+                        color: "var(--gold)", fontFamily: "var(--font-d)", fontWeight: 700,
+                        fontSize: "0.88rem", padding: "6px 10px" }}>
+                      Add
+                    </button>
+                  </div>
+                );
+              })}
+
+              {/* League members quick-add */}
+              {eligibleMembers.length > 0 && (
+                <div style={{ marginTop: 28 }}>
+                  <div style={{ fontSize: "0.65rem", color: "var(--cream-dim)", fontFamily: "var(--font-d)",
+                    letterSpacing: "1.5px", textTransform: "uppercase", marginBottom: 14 }}>
+                    League Members
+                  </div>
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                    {eligibleMembers.slice(0, 8).map(m => {
+                      const selected = companionIds.includes(m.user_id);
+                      const atLimit = companionIds.length >= 3 && !selected;
+                      const roundsFull = rounds.filter(r => r.player_id === m.user_id
+                        && r.course_id === selectedCourse.id && r.attest_status !== "rejected").length >= config.roundsPerCourse;
+                      const disabled = atLimit || roundsFull;
+                      return (
+                        <button key={m.user_id} disabled={disabled}
+                          onClick={() => {
+                            if (disabled) return;
+                            setCompanionIds(p => selected
+                              ? p.filter(id => id !== m.user_id)
+                              : p.length < 3 ? [...p, m.user_id] : p);
+                          }}
+                          style={{ background: "none", border: "none", cursor: disabled ? "not-allowed" : "pointer",
+                            display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                            opacity: disabled ? 0.35 : 1, padding: 0 }}>
+                          <div style={{ position: "relative" }}>
+                            <MemberAvatar member={m} size={52} />
+                            {selected && (
+                              <div style={{
+                                position: "absolute", bottom: 0, right: 0, width: 18, height: 18,
+                                borderRadius: "50%", background: "var(--gold)",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: "0.6rem", fontWeight: 900, color: "var(--navy)",
+                                border: "2px solid var(--navy)",
+                              }}>✓</div>
+                            )}
+                          </div>
+                          <span style={{ fontSize: "0.65rem", color: selected ? "var(--gold)" : "var(--cream-dim)",
+                            fontFamily: "var(--font-d)", maxWidth: 60, textAlign: "center",
+                            overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+                            {m.profile.name?.split(" ")[0]}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Player picker sheet */}
+            {showPlayerPicker && (
+              <>
+                <div onClick={() => setShowPlayerPicker(false)}
+                  style={{ position: "fixed", inset: 0, zIndex: 310, background: "rgba(0,0,0,.6)" }} />
+                <div style={{
+                  position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 311,
+                  background: "var(--navy-card)", borderRadius: "18px 18px 0 0",
+                  borderTop: "1px solid var(--navy-border)",
+                  maxHeight: "70vh", display: "flex", flexDirection: "column",
+                }}>
+                  <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid var(--navy-border)", flexShrink: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                      <span style={{ fontFamily: "var(--font-d)", fontWeight: 700,
+                        fontSize: "0.95rem", color: "var(--cream)" }}>Add Playing Partner</span>
+                      <button onClick={() => setShowPlayerPicker(false)}
+                        style={{ background: "none", border: "none", color: "var(--cream-dim)",
+                          cursor: "pointer", fontSize: "1.4rem", lineHeight: 1 }}>×</button>
+                    </div>
+                    <input type="text" placeholder="Search players..." value={playerSearch}
+                      onChange={e => setPlayerSearch(e.target.value)}
+                      style={{
+                        width: "100%", padding: "9px 12px", borderRadius: 8,
+                        border: "1px solid var(--navy-border)", background: "rgba(255,255,255,.05)",
+                        color: "var(--cream)", fontSize: "0.88rem", fontFamily: "var(--font-b)",
+                        outline: "none", boxSizing: "border-box",
+                      }} autoFocus />
+                  </div>
+                  <div style={{ overflowY: "auto", flex: 1, padding: "8px 0 24px" }}>
+                    {filteredMembers.length === 0
+                      ? <div style={{ padding: "24px 16px", textAlign: "center",
+                          color: "var(--cream-dim)", fontSize: "0.82rem" }}>No players found</div>
+                      : filteredMembers.map(m => {
+                        const selected = companionIds.includes(m.user_id);
+                        const atLimit = companionIds.length >= 3 && !selected;
+                        const roundsFull = rounds.filter(r => r.player_id === m.user_id
+                          && r.course_id === selectedCourse.id && r.attest_status !== "rejected").length >= config.roundsPerCourse;
+                        const disabled = atLimit || roundsFull;
+                        return (
+                          <button key={m.user_id} disabled={disabled}
+                            onClick={() => {
+                              if (disabled) return;
+                              setCompanionIds(p => selected ? p.filter(id => id !== m.user_id) : [...p, m.user_id]);
+                              if (!selected) setShowPlayerPicker(false);
+                            }}
+                            style={{
+                              width: "100%", display: "flex", alignItems: "center", gap: 12,
+                              padding: "12px 16px", background: selected ? "rgba(212,168,67,.08)" : "transparent",
+                              border: "none", borderBottom: "1px solid rgba(255,255,255,.04)",
+                              cursor: disabled ? "not-allowed" : "pointer", textAlign: "left",
+                              opacity: disabled ? 0.4 : 1,
+                            }}>
+                            <MemberAvatar member={m} size={44} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontFamily: "var(--font-d)", fontWeight: 700,
+                                fontSize: "0.9rem", color: "var(--cream)" }}>{m.profile.name}</div>
+                              <div style={{ fontSize: "0.7rem", color: roundsFull ? "#f87171" : "var(--cream-dim)", marginTop: 2 }}>
+                                {roundsFull ? "All rounds used for this course"
+                                  : m.profile.handicap != null ? `Index ${m.profile.handicap}` : "Scratch"}
+                              </div>
+                            </div>
+                            {selected && <span style={{ color: "var(--gold)", fontSize: "1rem" }}>✓</span>}
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Start Round button */}
+            <div style={{ padding: "16px 16px 32px", flexShrink: 0,
+              borderTop: "1px solid var(--navy-border)", background: "var(--navy)" }}>
+              <button className="btn btn-gold" style={{ width: "100%", justifyContent: "center",
+                padding: "15px", fontSize: "1rem" }}
+                onClick={() => { setShowGroupModal(false); setShowPlayerPicker(false); startLiveRound(); }}>
+                <Radio size={16} /> Start Round
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {showHcpModal && selectedCourse && (
         <div className="modal-bg" onClick={() => setShowHcpModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>

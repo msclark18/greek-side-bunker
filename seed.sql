@@ -156,8 +156,29 @@ BEGIN
     mason_id
   ) RETURNING id INTO league_stroke;
 
-  INSERT INTO courses (league_id, name, par, holes, slope, rating)
-  VALUES (league_stroke, 'Pebble Creek Golf Club', 72, 18, 131.0, 72.8) RETURNING id INTO cs1;
+  INSERT INTO courses (league_id, name, par, holes, slope, rating, scorecard)
+  VALUES (league_stroke, 'Pebble Creek Golf Club', 72, 18, 131.0, 72.8,
+    '{"tee_name":"White","holes":[
+      {"hole":1,  "par":4,"stroke_index":7, "yardage":385},
+      {"hole":2,  "par":5,"stroke_index":13,"yardage":520},
+      {"hole":3,  "par":3,"stroke_index":17,"yardage":165},
+      {"hole":4,  "par":4,"stroke_index":1, "yardage":430},
+      {"hole":5,  "par":4,"stroke_index":11,"yardage":360},
+      {"hole":6,  "par":4,"stroke_index":5, "yardage":400},
+      {"hole":7,  "par":3,"stroke_index":15,"yardage":145},
+      {"hole":8,  "par":5,"stroke_index":3, "yardage":545},
+      {"hole":9,  "par":4,"stroke_index":9, "yardage":395},
+      {"hole":10, "par":4,"stroke_index":4, "yardage":415},
+      {"hole":11, "par":3,"stroke_index":16,"yardage":175},
+      {"hole":12, "par":5,"stroke_index":8, "yardage":510},
+      {"hole":13, "par":4,"stroke_index":2, "yardage":440},
+      {"hole":14, "par":4,"stroke_index":12,"yardage":370},
+      {"hole":15, "par":3,"stroke_index":18,"yardage":140},
+      {"hole":16, "par":5,"stroke_index":6, "yardage":560},
+      {"hole":17, "par":4,"stroke_index":10,"yardage":390},
+      {"hole":18, "par":4,"stroke_index":14,"yardage":405}
+    ]}'::jsonb
+  ) RETURNING id INTO cs1;
   INSERT INTO courses (league_id, name, par, holes, slope, rating)
   VALUES (league_stroke, 'Ridgemont Country Club', 71, 18, 124.0, 70.5) RETURNING id INTO cs2;
 
@@ -200,9 +221,10 @@ BEGIN
     ON CONFLICT DO NOTHING;
   END LOOP;
 
-  -- Mason's rounds (7 rounds, alternating courses)
+  -- Mason's rounds (4 completed: 2 per course)
+  -- Leaves 1 slot open on each course so Mason can start a fresh live round from the UI
   chcp := round(mason_hcp * 131.0 / 113.0 + (72.8 - 72))::int;
-  FOR j IN 0..6 LOOP
+  FOR j IN 0..3 LOOP
     rd    := '2025-04-02'::date + (j * 14);
     gross := 72 + chcp + floor(random() * 10)::int - 2;
     net   := gross - chcp;
@@ -592,3 +614,9 @@ END $$;
 
 -- ── Step 4: Restore constraints and trigger ───────────────
 ALTER TABLE leagues ENABLE TRIGGER USER;
+
+-- ── Step 5: Mark all seed rounds as completed ─────────────
+-- The app filters on round_status = 'completed' for the leaderboard.
+-- Seed rounds are inserted without this column so we set it here.
+UPDATE rounds SET round_status = 'completed'
+WHERE attest_status = 'approved' AND (round_status IS NULL OR round_status != 'completed');

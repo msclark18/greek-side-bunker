@@ -198,6 +198,20 @@ export default function Leaderboard({
               const diff = playedPar > 0 ? gross - playedPar : null;
               const diffLabel = diff === null ? null : diff === 0 ? "E" : diff > 0 ? `+${diff}` : `${diff}`;
               const diffColor = diff === null ? "var(--cream-dim)" : diff < 0 ? "#3b82f6" : diff === 0 ? "#6ee7a0" : "var(--cream-dim)";
+              // Net: deduct strokes received on holes played so far
+              const cHcp = r.course_handicap ?? 0;
+              const playedStrokes = holeData.reduce((a, h, i) => {
+                if (holeScores[i] == null || !h.stroke_index) return a;
+                let s = 0;
+                if (cHcp > 0) {
+                  if (h.stroke_index <= cHcp) s++;
+                  if (cHcp > 18 && h.stroke_index <= cHcp - 18) s++;
+                } else if (cHcp < 0) {
+                  if (h.stroke_index > 18 - Math.abs(cHcp)) s--;
+                }
+                return a + s;
+              }, 0);
+              const net = config.useHandicap && gross > 0 ? gross - playedStrokes : null;
               return (
                 <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--navy-border)" }}>
                   <div>
@@ -210,7 +224,18 @@ export default function Leaderboard({
                         {diffLabel}
                       </span>
                     )}
-                    {gross > 0 && !diffLabel && (
+                    {net != null && (() => {
+                      const netDiff = playedPar > 0 ? net - playedPar : null;
+                      const netLabel = netDiff === null ? null : netDiff === 0 ? "E" : netDiff > 0 ? `+${netDiff}` : `${netDiff}`;
+                      const netColor = netDiff === null ? "var(--cream)" : netDiff < 0 ? "#3b82f6" : netDiff === 0 ? "#6ee7a0" : "#ef4444";
+                      return (
+                        <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-d)", color: "var(--cream-dim)" }}>
+                          Net <span style={{ color: "var(--cream)", fontWeight: 700 }}>{net}</span>
+                          {netLabel && <span style={{ color: netColor, fontWeight: 700, marginLeft: 3 }}>{netLabel}</span>}
+                        </span>
+                      );
+                    })()}
+                    {gross > 0 && !diffLabel && net == null && (
                       <span style={{ fontSize: "0.8rem", color: "var(--cream)", fontFamily: "var(--font-d)" }}>
                         {gross}
                       </span>
@@ -218,6 +243,11 @@ export default function Leaderboard({
                     <span style={{ fontSize: "0.7rem", color: "#6ee7a0", fontFamily: "var(--font-d)", padding: "2px 9px", border: "1px solid rgba(76,175,125,.4)", borderRadius: 20, whiteSpace: "nowrap" }}>
                       Thru {thru}
                     </span>
+                    {holeScores.some(s => s != null) && (
+                      <button className="sc-btn" onClick={() => setViewCardModal({ round: r, course: courseSc, playerName: r.player_name, useHandicap: config.useHandicap })}>
+                        <FileText size={12} />
+                      </button>
+                    )}
                   </div>
                 </div>
               );

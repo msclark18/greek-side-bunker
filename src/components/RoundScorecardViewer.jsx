@@ -47,7 +47,9 @@ export default function RoundScorecardViewer({ round, course, playerName, useHan
   const stats    = round.hole_stats  ?? [];
   const hcp      = round.course_handicap ?? 0;
   const gross    = round.gross ?? scores.reduce((a, s) => a + (s ?? 0), 0);
-  const net      = round.net  ?? gross - hcp;
+  // For live rounds round.net is 0/null (not yet computed) — always derive from holes played
+  const playedStrokes = holeData.reduce((a, h, i) => a + (scores[i] != null ? getStrokesFor(h.stroke_index, hcp) : 0), 0);
+  const net = (round.round_status !== "in_progress" && round.net != null) ? round.net : gross - playedStrokes;
   const hasStats = stats.some(s => s?.putts != null || s?.fairway || s?.penalties?.length > 0);
 
   const th = (extra = {}) => ({
@@ -219,9 +221,9 @@ export default function RoundScorecardViewer({ round, course, playerName, useHan
     );
   };
 
-  const par = holeData.reduce((a, h) => a + (h.par ?? 0), 0);
-  const diff = gross - par;
-  const diffLabel = par > 0 ? (diff === 0 ? "E" : diff > 0 ? `+${diff}` : `${diff}`) : null;
+  const playedPar = holeData.reduce((a, h, i) => a + (scores[i] != null ? (h.par ?? 0) : 0), 0);
+  const diff = playedPar > 0 ? gross - playedPar : null;
+  const diffLabel = diff === null ? null : diff === 0 ? "E" : diff > 0 ? `+${diff}` : `${diff}`;
 
   return (
     <div style={{ paddingBottom: 8 }}>
@@ -246,11 +248,20 @@ export default function RoundScorecardViewer({ round, course, playerName, useHan
             {gross || "—"}
             {diffLabel && <span style={{ fontSize: "0.7rem", color: diff < 0 ? "#3b82f6" : diff === 0 ? "var(--cream-dim)" : "#ef4444", marginLeft: 6, fontWeight: 700 }}>{diffLabel}</span>}
           </div>
-          {useHandicap && gross > 0 && (
-            <div style={{ fontSize: "0.65rem", color: "var(--gold)", fontFamily: "var(--font-d)", marginTop: 2 }}>
-              NET {net}
-            </div>
-          )}
+          {useHandicap && gross > 0 && (() => {
+            const netDiff = playedPar > 0 ? net - playedPar : null;
+            const netLabel = netDiff === null ? null : netDiff === 0 ? "E" : netDiff > 0 ? `+${netDiff}` : `${netDiff}`;
+            return (
+              <div style={{ fontSize: "0.65rem", color: "var(--gold)", fontFamily: "var(--font-d)", marginTop: 2 }}>
+                NET {net}
+                {netLabel && (
+                  <span style={{ marginLeft: 5, color: netDiff < 0 ? "#3b82f6" : netDiff === 0 ? "rgba(212,168,67,.6)" : "#ef4444", fontWeight: 700 }}>
+                    {netLabel}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
