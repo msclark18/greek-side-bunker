@@ -1764,7 +1764,7 @@ setConfirmClear(false);
                   )}
                   {c.id === null && (
                     <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                      <input className="inp" placeholder="City (optional)" value={courseSearch.teeDraft.city ?? ""} onChange={e => setCourseSearch(s => ({ ...s, teeDraft: { ...s.teeDraft, city: e.target.value } }))} style={{ flex: 2 }} />
+                      <input type="text" placeholder="City (optional)" value={courseSearch.teeDraft.city ?? ""} onChange={e => setCourseSearch(s => ({ ...s, teeDraft: { ...s.teeDraft, city: e.target.value } }))} style={{ flex: 2 }} />
                       <select value={courseSearch.teeDraft.state ?? ""} onChange={e => setCourseSearch(s => ({ ...s, teeDraft: { ...s.teeDraft, state: e.target.value } }))} style={{ flex: 1 }}>
                         <option value="">State</option>
                         {["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"].map(s => <option key={s} value={s}>{s}</option>)}
@@ -2256,7 +2256,7 @@ setConfirmRemoveBylaws(false);
       {holePreviewTee && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
           onClick={() => setHolePreviewTee(null)}>
-          <div style={{ background: "var(--card)", borderRadius: 12, padding: 20, maxWidth: 480, width: "100%", maxHeight: "80vh", overflowY: "auto" }}
+          <div style={{ background: "#1a1f2e", borderRadius: 12, padding: 20, maxWidth: 480, width: "100%", maxHeight: "80vh", overflowY: "auto", border: "1px solid rgba(255,255,255,.1)" }}
             onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <div>
