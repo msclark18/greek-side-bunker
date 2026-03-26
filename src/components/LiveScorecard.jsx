@@ -161,6 +161,7 @@ export default function LiveScorecard({
   });
   const [mode, setMode] = useState("entry"); // "entry" | "card"
   const [showDetails, setShowDetails] = useState(false); // scorecard expand (yardage + HDCP rows)
+  const [expandedPlayers, setExpandedPlayers] = useState(new Set());
   const [activeHole, setActiveHole] = useState(() => {
     const existing = round.hole_scores ?? [];
     const firstEmpty = existing.findIndex(s => s == null);
@@ -819,10 +820,15 @@ export default function LiveScorecard({
     const useHcp = config.useHandicap;
 
     const players = [
-      { name: profile?.name ?? "Me", scores, hcp: courseHandicap, getS: getStrokes },
+      { name: profile?.name ?? "Me", scores, hcp: courseHandicap, getS: getStrokes, stats: holeStats },
       ...companions.map((c, i) => {
         const cHcp = c.round.course_handicap ?? 0;
-        return { name: c.member.profile?.name ?? `P${i + 2}`, scores: companionScores[i] ?? [], hcp: cHcp, getS: (si) => getStrokesFor(si, cHcp) };
+        const cStats = Array.from({ length: numHoles }, (_, j) => ({
+          putts: c.round.hole_stats?.[j]?.putts ?? null,
+          fairway: c.round.hole_stats?.[j]?.fairway ?? null,
+          penalties: c.round.hole_stats?.[j]?.penalties ?? [],
+        }));
+        return { name: c.member.profile?.name ?? `P${i + 2}`, scores: companionScores[i] ?? [], hcp: cHcp, getS: (si) => getStrokesFor(si, cHcp), stats: cStats };
       }),
     ];
 
@@ -997,14 +1003,42 @@ export default function LiveScorecard({
                 const firstName = displayNames[pi];
                 const rowBg = pi % 2 === 0 ? "rgba(255,255,255,.025)" : "rgba(255,255,255,.01)";
                 const stickyBg = pi % 2 === 0 ? "rgba(18,22,40,1)" : "rgba(14,18,32,1)";
+                const isExpanded = expandedPlayers.has(pi);
+                const toggleExpanded = () => setExpandedPlayers(prev => {
+                  const next = new Set(prev);
+                  next.has(pi) ? next.delete(pi) : next.add(pi);
+                  return next;
+                });
+
+                // Compute full-round stats for this player
+                const drivingEligible = holeData.filter((_, i) => (holeData[i].par === 4 || holeData[i].par === 5) && p.scores[i] != null);
+                const drivingHits = holeData.reduce((acc, h, i) =>
+                  acc + ((h.par === 4 || h.par === 5) && p.scores[i] != null && p.stats[i]?.fairway === "hit" ? 1 : 0), 0);
+                const drivingPct = drivingEligible.length > 0
+                  ? `${Math.round(drivingHits / drivingEligible.length * 100)}% (${drivingHits}/${drivingEligible.length})` : "—";
+
+                const girEligible = holeData.filter((_, i) => p.scores[i] != null && p.stats[i]?.putts != null);
+                const girHits = holeData.reduce((acc, h, i) => {
+                  const score = p.scores[i]; const putts = p.stats[i]?.putts;
+                  return acc + (score != null && putts != null && (score - putts) <= (h.par - 2) ? 1 : 0);
+                }, 0);
+                const girPct = girEligible.length > 0
+                  ? `${Math.round(girHits / girEligible.length * 100)}% (${girHits}/${girEligible.length})` : "—";
+
+                const totalPenalties = holeData.reduce((acc, _, i) =>
+                  acc + (p.stats[i]?.penalties?.length ?? 0), 0);
+
                 return (
                   <React.Fragment key={pi}>
                     {/* Gross score row */}
                     <tr style={{ background: rowBg, borderTop: pi === 0 ? "1px solid rgba(212,168,67,.2)" : "none" }}>
-                      <td style={td({ textAlign: "left", paddingLeft: 8, color: "var(--cream)",
+                      <td onClick={toggleExpanded} style={td({ textAlign: "left", paddingLeft: 8, color: "var(--cream)",
                         fontFamily: "var(--font-d)", fontSize: "0.6rem", fontWeight: 700,
-                        letterSpacing: "0.5px", position: "sticky", left: 0,
+                        letterSpacing: "0.5px", position: "sticky", left: 0, cursor: "pointer",
                         background: stickyBg, zIndex: 1, whiteSpace: "nowrap", width: 1 })}>
+                        <span style={{ marginRight: 3, fontSize: "0.45rem", opacity: 0.5 }}>
+                          {isExpanded ? "▲" : "▼"}
+                        </span>
                         {firstName}
                         {useHcp && <span style={{ color: "rgba(212,168,67,.6)", fontWeight: 400,
                           fontSize: "0.5rem", marginLeft: 3 }}>[{p.hcp < 0 ? `+${Math.abs(p.hcp)}` : (p.hcp ?? 0)}]</span>}
@@ -1044,6 +1078,32 @@ export default function LiveScorecard({
                         </td>
                       </>}
                     </tr>
+                    {/* Expanded stats row */}
+                    {isExpanded && (
+                      <tr style={{ background: "rgba(212,168,67,.04)" }}>
+                        <td colSpan={11 + extraCols} style={{
+                          padding: "10px 12px",
+                          borderBottom: "1px solid rgba(212,168,67,.15)",
+                          position: "sticky", left: 0,
+                        }}>
+                          <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+                            {[
+                              { label: "DRIVING", value: drivingPct },
+                              { label: "GIR", value: girPct },
+                              { label: "PENALTIES", value: totalPenalties > 0 ? totalPenalties : "0" },
+                            ].map(({ label, value }) => (
+                              <div key={label}>
+                                <div style={{ fontSize: "0.48rem", color: "var(--cream-dim)",
+                                  fontFamily: "var(--font-d)", letterSpacing: "1.5px",
+                                  textTransform: "uppercase", marginBottom: 2 }}>{label}</div>
+                                <div style={{ fontSize: "0.78rem", fontWeight: 700,
+                                  fontFamily: "var(--font-d)", color: "var(--cream)" }}>{value}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   </React.Fragment>
                 );
               });
