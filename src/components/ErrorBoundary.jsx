@@ -16,6 +16,7 @@ export default class ErrorBoundary extends Component {
 
   render() {
     if (!this.state.hasError) return this.props.children;
+    const { onReset } = this.props;
 
     return (
       <div style={{
@@ -48,48 +49,39 @@ export default class ErrorBoundary extends Component {
           <p style={{ fontSize: ".9rem", color: "#c8bfa8", lineHeight: 1.7, marginBottom: 28 }}>
             The app ran into an unexpected error. This is usually caused by a connection issue or a temporary outage. Please try refreshing the page.
           </p>
+          {this.state.error && (
+            <pre style={{ fontSize: ".72rem", color: "#ef4444", marginBottom: 20, textAlign: "left",
+              background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)",
+              borderRadius: 8, padding: 12, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              {this.state.error.toString()}
+            </pre>
+          )}
           <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
             <button
               onClick={() => window.location.reload()}
               style={{
                 padding: "11px 24px",
                 background: "linear-gradient(135deg, #d4a843, #f0c96a)",
-                color: "#0a0e1a",
-                border: "none",
-                borderRadius: 8,
-                fontFamily: "Georgia, serif",
-                fontSize: ".85rem",
-                fontWeight: 700,
-                cursor: "pointer",
-                letterSpacing: "1px",
+                color: "#0a0e1a", border: "none", borderRadius: 8,
+                fontFamily: "Georgia, serif", fontSize: ".85rem",
+                fontWeight: 700, cursor: "pointer", letterSpacing: "1px",
               }}
             >
               Refresh Page
             </button>
-            <button
-              onClick={() => this.setState({ hasError: false, error: null })}
-              style={{
-                padding: "11px 24px",
-                background: "rgba(255,255,255,.06)",
-                color: "#f0ead8",
-                border: "1px solid rgba(255,255,255,.15)",
-                borderRadius: 8,
-                fontFamily: "Georgia, serif",
-                fontSize: ".85rem",
-                cursor: "pointer",
-              }}
-            >
-              Try Again
-            </button>
+            {onReset && (
+              <button
+                onClick={() => { this.setState({ hasError: false, error: null }); onReset(); }}
+                style={{
+                  padding: "11px 24px", background: "rgba(255,255,255,.06)", color: "#f0ead8",
+                  border: "1px solid rgba(255,255,255,.15)", borderRadius: 8,
+                  fontFamily: "Georgia, serif", fontSize: ".85rem", cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
+            )}
           </div>
-          {this.state.error && (
-            <details style={{ marginTop: 24, textAlign: "left" }}>
-              <summary style={{ fontSize: ".72rem", color: "#4b5563", cursor: "pointer" }}>Error details</summary>
-              <pre style={{ fontSize: ".68rem", color: "#4b5563", marginTop: 8, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-                {this.state.error.toString()}
-              </pre>
-            </details>
-          )}
         </div>
       </div>
     );

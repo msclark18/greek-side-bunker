@@ -63,12 +63,15 @@ function ScoreCell({ score, par, size = 28 }) {
 // ── Stroke allocation dots ───────────────────────────────────────────────────
 function StrokeDots({ count }) {
   if (!count) return null;
+  const giving = count < 0;
   return (
-    <span style={{ display: "inline-flex", gap: 2, marginLeft: 3 }}>
-      {Array.from({ length: count }).map((_, i) => (
+    <span style={{ display: "inline-flex", gap: 2 }}>
+      {Array.from({ length: Math.abs(count) }).map((_, i) => (
         <span key={i} style={{
           width: 5, height: 5, borderRadius: "50%",
-          background: "var(--gold)", display: "inline-block", flexShrink: 0,
+          background: giving ? "#ef4444" : "var(--gold)",
+          display: "inline-block", flexShrink: 0,
+          opacity: giving ? 0.8 : 1,
         }} />
       ))}
     </span>
@@ -76,54 +79,63 @@ function StrokeDots({ count }) {
 }
 
 // ── Tee shot D-pad target ────────────────────────────────────────────────────
+function teeBtn(active, onClick, Icon, w, h, br) {
+  return (
+    <button onClick={onClick} style={{
+      width: w, height: h, borderRadius: br, flexShrink: 0,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      border: active ? "2px solid rgba(160,195,255,.85)" : "1.5px solid rgba(255,255,255,.13)",
+      background: active ? "rgba(100,150,230,.24)" : "rgba(255,255,255,.08)",
+      color: active ? "rgba(180,215,255,1)" : "rgba(255,255,255,.45)",
+      cursor: "pointer", transition: "all .12s",
+      boxShadow: active ? "0 0 12px rgba(100,150,230,.35)" : "none",
+    }}>
+      <Icon size={15} strokeWidth={2.5} />
+    </button>
+  );
+}
+
 function TeeTarget({ value, onChange }) {
-  const on = (k) => value === k;
-  const tap = (k) => onChange(value === k ? null : k);
-
-  const Btn = ({ k, Icon, w = 44, h = 44, br = 10 }) => {
-    const active = on(k);
-    return (
-      <button onClick={() => tap(k)} style={{
-        width: w, height: h, borderRadius: br,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        border: active ? "2px solid rgba(160,195,255,.8)" : "1.5px solid rgba(255,255,255,.1)",
-        background: active ? "rgba(100,150,230,.22)" : "rgba(255,255,255,.06)",
-        color: active ? "rgba(180,215,255,1)" : "rgba(255,255,255,.4)",
-        cursor: "pointer", transition: "all .12s", flexShrink: 0,
-      }}>
-        <Icon size={17} strokeWidth={2.2} />
-      </button>
-    );
-  };
-
+  const on  = (k) => value === k;
+  const tap = (k) => () => onChange(value === k ? null : k);
   const hitActive = on("hit");
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center",
-      gap: 5, userSelect: "none" }}>
-      {/* Long */}
-      <Btn k="long" Icon={ChevronUp} w={56} h={36} br="10px 10px 6px 6px" />
+    <div style={{
+      width: 220, height: 220, borderRadius: "50%", flexShrink: 0,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      background: "rgba(255,255,255,.04)", border: "1.5px solid rgba(255,255,255,.09)",
+      boxShadow: "0 0 0 6px rgba(255,255,255,.025)",
+      userSelect: "none",
+    }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+      {/* Long — petal rounded on top, flat on bottom */}
+      {teeBtn(on("long"),     tap("long"),     ChevronUp,    54, 24, "40px 40px 10px 10px")}
       {/* Middle row */}
-      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-        <Btn k="farleft"  Icon={ChevronsLeft}  w={44} h={56} br="10px 6px 6px 10px" />
-        <Btn k="left"     Icon={ChevronLeft}   w={36} h={56} br={6} />
-        {/* HIT center */}
-        <button onClick={() => tap("hit")} style={{
-          width: 68, height: 68, borderRadius: "50%",
+      <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+        {/* Far Left — petal rounded on left, flat on right */}
+        {teeBtn(on("farleft"),  tap("farleft"),  ChevronsLeft,  24, 44, "40px 10px 10px 40px")}
+        {/* Left — petal rounded on left, flat on right */}
+        {teeBtn(on("left"),     tap("left"),     ChevronLeft,   30, 56, "40px 10px 10px 40px")}
+        {/* HIT */}
+        <button onClick={tap("hit")} style={{
+          width: 68, height: 68, borderRadius: "50%", flexShrink: 0,
           display: "flex", alignItems: "center", justifyContent: "center",
           border: hitActive ? "2.5px solid #4caf7d" : "2px solid rgba(255,255,255,.15)",
-          background: hitActive ? "rgba(76,175,125,.28)" : "rgba(255,255,255,.07)",
-          cursor: "pointer", transition: "all .14s", flexShrink: 0,
-          boxShadow: hitActive ? "0 0 16px rgba(76,175,125,.35)" : "none",
+          background: hitActive ? "rgba(76,175,125,.28)" : "rgba(255,255,255,.08)",
+          cursor: "pointer", transition: "all .14s",
+          boxShadow: hitActive ? "0 0 20px rgba(76,175,125,.45)" : "none",
         }}>
           <span style={{ fontFamily: "var(--font-d)", fontWeight: 900, fontSize: "0.88rem",
-            color: hitActive ? "#4caf7d" : "rgba(255,255,255,.55)",
-            letterSpacing: "0.5px" }}>HIT</span>
+            color: hitActive ? "#4caf7d" : "rgba(255,255,255,.55)", letterSpacing: "0.5px" }}>HIT</span>
         </button>
-        <Btn k="right"    Icon={ChevronRight}  w={36} h={56} br={6} />
-        <Btn k="farright" Icon={ChevronsRight} w={44} h={56} br="6px 10px 10px 6px" />
+        {/* Right — petal rounded on right, flat on left */}
+        {teeBtn(on("right"),    tap("right"),    ChevronRight,  30, 56, "10px 40px 40px 10px")}
+        {/* Far Right — petal rounded on right, flat on left */}
+        {teeBtn(on("farright"), tap("farright"), ChevronsRight, 24, 44, "10px 40px 40px 10px")}
       </div>
-      {/* Short */}
-      <Btn k="short" Icon={ChevronDown} w={56} h={36} br="6px 6px 10px 10px" />
+      {/* Short — petal rounded on bottom, flat on top */}
+      {teeBtn(on("short"),    tap("short"),    ChevronDown,  54, 24, "10px 10px 40px 40px")}
+    </div>
     </div>
   );
 }
@@ -148,6 +160,7 @@ export default function LiveScorecard({
     return Array.from({ length: numHoles }, (_, i) => existing[i] ?? null);
   });
   const [mode, setMode] = useState("entry"); // "entry" | "card"
+  const [showDetails, setShowDetails] = useState(false); // scorecard expand (yardage + HDCP rows)
   const [activeHole, setActiveHole] = useState(() => {
     const existing = round.hole_scores ?? [];
     const firstEmpty = existing.findIndex(s => s == null);
@@ -179,22 +192,29 @@ export default function LiveScorecard({
   const [pendingStats, setPendingStats] = useState({ putts: 2, fairway: null, mishit: false, penalties: [] });
   const statsTimeout = useRef(null);
 
-  // How many strokes does this player get on a given hole?
+  // How many strokes does this player get (positive) or give (negative) on a hole?
   const getStrokes = (si) => {
     if (!si || !courseHandicap) return 0;
-    let s = 0;
-    if (si <= courseHandicap) s++;
-    if (courseHandicap > 18 && si <= courseHandicap - 18) s++;
-    return s;
+    if (courseHandicap > 0) {
+      let s = 0;
+      if (si <= courseHandicap) s++;
+      if (courseHandicap > 18 && si <= courseHandicap - 18) s++;
+      return s;
+    }
+    // Plus handicap: gives a stroke on the |hcp| easiest holes (highest SI)
+    return si > 18 - Math.abs(courseHandicap) ? -1 : 0;
   };
 
   // getStrokes for a specific courseHandicap (for companions)
   const getStrokesFor = (si, hcp) => {
     if (!si || !hcp) return 0;
-    let s = 0;
-    if (si <= hcp) s++;
-    if (hcp > 18 && si <= hcp - 18) s++;
-    return s;
+    if (hcp > 0) {
+      let s = 0;
+      if (si <= hcp) s++;
+      if (hcp > 18 && si <= hcp - 18) s++;
+      return s;
+    }
+    return si > 18 - Math.abs(hcp) ? -1 : 0;
   };
 
   const thru = scores.filter(s => s != null).length;
@@ -213,7 +233,6 @@ export default function LiveScorecard({
       trackingOnly: c.round.tracking_only ?? false,
     })),
   ];
-  const activeScores = activePlayerId === 0 ? scores : (companionScores[activePlayerId - 1] ?? []);
 
   // Debounced save — fires 800ms after last hole entry
   const saveScores = useCallback((newScores) => {
@@ -269,28 +288,6 @@ export default function LiveScorecard({
     }
   };
 
-  const clearScore = (holeIdx) => {
-    if (activePlayerId === 0) {
-      const next = [...scores];
-      next[holeIdx] = null;
-      setScores(next);
-      saveScores(next);
-    } else {
-      const cIdx = activePlayerId - 1;
-      setCompanionScores(prev => {
-        const base = prev.length > cIdx ? prev : [
-          ...prev,
-          ...Array.from({ length: cIdx + 1 - prev.length }, () =>
-            Array.from({ length: numHoles }, () => null)
-          ),
-        ];
-        const next = base.map((cs, i) => i === cIdx ? [...cs] : cs);
-        next[cIdx][holeIdx] = null;
-        saveCompanionScore(cIdx, next[cIdx]);
-        return next;
-      });
-    }
-  };
 
   const handleSubmit = async () => {
     if (submitLoading) return;
@@ -376,8 +373,6 @@ export default function LiveScorecard({
       return diff === 0 ? "E" : diff > 0 ? `+${diff}` : `${diff}`;
     };
 
-    const mainScores = scores;
-    const firstMainEmpty = mainScores.findIndex(s => s == null);
 
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -532,9 +527,9 @@ export default function LiveScorecard({
           justifyContent: "center",
         }}>
           {(() => {
-            const firstEmpty = mainScores.findIndex(s => s == null);
+            const firstEmpty = scores.findIndex(s => s == null);
             return Array.from({ length: numHoles }, (_, i) => {
-              const isAccessible = mainScores[i] != null || i === firstEmpty || firstEmpty === -1;
+              const isAccessible = scores[i] != null || i === firstEmpty || firstEmpty === -1;
               return (
                 <button
                   key={i}
@@ -543,10 +538,10 @@ export default function LiveScorecard({
                     width: 26, height: 26, borderRadius: "50%", border: "none",
                     background: i === activeHole
                       ? "var(--gold)"
-                      : mainScores[i] != null ? "rgba(76,175,125,.25)" : "rgba(255,255,255,.06)",
+                      : scores[i] != null ? "rgba(76,175,125,.25)" : "rgba(255,255,255,.06)",
                     color: i === activeHole
                       ? "var(--navy)"
-                      : mainScores[i] != null ? "#6ee7a0" : "var(--cream-dim)",
+                      : scores[i] != null ? "#6ee7a0" : "var(--cream-dim)",
                     cursor: isAccessible ? "pointer" : "default",
                     opacity: isAccessible ? 1 : 0.4,
                     fontSize: "0.6rem",
@@ -555,7 +550,7 @@ export default function LiveScorecard({
                     flexShrink: 0,
                   }}
                 >
-                  {mainScores[i] != null ? mainScores[i] : i + 1}
+                  {scores[i] != null ? scores[i] : i + 1}
                 </button>
               );
             });
@@ -641,10 +636,10 @@ export default function LiveScorecard({
                       // All players scored — close sheet and advance hole
                       setNumPadOpen(false);
                       setActivePlayerId(0);
-                      const mainScores = activePlayerId === 0
+                      const updatedMainScores = activePlayerId === 0
                         ? (() => { const n = [...scores]; n[activeHole] = pendingScore; return n; })()
                         : scores;
-                      const nextEmpty = mainScores.findIndex((s, i) => i > activeHole && s == null);
+                      const nextEmpty = updatedMainScores.findIndex((s, i) => i > activeHole && s == null);
                       if (nextEmpty !== -1) setActiveHole(nextEmpty);
                       else if (activeHole < numHoles - 1) setActiveHole(activeHole + 1);
                     } else {
@@ -733,7 +728,7 @@ export default function LiveScorecard({
 
               {/* Tee shot target — par 4/5 only */}
               {(h?.par === 4 || h?.par === 5) && (
-                <div style={{ marginBottom: 20 }}>
+                <div style={{ marginBottom: 20, display: "flex", flexDirection: "column", alignItems: "center" }}>
                   <div style={{ fontSize: "0.62rem", color: "var(--cream-dim)",
                     fontFamily: "var(--font-d)", letterSpacing: "1.5px",
                     textTransform: "uppercase", marginBottom: 10, textAlign: "center" }}>Tee Shot</div>
@@ -846,20 +841,23 @@ export default function LiveScorecard({
       borderBottom: "1px solid rgba(255,255,255,.04)", ...extra,
     });
 
-    const HalfTable = ({ startIdx }) => {
+    const HalfTable = ({ startIdx, showTotals = false, showDetails = false }) => {
       const holes = holeData.slice(startIdx, startIdx + 9);
-      const halfPar = holes.reduce((a, h) => a + (h.par ?? 0), 0);
       const outLabel = startIdx === 0 ? "OUT" : "IN";
+      const extraCols = showTotals ? 3 : 0; // TOTAL + HDCP + NET
+      const teeName = course?.scorecard?.tee_name ?? "Yards";
+      // rowSpan for HDCP/NET: holes row + PAR row + (yardage row if expanded) + (SI row if showTotals)
+      const hdcpNetRowSpan = 2 + (showDetails ? 1 : 0) + (showTotals ? 1 : 0);
 
       return (
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ borderCollapse: "collapse", fontSize: "0.7rem", tableLayout: "fixed",
-            minWidth: useHcp ? 520 : 420 }}>
+            minWidth: useHcp ? (showTotals ? 640 : 520) : (showTotals ? 540 : 420) }}>
             {/* ── Header ── */}
             <thead>
               {/* Section label row */}
               <tr style={{ background: "rgba(212,168,67,.14)" }}>
-                <th colSpan={11} style={{ padding: "6px 10px", textAlign: "left",
+                <th colSpan={11 + extraCols} style={{ padding: "6px 10px", textAlign: "left",
                   fontFamily: "var(--font-d)", fontWeight: 900, fontSize: "0.65rem",
                   letterSpacing: "2px", color: "var(--gold)", textTransform: "uppercase",
                   position: "sticky", left: 0, background: "rgba(212,168,67,.14)" }}>
@@ -889,55 +887,91 @@ export default function LiveScorecard({
                     </th>
                   );
                 })}
-                <th style={th({ width: 36, color: "var(--gold)", borderLeft: "2px solid rgba(212,168,67,.25)",
-                  borderRight: "none", fontSize: "0.6rem" })}>{outLabel}</th>
+                <th style={th({ width: 36, color: "var(--gold)",
+                  borderLeft: "2px solid rgba(212,168,67,.25)", fontSize: "0.6rem" })}>{outLabel}</th>
+                {showTotals && <>
+                  <th style={th({ width: 40, color: "var(--gold)", fontSize: "0.6rem" })}>TOTAL</th>
+                  <th rowSpan={hdcpNetRowSpan} style={th({ width: 44, color: "rgba(212,168,67,.6)", fontSize: "0.6rem",
+                    verticalAlign: "middle" })}>HDCP</th>
+                  <th rowSpan={hdcpNetRowSpan} style={th({ width: 44, color: "rgba(212,168,67,.6)", fontSize: "0.6rem",
+                    borderRight: "none", verticalAlign: "middle" })}>NET</th>
+                </>}
               </tr>
+              {/* Yardage row — only when expanded */}
+              {showDetails && (
+                <tr style={{ background: "rgba(255,255,255,.008)" }}>
+                  <th style={th({ textAlign: "left", paddingLeft: 10, color: "var(--cream-dim)",
+                    fontFamily: "var(--font-d)", fontSize: "0.58rem", letterSpacing: "1px",
+                    fontWeight: 400, position: "sticky", left: 0, background: "rgba(12,16,28,1)", zIndex: 2 })}>
+                    {teeName}
+                  </th>
+                  {holes.map((h, idx) => (
+                    <th key={idx} style={th({ color: "var(--cream-dim)", fontSize: "0.6rem", fontWeight: 400 })}>
+                      {h.yardage ?? h.yards ?? h.distance ?? "—"}
+                    </th>
+                  ))}
+                  <th style={th({ fontWeight: 700, color: "var(--cream-dim)",
+                    borderLeft: "2px solid rgba(212,168,67,.25)" })}>
+                    {holes.reduce((a, h) => a + (h.yardage ?? h.yards ?? h.distance ?? 0), 0) || "—"}
+                  </th>
+                  {showTotals && (
+                    <th style={th({ fontWeight: 700, color: "var(--cream-dim)" })}>
+                      {holeData.reduce((a, h) => a + (h.yardage ?? h.yards ?? h.distance ?? 0), 0) || "—"}
+                    </th>
+                  )}
+                  {/* HDCP and NET covered by rowSpan */}
+                </tr>
+              )}
+              {/* PAR row */}
+              <tr style={{ background: "rgba(255,255,255,.015)" }}>
+                <th style={th({ textAlign: "left", paddingLeft: 10, color: "var(--cream-dim)",
+                  fontFamily: "var(--font-d)", fontSize: "0.58rem", letterSpacing: "1px",
+                  fontWeight: 400, position: "sticky", left: 0, background: "rgba(14,18,32,1)", zIndex: 2 })}>
+                  PAR
+                </th>
+                {holes.map((h, idx) => (
+                  <th key={idx} style={th({ color: "var(--cream-dim)", fontSize: "0.68rem", fontWeight: 400 })}>
+                    {h.par ?? "—"}
+                  </th>
+                ))}
+                <th style={th({ fontWeight: 700, color: "var(--cream-dim)",
+                  borderLeft: "2px solid rgba(212,168,67,.25)" })}>
+                  {holes.reduce((a, h) => a + (h.par ?? 0), 0) || "—"}
+                </th>
+                {showTotals && (
+                  <th style={th({ fontWeight: 700, color: "var(--cream-dim)" })}>
+                    {holeData.reduce((a, h) => a + (h.par ?? 0), 0) || "—"}
+                  </th>
+                )}
+                {/* HDCP and NET covered by rowSpan */}
+              </tr>
+              {/* HDCP row — only when expanded */}
+              {showDetails && (
+                <tr style={{ background: "rgba(255,255,255,.008)" }}>
+                  <th style={th({ textAlign: "left", paddingLeft: 10, color: "var(--cream-dim)",
+                    fontFamily: "var(--font-d)", fontSize: "0.58rem", letterSpacing: "1px",
+                    fontWeight: 400, position: "sticky", left: 0, background: "rgba(12,16,28,1)", zIndex: 2 })}>
+                    HDCP
+                  </th>
+                  {holes.map((h, idx) => (
+                    <th key={idx} style={th({ color: "var(--cream-dim)", fontSize: "0.65rem", fontWeight: 400 })}>
+                      {h.stroke_index ?? "—"}
+                    </th>
+                  ))}
+                  <th style={th({ borderLeft: "2px solid rgba(212,168,67,.25)" })} />
+                  {showTotals && <th style={th({})} />}
+                  {/* HDCP col and NET col covered by rowSpan */}
+                </tr>
+              )}
             </thead>
             <tbody>
-              {/* Par row */}
-              <tr style={{ background: "rgba(255,255,255,.015)" }}>
-                <td style={td({ textAlign: "left", paddingLeft: 10, color: "var(--cream-dim)",
-                  fontFamily: "var(--font-d)", fontSize: "0.58rem", letterSpacing: "1px",
-                  position: "sticky", left: 0, background: "rgba(14,18,32,1)", zIndex: 1 })}>
-                  PAR
-                </td>
-                {holes.map((h, idx) => (
-                  <td key={idx} style={td({ color: "var(--cream-dim)", fontSize: "0.68rem" })}>
-                    {h.par ?? "—"}
-                  </td>
-                ))}
-                <td style={td({ fontWeight: 700, color: "var(--cream-dim)",
-                  borderLeft: "2px solid rgba(212,168,67,.25)", borderRight: "none" })}>
-                  {halfPar || "—"}
-                </td>
-              </tr>
-              {/* Hdcp row */}
-              <tr style={{ background: "rgba(255,255,255,.008)" }}>
-                <td style={td({ textAlign: "left", paddingLeft: 10, color: "var(--cream-dim)",
-                  fontFamily: "var(--font-d)", fontSize: "0.58rem", letterSpacing: "1px",
-                  position: "sticky", left: 0, background: "rgba(12,16,28,1)", zIndex: 1 })}>
-                  HDCP
-                </td>
-                {holes.map((h, idx) => {
-                  const s = players[0].getS(h.stroke_index);
-                  return (
-                    <td key={idx} style={td({ color: s > 0 ? "var(--gold)" : "var(--cream-dim)",
-                      fontSize: "0.65rem" })}>
-                      <div>{h.stroke_index ?? "—"}</div>
-                      {s > 0 && <div style={{ display: "flex", justifyContent: "center", marginTop: 1 }}>
-                        <StrokeDots count={s} />
-                      </div>}
-                    </td>
-                  );
-                })}
-                <td style={td({ borderLeft: "2px solid rgba(212,168,67,.25)", borderRight: "none" })} />
-              </tr>
               {/* Player rows */}
               {players.map((p, pi) => {
                 const halfScores = p.scores.slice(startIdx, startIdx + 9);
                 const halfGross = halfScores.reduce((a, s) => a + (s ?? 0), 0);
-                const halfStrokes = holes.reduce((a, h, i) => a + (halfScores[i] != null ? p.getS(h.stroke_index) : 0), 0);
-                const halfNet = halfGross - halfStrokes;
+                const fullGross = p.scores.reduce((a, s) => a + (s ?? 0), 0);
+                const fullStrokes = holeData.reduce((a, h, i) => a + (p.scores[i] != null ? p.getS(h.stroke_index) : 0), 0);
+                const fullNet = fullGross - fullStrokes;
                 const firstName = p.name.split(" ")[0].toUpperCase().slice(0, 7);
                 const rowBg = pi % 2 === 0 ? "rgba(255,255,255,.025)" : "rgba(255,255,255,.01)";
                 const stickyBg = pi % 2 === 0 ? "rgba(18,22,40,1)" : "rgba(14,18,32,1)";
@@ -950,53 +984,44 @@ export default function LiveScorecard({
                         letterSpacing: "0.5px", position: "sticky", left: 0,
                         background: stickyBg, zIndex: 1 })}>
                         {firstName}
-                        {p.hcp > 0 && <span style={{ color: "rgba(212,168,67,.6)", fontWeight: 400,
-                          fontSize: "0.5rem", marginLeft: 3 }}>[{p.hcp}]</span>}
+                        {useHcp && <span style={{ color: "rgba(212,168,67,.6)", fontWeight: 400,
+                          fontSize: "0.5rem", marginLeft: 3 }}>[{p.hcp < 0 ? `+${Math.abs(p.hcp)}` : (p.hcp ?? 0)}]</span>}
                       </td>
-                      {halfScores.map((s, i) => (
-                        <td key={i} style={td({
-                          background: startIdx + i === activeHole ? "rgba(212,168,67,.06)" : "transparent",
-                          cursor: "pointer",
-                        })}
-                          onClick={() => { setActiveHole(startIdx + i); setMode("entry"); }}>
-                          <div style={{ display: "flex", justifyContent: "center" }}>
-                            <ScoreCell score={s} par={holes[i]?.par} size={24} />
-                          </div>
-                        </td>
-                      ))}
+                      {halfScores.map((s, i) => {
+                        const strokes = useHcp ? p.getS(holes[i]?.stroke_index) : 0;
+                        return (
+                          <td key={i} style={td({
+                            background: startIdx + i === activeHole ? "rgba(212,168,67,.06)" : "transparent",
+                            cursor: "pointer",
+                          })}
+                            onClick={() => { setActiveHole(startIdx + i); setMode("entry"); }}>
+                            {strokes !== 0 && (
+                              <div style={{ display: "flex", justifyContent: "center", marginBottom: 2 }}>
+                                <StrokeDots count={strokes} />
+                              </div>
+                            )}
+                            <div style={{ display: "flex", justifyContent: "center" }}>
+                              <ScoreCell score={s} par={holes[i]?.par} size={24} />
+                            </div>
+                          </td>
+                        );
+                      })}
                       <td style={td({ fontWeight: 700, color: "var(--cream)", fontSize: "0.8rem",
-                        borderLeft: "2px solid rgba(212,168,67,.25)", borderRight: "none" })}>
+                        borderLeft: "2px solid rgba(212,168,67,.25)" })}>
                         {halfGross || "—"}
                       </td>
+                      {showTotals && <>
+                        <td style={td({ fontWeight: 900, color: "var(--cream)", fontSize: "0.85rem" })}>
+                          {fullGross || "—"}
+                        </td>
+                        <td style={td({ fontWeight: 700, color: "rgba(212,168,67,.7)", fontSize: "0.75rem" })}>
+                          {useHcp ? (p.hcp < 0 ? `+${Math.abs(p.hcp)}` : (p.hcp ?? 0)) : "—"}
+                        </td>
+                        <td style={td({ fontWeight: 900, color: "var(--gold)", fontSize: "0.85rem", borderRight: "none" })}>
+                          {useHcp && fullGross > 0 ? fullNet : "—"}
+                        </td>
+                      </>}
                     </tr>
-                    {/* Net row */}
-                    {useHcp && p.hcp > 0 && (
-                      <tr style={{ background: "rgba(212,168,67,.025)" }}>
-                        <td style={td({ textAlign: "left", paddingLeft: 10, color: "rgba(212,168,67,.6)",
-                          fontFamily: "var(--font-d)", fontSize: "0.52rem", letterSpacing: "1px",
-                          position: "sticky", left: 0, background: "rgba(16,20,34,1)", zIndex: 1 })}>
-                          NET
-                        </td>
-                        {halfScores.map((s, i) => {
-                          const strokes = p.getS(holes[i]?.stroke_index);
-                          const net = s != null ? s - strokes : null;
-                          return (
-                            <td key={i} style={td({ fontSize: "0.62rem" })}>
-                              {net != null ? (
-                                <span style={{ fontFamily: "var(--font-d)", fontWeight: 600,
-                                  color: net < (holes[i]?.par ?? 99) ? "#4caf7d"
-                                    : net === (holes[i]?.par ?? 99) ? "rgba(255,255,255,.4)"
-                                    : "rgba(255,255,255,.6)" }}>{net}</span>
-                              ) : <span style={{ color: "rgba(255,255,255,.1)" }}>—</span>}
-                            </td>
-                          );
-                        })}
-                        <td style={td({ fontWeight: 700, color: "var(--gold)", fontSize: "0.8rem",
-                          borderLeft: "2px solid rgba(212,168,67,.25)", borderRight: "none" })}>
-                          {halfGross > 0 ? halfNet : "—"}
-                        </td>
-                      </tr>
-                    )}
                   </React.Fragment>
                 );
               })}
@@ -1019,30 +1044,41 @@ export default function LiveScorecard({
                 marginTop: 1 }}>{course.scorecard.tee_name} tees</div>
             )}
           </div>
-          {diffLabel && totalGross > 0 && (
-            <div style={{ fontFamily: "var(--font-d)", fontWeight: 900, fontSize: "1.1rem",
-              color: diffLabel === "E" ? "var(--cream-dim)" : diffLabel.startsWith("+") ? "#ef4444" : "#4caf7d" }}>
-              {diffLabel}
-            </div>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {diffLabel && totalGross > 0 && (
+              <div style={{ fontFamily: "var(--font-d)", fontWeight: 900, fontSize: "1.1rem",
+                color: diffLabel === "E" ? "var(--cream-dim)" : diffLabel.startsWith("+") ? "#ef4444" : "#4caf7d" }}>
+                {diffLabel}
+              </div>
+            )}
+            <button onClick={() => setShowDetails(d => !d)} style={{
+              background: showDetails ? "rgba(212,168,67,.15)" : "rgba(255,255,255,.06)",
+              border: showDetails ? "1px solid rgba(212,168,67,.4)" : "1px solid rgba(255,255,255,.12)",
+              borderRadius: 6, padding: "4px 10px", cursor: "pointer",
+              fontFamily: "var(--font-d)", fontSize: "0.58rem", letterSpacing: "1px",
+              color: showDetails ? "var(--gold)" : "var(--cream-dim)",
+            }}>
+              {showDetails ? "▲ LESS" : "▼ MORE"}
+            </button>
+          </div>
         </div>
 
         {/* Front 9 */}
         <div style={{ margin: "0 10px 10px", borderRadius: 12, overflow: "hidden",
           border: "1px solid var(--navy-border)", background: "var(--navy-card)" }}>
-          <HalfTable startIdx={0} />
+          <HalfTable startIdx={0} showDetails={showDetails} />
         </div>
 
         {/* Back 9 */}
         {numHoles > 9 && (
           <div style={{ margin: "0 10px 10px", borderRadius: 12, overflow: "hidden",
             border: "1px solid var(--navy-border)", background: "var(--navy-card)" }}>
-            <HalfTable startIdx={9} />
+            <HalfTable startIdx={9} showTotals={true} showDetails={showDetails} />
           </div>
         )}
 
-        {/* Total summary row */}
-        {totalGross > 0 && (
+        {/* Total summary row — only for 9-hole courses (18-hole courses show totals inline in back 9 table) */}
+        {totalGross > 0 && numHoles <= 9 && (
           <div style={{ margin: "0 10px", borderRadius: 12, overflow: "hidden",
             border: "1px solid rgba(212,168,67,.25)", background: "rgba(212,168,67,.06)" }}>
             <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "0.7rem" }}>

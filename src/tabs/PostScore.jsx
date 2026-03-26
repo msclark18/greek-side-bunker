@@ -25,6 +25,7 @@ export default function PostScore({
   const [companionIds, setCompanionIds] = useState([]);
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
   const [playerSearch, setPlayerSearch] = useState("");
+  const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
 
   // When the live round clears (submitted or closed from App level), reset mode
   useEffect(() => { if (!liveRound) { setScoringMode(null); setCompanionIds([]); } }, [liveRound]);
@@ -188,7 +189,7 @@ export default function PostScore({
       setFormMsg({ type: "d", text: "Error starting round." });
       return;
     }
-    setRounds(p => [inserted, ...p]);
+    setRounds(p => [inserted, ...p.filter(r => r.id !== inserted.id)]);
 
     const createdCompanions = [];
     for (const cId of companionIds) {
@@ -221,7 +222,7 @@ export default function PostScore({
         tournament_round_id: form.tournamentRoundId || null,
       }).select().single();
       if (cr) {
-        setRounds(p => [cr, ...p]);
+        setRounds(p => [cr, ...p.filter(r => r.id !== cr.id)]);
         createdCompanions.push({ round: cr, member: cm });
       }
     }
@@ -231,20 +232,22 @@ export default function PostScore({
   };
 
   const cancelLiveRound = async (round) => {
-    // Delete all rounds in the same group
     if (round.group_id) {
+      // Try to delete all rounds in the group at once
       const { data: groupRounds } = await supabase
         .from("rounds").select("id").eq("group_id", round.group_id);
       const idsToDelete = (groupRounds ?? []).map(r => r.id);
       if (idsToDelete.length > 0) {
-        await supabase.from("rounds").delete().in("id", idsToDelete);
-        setRounds(p => p.filter(r => !idsToDelete.includes(r.id)));
+        const { error } = await supabase.from("rounds").delete().in("id", idsToDelete);
+        if (!error) {
+          setRounds(p => p.filter(r => !idsToDelete.includes(r.id)));
+          return;
+        }
       }
-    } else {
-      // Fallback for older rounds without group_id
-      await supabase.from("rounds").delete().eq("id", round.id);
-      setRounds(p => p.filter(r => r.id !== round.id));
     }
+    // Fallback: delete only the user's own round
+    await supabase.from("rounds").delete().eq("id", round.id);
+    setRounds(p => p.filter(r => r.id !== round.id));
   };
 
   const resumeRound = (round) => {
@@ -379,7 +382,7 @@ export default function PostScore({
       } catch (e) { console.warn("Email non-fatal:", e); }
     }
 
-    setRounds(p => [inserted, ...p]);
+    setRounds(p => [inserted, ...p.filter(r => r.id !== inserted.id)]);
     setForm(f => ({ ...f, score: "", courseId: "", attesterId: "", teamId: "", tournamentRoundId: "" }));
     setCardFile(null); setCardPreview(null); setAiResult(null);
     setFormMsg({
@@ -406,7 +409,7 @@ export default function PostScore({
     setRounds(p => p.map(r => r.id === round.id ? { ...r, scorecard_url: null } : r));
   };
 
-  const myRounds = rounds.filter(r => r.player_id === session.user.id);
+  const myRounds = rounds.filter(r => r.player_id === session.user.id && r.round_status !== "in_progress");
 
   return (
     <>
@@ -424,6 +427,42 @@ export default function PostScore({
 
 
 
+      {/* ── Abandon confirmation modal ── */}
+      {showAbandonConfirm && inProgressRound && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 200,
+          background: "rgba(0,0,0,0.72)", display: "flex",
+          alignItems: "center", justifyContent: "center", padding: 24,
+        }}>
+          <div style={{
+            background: "var(--card)", borderRadius: 16, padding: 28,
+            maxWidth: 380, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,.5)",
+          }}>
+            <div style={{ fontSize: "1.15rem", fontWeight: 700, color: "var(--cream)", marginBottom: 10 }}>
+              Abandon Round?
+            </div>
+            <p style={{ color: "var(--cream-dim)", fontSize: "0.9rem", lineHeight: 1.5, marginBottom: 24 }}>
+              This will abandon the round for <strong style={{ color: "var(--cream)" }}>all players</strong> in your group — including any playing partners. This cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowAbandonConfirm(false)}>
+                Cancel
+              </button>
+              <button
+                className="btn"
+                style={{ flex: 1, background: "#c0392b", color: "#fff", border: "none" }}
+                onClick={async () => {
+                  setShowAbandonConfirm(false);
+                  await cancelLiveRound(inProgressRound);
+                }}
+              >
+                Yes, Abandon
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Resume in-progress round ── */}
       {isOpen && inProgressRound && !liveRound && (
         <div className="card" style={{ marginBottom: 12, borderColor: "rgba(76,175,125,.3)", background: "rgba(76,175,125,.04)" }}>
@@ -438,7 +477,7 @@ export default function PostScore({
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => cancelLiveRound(inProgressRound)}>Abandon</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowAbandonConfirm(true)}>Abandon</button>
               <button className="btn btn-gold" onClick={() => resumeRound(inProgressRound)}>Resume Round</button>
             </div>
           </div>

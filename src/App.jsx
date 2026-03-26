@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Trophy, Pencil, Clock, Settings, FileText, AlertTriangle } from "lucide-react";
 import { supabase } from "./supabase.js";
 import { DEFAULT_CONFIG, FORMAT_LABELS } from "./constants/config.js";
-import { calcCourseHcp, calcStableford, isSeasonActive, ini } from "./utils/golf.js";
+import { calcCourseHcp, isSeasonActive, ini } from "./utils/golf.js";
 import GSBLogo from "./components/GSBLogo.jsx";
 import GhinLink from "./components/GhinLink.jsx";
 import SeasonBar from "./components/SeasonBar.jsx";
@@ -282,7 +282,7 @@ export default function App() {
 
   // ── Leaderboard computations ──
   const players = members.filter(m => m.profile).map(m => ({ ...m.profile, role: m.role }));
-  const scored = rounds.filter(r => r.round_status !== "in_progress" && (!config.attestRequired || r.attest_status === "approved"));
+  const scored = rounds.filter(r => r.round_status === "completed" && (!config.attestRequired || r.attest_status === "approved"));
   const myHasSubmitted = scored.some(r => r.player_id === session?.user.id);
   const visible = (config.hideScores && !myHasSubmitted) ? scored.filter(r => r.player_id === session?.user.id) : scored;
 
@@ -802,6 +802,16 @@ export default function App() {
 
       {/* LiveScorecard via portal — renders into document.body to escape any CSS stacking context */}
       {liveRound && createPortal(
+        <ErrorBoundary onReset={async () => {
+          // Delete the stuck in-progress round so it doesn't count against the player
+          if (liveRound?.group_id) {
+            await supabase.from("rounds").delete().eq("group_id", liveRound.group_id);
+          } else if (liveRound?.id) {
+            await supabase.from("rounds").delete().eq("id", liveRound.id);
+          }
+          setRounds(p => p.filter(r => r.id !== liveRound?.id));
+          setLiveRound(null);
+        }}>
         <LiveScorecard
           round={liveRound}
           course={courses.find(c => c.id === liveRound.course_id)}
@@ -826,7 +836,8 @@ export default function App() {
             setTimeout(() => setFormMsg({ type: "", text: "" }), 5000);
           }}
           onClose={() => setLiveRound(null)}
-        />,
+        />
+        </ErrorBoundary>,
         document.body
       )}
     </>
