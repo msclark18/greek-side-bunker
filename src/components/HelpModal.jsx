@@ -28,7 +28,7 @@ export default function HelpModal({ onClose }) {
       steps: [
         { heading: "Start a live round", body: "From the Post Score tab, tap Start Live Round. Select your course and add any playing partners in your group. Live scoring tracks everyone hole by hole in real time." },
         { heading: "Enter scores", body: "Tap the Enter Score button to open the numpad for the current hole. Tap any hole dot at the bottom to jump directly to that hole. The app blocks submission if any holes are missing a score." },
-        { heading: "Handicap dots", body: "Gold dots on the Enter Score button show which holes you receive strokes on. Red dots mean you give a stroke (plus handicap). The scorecard shows gross scores with NET automatically calculated." },
+        { heading: "Handicap dots", body: "Navy dots on the Enter Score button show which holes you receive strokes on. Red dots mean you give a stroke (plus handicap). The scorecard shows gross scores with NET automatically calculated." },
         { heading: "Scorecard columns", body: "The live scorecard shows OUT, IN, TOTAL, HDCP, and NET columns. Tap ▼ MORE to expand yardage and stroke index (HDCP) rows for the course." },
         { heading: "Player stats", body: "Tap a player's name on the scorecard to expand their hole-by-hole stats: Putts, Driving accuracy, GIR%, and Penalties — tracked alongside their scores." },
         { heading: "Finish the round", body: "Once all holes have scores, submit the round. It posts directly to the leaderboard and goes through the normal attestation flow." },
