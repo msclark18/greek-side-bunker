@@ -85,6 +85,11 @@ export default function App() {
 
   // ── Trap back-swipe so it navigates within the app instead of closing it ──
   useEffect(() => {
+    // Replace the initial history entry (the real page URL) with a gsb entry
+    // so there is no underlying "real" page the user can navigate back to.
+    // Then push a second entry on top as a buffer — the user must pop both
+    // before we even need to re-push, making the trap robust after a refresh.
+    history.replaceState({ gsb: true }, "");
     history.pushState({ gsb: true }, "");
     const onPop = () => {
       if (activeLeagueRef.current) {
