@@ -48,7 +48,7 @@ export default function App() {
   const [dataLoaded, setDataLoaded] = useState(false);
 
   // ── UI state ──
-  const [tab, setTab] = useState("leaderboard");
+  const [tab, setTab] = useState(() => sessionStorage.getItem("gsb_tab") || "leaderboard");
   const [selCourse, setSelCourse] = useState(null);
   const [viewCardModal, setViewCardModal] = useState(null);
   const [profileModal, setProfileModal] = useState(false);
@@ -61,6 +61,9 @@ export default function App() {
   const creatingLeague = useRef(false);
   const activeLeagueRef = useRef(null);
   useEffect(() => { activeLeagueRef.current = activeLeague; }, [activeLeague]);
+  useEffect(() => { sessionStorage.setItem("gsb_tab", tab); }, [tab]);
+  // True while we're waiting to restore a saved league — prevents picker flash
+  const [restoringLeague, setRestoringLeague] = useState(() => !!sessionStorage.getItem("gsb_league_id"));
 
   // ── Post score state ──
   const [liveRound, setLiveRound] = useState(null);
@@ -152,8 +155,11 @@ export default function App() {
         loadLeagueData(saved);
         setShowProfileGate(true);
         history.pushState({ gsbLeague: saved.id }, "");
+      } else {
+        sessionStorage.removeItem("gsb_league_id");
       }
     }
+    setRestoringLeague(false);
   };
 
   // ── Auth actions ──
@@ -538,6 +544,19 @@ export default function App() {
   );
 
   // ── League Picker ──
+  if (!activeLeague && restoringLeague) return (
+    <div className="auth-bg">
+      <div className="gp" />
+      <div style={{ textAlign: "center" }}>
+        <GSBLogo size={80} style={{ margin: "0 auto 12px", display: "block" }} />
+        <div style={{ color: "var(--gold)", fontFamily: "var(--font-d)", letterSpacing: "3px", fontSize: "1.1rem" }}>GREEK SIDE BUNKER</div>
+        <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 20 }}>
+          {[0, 1, 2].map(i => <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--gold)", animation: `pulse 1.2s ease-in-out ${i * .2}s infinite`, opacity: .4 }} />)}
+        </div>
+      </div>
+    </div>
+  );
+
   if (!activeLeague) return (
     <LeaguePicker
       profile={profile} leagues={leagues} myMemberships={myMemberships}
