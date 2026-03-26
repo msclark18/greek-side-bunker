@@ -489,8 +489,8 @@ export default function PostScore({
       )}
 
       {/* ── Scoring mode choice ── */}
-      {isOpen && !inProgressRound && !scoringMode && (
-        <div className="card" style={{ marginBottom: 12 }}>
+      {!inProgressRound && !scoringMode && (
+        <div className="card" style={{ marginBottom: 12, opacity: isOpen ? 1 : 0.5, pointerEvents: isOpen ? "auto" : "none" }}>
           <div className="card-hdr">How would you like to post your score?</div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button className="btn btn-gold" style={{ flex: 1 }} onClick={() => setScoringMode("live")}>
