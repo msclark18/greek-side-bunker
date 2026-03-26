@@ -928,7 +928,7 @@ export default function PostScore({
           ) : (
             <button className="btn btn-gold" onClick={() => {
               if (!canSubmit()) return;
-              setHcpDraft(String(profile?.handicap ?? ""));
+              setHcpDraft("");
               setShowHcpModal(true);
             }} disabled={!canSubmit()}>Submit Round</button>
           )}
@@ -948,9 +948,9 @@ export default function PostScore({
       {showHcpModal && selectedCourse && (
         <div className="modal-bg" onClick={() => setShowHcpModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">Confirm Your Handicap</div>
+            <div className="modal-title">Enter Your Handicap</div>
             <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 20, lineHeight: 1.7 }}>
-              Please confirm your current Handicap Index before submitting. Update it if it has changed since you last played.
+              Enter your current Handicap Index. This is your true index from GHIN or TheGrint — your course handicap will be calculated automatically.
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
@@ -965,7 +965,7 @@ export default function PostScore({
                   style={{ fontSize: "1.1rem" }}
                 />
                 <span style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginTop: 3 }}>
-                  This is your total Handicap Index from GHIN or TheGrint
+                  Your true index — not your course handicap
                 </span>
               </div>
 
