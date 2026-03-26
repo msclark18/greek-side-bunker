@@ -15,7 +15,11 @@ export default function Leaderboard({
   selCourse, setSelCourse,
   setConfig, setViewCardModal,
 }) {
-  const [leaderTab, setLeaderTab] = useState(() => config.tournamentMode ? "tournament" : "overall");
+  const [leaderTab, setLeaderTab] = useState(() => {
+    const saved = sessionStorage.getItem("gsb_leader_tab");
+    return saved ?? (config.tournamentMode ? "tournament" : "overall");
+  });
+  const setLeaderTabPersisted = (t) => { setLeaderTab(t); sessionStorage.setItem("gsb_leader_tab", t); };
   const [scoresFilterPlayer, setScoresFilterPlayer] = useState("all");
   const [scoresFilterCourse, setScoresFilterCourse] = useState("all");
   const [roundsModal, setRoundsModal] = useState(null);
@@ -226,7 +230,7 @@ export default function Leaderboard({
       <div className="stabs-wrap">
         <div className="stabs">
           {subTabs.map(([k, l]) => (
-            <button key={k} className={`stab${leaderTab === k ? " active" : ""}`} onClick={() => setLeaderTab(k)}>{l}</button>
+            <button key={k} className={`stab${leaderTab === k ? " active" : ""}`} onClick={() => setLeaderTabPersisted(k)}>{l}</button>
           ))}
         </div>
       </div>
