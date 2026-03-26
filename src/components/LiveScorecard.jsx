@@ -1078,32 +1078,78 @@ export default function LiveScorecard({
                         </td>
                       </>}
                     </tr>
-                    {/* Expanded stats row */}
-                    {isExpanded && (
-                      <tr style={{ background: "rgba(212,168,67,.04)" }}>
-                        <td colSpan={11 + extraCols} style={{
-                          padding: "10px 12px",
-                          borderBottom: "1px solid rgba(212,168,67,.15)",
-                          position: "sticky", left: 0,
-                        }}>
-                          <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-                            {[
-                              { label: "DRIVING", value: drivingPct },
-                              { label: "GIR", value: girPct },
-                              { label: "PENALTIES", value: totalPenalties > 0 ? totalPenalties : "0" },
-                            ].map(({ label, value }) => (
-                              <div key={label}>
-                                <div style={{ fontSize: "0.48rem", color: "var(--cream-dim)",
-                                  fontFamily: "var(--font-d)", letterSpacing: "1.5px",
-                                  textTransform: "uppercase", marginBottom: 2 }}>{label}</div>
-                                <div style={{ fontSize: "0.78rem", fontWeight: 700,
-                                  fontFamily: "var(--font-d)", color: "var(--cream)" }}>{value}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+                    {/* Expanded stats row — hole by hole */}
+                    {isExpanded && (() => {
+                      const statCol = (extra = {}) => ({
+                        padding: "4px 8px", textAlign: "center", fontSize: "0.62rem",
+                        borderBottom: "1px solid rgba(255,255,255,.04)",
+                        borderRight: "1px solid rgba(255,255,255,.06)",
+                        fontFamily: "var(--font-d)", color: "var(--cream-dim)", ...extra,
+                      });
+                      const driveLabel = (f, par) => {
+                        if (par === 3) return <span style={{ opacity: .3 }}>—</span>;
+                        if (!f) return <span style={{ opacity: .3 }}>—</span>;
+                        const map = { hit: { t: "HIT", c: "#4caf7d" }, left: { t: "L", c: "#ef4444" },
+                          right: { t: "R", c: "#ef4444" }, farleft: { t: "LL", c: "#ef4444" },
+                          farright: { t: "RR", c: "#ef4444" }, long: { t: "LG", c: "#f59e0b" },
+                          short: { t: "SH", c: "#f59e0b" } };
+                        const m = map[f];
+                        return m ? <span style={{ color: m.c, fontWeight: 700 }}>{m.t}</span> : <span>{f}</span>;
+                      };
+                      const girIcon = (score, putts, par) => {
+                        if (score == null || putts == null) return <span style={{ opacity: .3 }}>—</span>;
+                        return (score - putts) <= (par - 2)
+                          ? <span style={{ color: "#4caf7d", fontWeight: 700 }}>✓</span>
+                          : <span style={{ color: "#ef4444" }}>✗</span>;
+                      };
+                      const playedHoles = holeData.map((h, i) => ({ h, i })).filter(({ i }) => p.scores[i] != null);
+                      return (
+                        <tr style={{ background: "rgba(212,168,67,.03)" }}>
+                          <td colSpan={11 + extraCols} style={{ padding: "6px 0 0", borderBottom: "1px solid rgba(212,168,67,.15)" }}>
+                            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                              <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "0.62rem" }}>
+                                <thead>
+                                  <tr style={{ background: "rgba(255,255,255,.04)" }}>
+                                    {["HOLE","SCORE","DRIVE","GIR","PENALTIES"].map(h => (
+                                      <th key={h} style={statCol({ fontWeight: 700, fontSize: "0.5rem",
+                                        letterSpacing: "1px", color: "var(--gold)", padding: "4px 8px" })}>{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {playedHoles.map(({ h, i }) => (
+                                    <tr key={i}>
+                                      <td style={statCol({ fontWeight: 700, color: "var(--cream)" })}>{h.hole ?? i + 1}</td>
+                                      <td style={statCol()}>
+                                        <ScoreCell score={p.scores[i]} par={h.par} size={20} />
+                                      </td>
+                                      <td style={statCol()}>{driveLabel(p.stats[i]?.fairway, h.par)}</td>
+                                      <td style={statCol()}>{girIcon(p.scores[i], p.stats[i]?.putts, h.par)}</td>
+                                      <td style={statCol({ textAlign: "left" })}>
+                                        {(p.stats[i]?.penalties?.length > 0)
+                                          ? p.stats[i].penalties.map((pen, k) => (
+                                              <span key={k} style={{ marginRight: 4, color: "#f87171",
+                                                fontSize: "0.55rem", textTransform: "capitalize" }}>{pen}</span>
+                                            ))
+                                          : <span style={{ opacity: .3 }}>—</span>}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  {/* Totals row */}
+                                  <tr style={{ background: "rgba(212,168,67,.08)", borderTop: "1px solid rgba(212,168,67,.2)" }}>
+                                    <td style={statCol({ fontWeight: 700, color: "var(--gold)", fontSize: "0.55rem", letterSpacing: "1px" })}>TOTAL</td>
+                                    <td style={statCol()} />
+                                    <td style={statCol({ fontWeight: 700, color: "var(--cream)" })}>{drivingPct}</td>
+                                    <td style={statCol({ fontWeight: 700, color: "var(--cream)" })}>{girPct}</td>
+                                    <td style={statCol({ fontWeight: 700, color: "var(--cream)" })}>{totalPenalties || "0"}</td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })()}
                   </React.Fragment>
                 );
               });
