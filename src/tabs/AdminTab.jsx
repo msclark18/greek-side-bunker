@@ -21,7 +21,7 @@ export default function AdminTab({
   const [addMsg, setAddMsg] = useState("");
   const [newCourse, setNewCourse] = useState({ name: "", par: "", holes: "18", slope: "", rating: "" });
   const [showAddCourse, setShowAddCourse] = useState(false);
-  const [courseSearch, setCourseSearch] = useState({ open: false, query: "", results: [], loading: false, scanLoading: false, error: "", selected: null, selectedTee: null, teeDraft: {} });
+  const [courseSearch, setCourseSearch] = useState({ open: false, query: "", results: [], loading: false, scanLoading: false, error: "", selected: null, selectedTee: null, teeDraft: {}, scanMatches: [] });
   const [holePreviewTee, setHolePreviewTee] = useState(null);
   const scorecardInputRef = useRef(null);
   const [editMemberHcp, setEditMemberHcp] = useState(null);
@@ -246,7 +246,19 @@ export default function AdminTab({
           female: [],
         },
       };
-      setCourseSearch(s => ({ ...s, scanLoading: false, selected: synthetic, results: [] }));
+      // Check for similar courses already in cache
+      const words = course.club_name.split(/\s+/).filter(w => w.length > 3);
+      let scanMatches = [];
+      if (words.length > 0) {
+        const { data: similar } = await supabase
+          .from("course_cache")
+          .select("api_id, club_name, course_name, location, tees")
+          .or(words.map(w => `club_name.ilike.%${w}%`).join(","))
+          .neq("api_id", cacheId)
+          .limit(5);
+        scanMatches = (similar ?? []).map(c => ({ id: c.api_id, club_name: c.club_name, course_name: c.course_name, location: c.location, tees: c.tees }));
+      }
+      setCourseSearch(s => ({ ...s, scanLoading: false, selected: synthetic, results: [], scanMatches }));
     } catch (e) {
       setCourseSearch(s => ({ ...s, scanLoading: false, error: e.message ?? "Scan failed. Try a clearer photo." }));
     }
@@ -267,7 +279,7 @@ export default function AdminTab({
     // Fetch hole-by-hole data if this is a real API course (not a scanned result)
     let scorecard = null;
     if (!selected.id && (teeDraft.city || teeDraft.state) && selected.cacheId) {
-      const location = { city: teeDraft.city ?? null, state: teeDraft.state ?? null };
+      const location = { city: teeDraft.city ?? null, state: teeDraft.state ?? null, country: "US" };
       await supabase.from("course_cache").update({ location }).eq("api_id", selected.cacheId);
     }
     if (!selected.id && tee.holes?.length) {
@@ -1729,10 +1741,34 @@ setConfirmClear(false);
                   <button className="btn btn-ghost btn-sm" style={{ marginBottom: 12 }} onClick={() => setCourseSearch(s => ({ ...s, selected: null, selectedTee: null }))}>← Back to results</button>
                   <div style={{ fontWeight: 600, color: "var(--cream)", marginBottom: 4 }}>{c.club_name}</div>
                   {c.course_name !== c.club_name && <div style={{ fontSize: ".82rem", color: "var(--cream-dim)", marginBottom: 6 }}>{c.course_name}</div>}
+                  {c.id === null && courseSearch.scanMatches.length > 0 && (
+                    <div style={{ marginBottom: 14, padding: 12, borderRadius: 8, background: "rgba(240,201,106,.06)", border: "1px solid rgba(240,201,106,.2)" }}>
+                      <div style={{ fontSize: ".7rem", letterSpacing: "1.5px", color: "var(--gold)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 8 }}>
+                        Similar courses already in database
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {courseSearch.scanMatches.map((m, i) => (
+                          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                            <div>
+                              <div style={{ fontSize: ".82rem", color: "var(--cream)", fontWeight: 600 }}>{m.club_name}</div>
+                              {m.location?.city && <div style={{ fontSize: ".72rem", color: "var(--cream-dim)" }}>{m.location.city}{m.location.state ? `, ${m.location.state}` : ""}</div>}
+                            </div>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setCourseSearch(s => ({ ...s, selected: m, selectedTee: null, scanMatches: [] }))}>
+                              Use this
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginTop: 10 }}>Not the same course? Continue below to add as new.</div>
+                    </div>
+                  )}
                   {c.id === null && (
                     <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                      <input className="inp" placeholder="City" value={courseSearch.teeDraft.city ?? ""} onChange={e => setCourseSearch(s => ({ ...s, teeDraft: { ...s.teeDraft, city: e.target.value } }))} style={{ flex: 2 }} />
-                      <input className="inp" placeholder="State" maxLength={2} value={courseSearch.teeDraft.state ?? ""} onChange={e => setCourseSearch(s => ({ ...s, teeDraft: { ...s.teeDraft, state: e.target.value.toUpperCase() } }))} style={{ flex: 1 }} />
+                      <input className="inp" placeholder="City (optional)" value={courseSearch.teeDraft.city ?? ""} onChange={e => setCourseSearch(s => ({ ...s, teeDraft: { ...s.teeDraft, city: e.target.value } }))} style={{ flex: 2 }} />
+                      <select value={courseSearch.teeDraft.state ?? ""} onChange={e => setCourseSearch(s => ({ ...s, teeDraft: { ...s.teeDraft, state: e.target.value } }))} style={{ flex: 1 }}>
+                        <option value="">State</option>
+                        {["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"].map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
                     </div>
                   )}
                   <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "var(--gold)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 8 }}>Select Tee Box</div>
