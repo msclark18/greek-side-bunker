@@ -169,6 +169,7 @@ export default function LiveScorecard({
   });
   const [saving, setSaving] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [missingAlert, setMissingAlert] = useState(null); // array of hole numbers (1-based)
   const saveTimeout = useRef(null);
   const [companionScores, setCompanionScores] = useState(() =>
     companions.map(c => Array.from({ length: numHoles }, (_, i) => c.round.hole_scores?.[i] ?? null))
@@ -292,6 +293,14 @@ export default function LiveScorecard({
 
   const handleSubmit = async () => {
     if (submitLoading) return;
+    const missing = scores.map((s, i) => s == null ? i + 1 : null).filter(Boolean);
+    if (missing.length > 0) {
+      setMissingAlert(missing);
+      setMode("entry");
+      setActiveHole(missing[0] - 1);
+      return;
+    }
+    setMissingAlert(null);
     setSubmitLoading(true);
     const gross = scores.filter(s => s != null).reduce((a, b) => a + b, 0);
     const net = gross - courseHandicap;
@@ -483,7 +492,6 @@ export default function LiveScorecard({
                         {stp}
                       </span>
                     )}
-                    {pStrokes > 0 && <StrokeDots count={pStrokes} />}
                   </div>
                 </div>
 
@@ -516,8 +524,12 @@ export default function LiveScorecard({
                       cursor: "pointer", flexShrink: 0,
                       display: "flex", flexDirection: "column", alignItems: "center",
                       justifyContent: "center", textAlign: "center", lineHeight: 1.3,
+                      gap: 2,
                     }}
-                  ><span>Enter</span><span>Score</span></button>
+                  >
+                    {pStrokes !== 0 && <StrokeDots count={pStrokes} />}
+                    <span>Enter</span><span>Score</span>
+                  </button>
                 )}
               </div>
             );
@@ -529,35 +541,28 @@ export default function LiveScorecard({
           display: "flex", gap: 5, padding: "16px 14px 10px", flexWrap: "wrap",
           justifyContent: "center",
         }}>
-          {(() => {
-            const firstEmpty = scores.findIndex(s => s == null);
-            return Array.from({ length: numHoles }, (_, i) => {
-              const isAccessible = scores[i] != null || i === firstEmpty || firstEmpty === -1;
-              return (
-                <button
-                  key={i}
-                  onClick={() => { if (isAccessible) { setActiveHole(i); setNumPadOpen(false); } }}
-                  style={{
-                    width: 26, height: 26, borderRadius: "50%", border: "none",
-                    background: i === activeHole
-                      ? "var(--gold)"
-                      : scores[i] != null ? "rgba(76,175,125,.25)" : "rgba(255,255,255,.06)",
-                    color: i === activeHole
-                      ? "var(--navy)"
-                      : scores[i] != null ? "#6ee7a0" : "var(--cream-dim)",
-                    cursor: isAccessible ? "pointer" : "default",
-                    opacity: isAccessible ? 1 : 0.4,
-                    fontSize: "0.6rem",
-                    fontFamily: "var(--font-d)", fontWeight: 700,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  {scores[i] != null ? scores[i] : i + 1}
-                </button>
-              );
-            });
-          })()}
+          {Array.from({ length: numHoles }, (_, i) => (
+            <button
+              key={i}
+              onClick={() => { setActiveHole(i); setNumPadOpen(false); }}
+              style={{
+                width: 26, height: 26, borderRadius: "50%", border: "none",
+                background: i === activeHole
+                  ? "var(--gold)"
+                  : scores[i] != null ? "rgba(76,175,125,.25)" : "rgba(255,255,255,.06)",
+                color: i === activeHole
+                  ? "var(--navy)"
+                  : scores[i] != null ? "#6ee7a0" : "var(--cream-dim)",
+                cursor: "pointer",
+                fontSize: "0.6rem",
+                fontFamily: "var(--font-d)", fontWeight: 700,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              {scores[i] != null ? scores[i] : i + 1}
+            </button>
+          ))}
         </div>
 
         {/* Bottom-sheet numpad */}
@@ -623,40 +628,19 @@ export default function LiveScorecard({
                 <button
                   onClick={() => {
                     if (pendingScore == null) return;
-                    // Save stats (only for main player for now)
                     if (activePlayerId === 0) {
                       const nextStats = holeStats.map((s, i) => i === activeHole ? pendingStats : s);
                       setHoleStats(nextStats);
                       saveStats(nextStats);
                     }
                     enterScore(activeHole, pendingScore);
-                    // Build updated scores for all players on this hole
-                    const updatedAll = allPlayers.map((p, idx) =>
-                      idx === activePlayerId ? pendingScore : p.scores[activeHole]
-                    );
-                    const allDone = updatedAll.every(s => s != null);
-                    if (allDone) {
-                      // All players scored — close sheet and advance hole
-                      setNumPadOpen(false);
-                      setActivePlayerId(0);
-                      const updatedMainScores = activePlayerId === 0
-                        ? (() => { const n = [...scores]; n[activeHole] = pendingScore; return n; })()
-                        : scores;
-                      const nextEmpty = updatedMainScores.findIndex((s, i) => i > activeHole && s == null);
-                      if (nextEmpty !== -1) setActiveHole(nextEmpty);
-                      else if (activeHole < numHoles - 1) setActiveHole(activeHole + 1);
-                    } else {
-                      // Find the first player (any index) still missing a score on this hole
-                      const nextPIdx = updatedAll.findIndex(s => s == null);
-                      if (nextPIdx !== -1) {
-                        setActivePlayerId(nextPIdx);
-                        const nextP = allPlayers[nextPIdx];
-                        setPendingScore(nextP?.scores[activeHole] ?? h?.par ?? null);
-                        setPendingStats({ putts: 2, fairway: null, mishit: false, penalties: [] });
-                      } else {
-                        setNumPadOpen(false);
-                      }
-                    }
+                    setMissingAlert(prev => {
+                      if (!prev) return null;
+                      const updated = prev.filter(h => h !== activeHole + 1);
+                      return updated.length > 0 ? updated : null;
+                    });
+                    setNumPadOpen(false);
+                    setActivePlayerId(0);
                   }}
                   disabled={pendingScore == null}
                   style={{
@@ -1010,23 +994,29 @@ export default function LiveScorecard({
                   return next;
                 });
 
-                // Compute full-round stats for this player
-                const drivingEligible = holeData.filter((_, i) => (holeData[i].par === 4 || holeData[i].par === 5) && p.scores[i] != null);
-                const drivingHits = holeData.reduce((acc, h, i) =>
-                  acc + ((h.par === 4 || h.par === 5) && p.scores[i] != null && p.stats[i]?.fairway === "hit" ? 1 : 0), 0);
-                const drivingPct = drivingEligible.length > 0
-                  ? `${Math.round(drivingHits / drivingEligible.length * 100)}% (${drivingHits}/${drivingEligible.length})` : "—";
-
-                const girEligible = holeData.filter((_, i) => p.scores[i] != null && p.stats[i]?.putts != null);
-                const girHits = holeData.reduce((acc, h, i) => {
-                  const score = p.scores[i]; const putts = p.stats[i]?.putts;
-                  return acc + (score != null && putts != null && (score - putts) <= (h.par - 2) ? 1 : 0);
+                // Full-round stat totals
+                const allPutts = holeData.reduce((a, _, i) => a + (p.stats[i]?.putts ?? 0), 0);
+                const drivingElig = holeData.filter((h, i) => (h.par === 4 || h.par === 5) && p.scores[i] != null).length;
+                const drivingHits = holeData.reduce((a, h, i) =>
+                  a + ((h.par === 4 || h.par === 5) && p.scores[i] != null && p.stats[i]?.fairway === "hit" ? 1 : 0), 0);
+                const girElig = holeData.filter((_, i) => p.scores[i] != null && p.stats[i]?.putts != null).length;
+                const girHits = holeData.reduce((a, h, i) => {
+                  const sc = p.scores[i]; const pu = p.stats[i]?.putts;
+                  return a + (sc != null && pu != null && (sc - pu) <= (h.par - 2) ? 1 : 0);
                 }, 0);
-                const girPct = girEligible.length > 0
-                  ? `${Math.round(girHits / girEligible.length * 100)}% (${girHits}/${girEligible.length})` : "—";
+                const totalPenalties = holeData.reduce((a, _, i) => a + (p.stats[i]?.penalties?.length ?? 0), 0);
 
-                const totalPenalties = holeData.reduce((acc, _, i) =>
-                  acc + (p.stats[i]?.penalties?.length ?? 0), 0);
+                // Half-table stat totals (for OUT/IN column)
+                const hPutts = holes.reduce((a, _, i) => a + (p.stats[startIdx + i]?.putts ?? 0), 0);
+                const hDriveElig = holes.filter((h, i) => (h.par === 4 || h.par === 5) && halfScores[i] != null).length;
+                const hDriveHits = holes.reduce((a, h, i) =>
+                  a + ((h.par === 4 || h.par === 5) && halfScores[i] != null && p.stats[startIdx + i]?.fairway === "hit" ? 1 : 0), 0);
+                const hGirElig = holes.filter((_, i) => halfScores[i] != null && p.stats[startIdx + i]?.putts != null).length;
+                const hGirHits = holes.reduce((a, h, i) => {
+                  const sc = halfScores[i]; const pu = p.stats[startIdx + i]?.putts;
+                  return a + (sc != null && pu != null && (sc - pu) <= (h.par - 2) ? 1 : 0);
+                }, 0);
+                const hPenalties = holes.reduce((a, _, i) => a + (p.stats[startIdx + i]?.penalties?.length ?? 0), 0);
 
                 return (
                   <React.Fragment key={pi}>
@@ -1078,77 +1068,90 @@ export default function LiveScorecard({
                         </td>
                       </>}
                     </tr>
-                    {/* Expanded stats row — hole by hole */}
+                    {/* Expanded stats rows — aligned with hole columns */}
                     {isExpanded && (() => {
-                      const statCol = (extra = {}) => ({
-                        padding: "4px 8px", textAlign: "center", fontSize: "0.62rem",
-                        borderBottom: "1px solid rgba(255,255,255,.04)",
-                        borderRight: "1px solid rgba(255,255,255,.06)",
-                        fontFamily: "var(--font-d)", color: "var(--cream-dim)", ...extra,
+                      const statTd = (extra = {}) => ({
+                        padding: "3px 4px", textAlign: "center", fontSize: "0.58rem",
+                        fontFamily: "var(--font-d)", color: "var(--cream-dim)",
+                        borderBottom: "1px solid rgba(255,255,255,.04)", ...extra,
                       });
-                      const driveLabel = (f, par) => {
+                      const labelTd = {
+                        padding: "3px 8px", textAlign: "left", fontSize: "0.55rem",
+                        letterSpacing: "0.8px", fontFamily: "var(--font-d)", color: "rgba(212,168,67,.6)",
+                        fontWeight: 700, position: "sticky", left: 0, zIndex: 1,
+                        background: stickyBg, borderBottom: "1px solid rgba(255,255,255,.04)",
+                        whiteSpace: "nowrap", width: 1,
+                      };
+                      const driveCell = (f, par) => {
                         if (par === 3) return <span style={{ opacity: .3 }}>—</span>;
                         if (!f) return <span style={{ opacity: .3 }}>—</span>;
-                        const map = { hit: { t: "HIT", c: "#4caf7d" }, left: { t: "L", c: "#ef4444" },
+                        const map = { hit: { t: "✓", c: "#4caf7d" }, left: { t: "L", c: "#ef4444" },
                           right: { t: "R", c: "#ef4444" }, farleft: { t: "LL", c: "#ef4444" },
                           farright: { t: "RR", c: "#ef4444" }, long: { t: "LG", c: "#f59e0b" },
                           short: { t: "SH", c: "#f59e0b" } };
                         const m = map[f];
                         return m ? <span style={{ color: m.c, fontWeight: 700 }}>{m.t}</span> : <span>{f}</span>;
                       };
-                      const girIcon = (score, putts, par) => {
+                      const girCell = (score, putts, par) => {
                         if (score == null || putts == null) return <span style={{ opacity: .3 }}>—</span>;
                         return (score - putts) <= (par - 2)
                           ? <span style={{ color: "#4caf7d", fontWeight: 700 }}>✓</span>
                           : <span style={{ color: "#ef4444" }}>✗</span>;
                       };
-                      const playedHoles = holeData.map((h, i) => ({ h, i })).filter(({ i }) => p.scores[i] != null);
-                      return (
-                        <tr style={{ background: "rgba(212,168,67,.03)" }}>
-                          <td colSpan={11 + extraCols} style={{ padding: "6px 0 0", borderBottom: "1px solid rgba(212,168,67,.15)" }}>
-                            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-                              <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "0.62rem" }}>
-                                <thead>
-                                  <tr style={{ background: "rgba(255,255,255,.04)" }}>
-                                    {["HOLE","SCORE","DRIVE","GIR","PENALTIES"].map(h => (
-                                      <th key={h} style={statCol({ fontWeight: 700, fontSize: "0.5rem",
-                                        letterSpacing: "1px", color: "var(--gold)", padding: "4px 8px" })}>{h}</th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {playedHoles.map(({ h, i }) => (
-                                    <tr key={i}>
-                                      <td style={statCol({ fontWeight: 700, color: "var(--cream)" })}>{h.hole ?? i + 1}</td>
-                                      <td style={statCol()}>
-                                        <ScoreCell score={p.scores[i]} par={h.par} size={20} />
-                                      </td>
-                                      <td style={statCol()}>{driveLabel(p.stats[i]?.fairway, h.par)}</td>
-                                      <td style={statCol()}>{girIcon(p.scores[i], p.stats[i]?.putts, h.par)}</td>
-                                      <td style={statCol({ textAlign: "left" })}>
-                                        {(p.stats[i]?.penalties?.length > 0)
-                                          ? p.stats[i].penalties.map((pen, k) => (
-                                              <span key={k} style={{ marginRight: 4, color: "#f87171",
-                                                fontSize: "0.55rem", textTransform: "capitalize" }}>{pen}</span>
-                                            ))
-                                          : <span style={{ opacity: .3 }}>—</span>}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                  {/* Totals row */}
-                                  <tr style={{ background: "rgba(212,168,67,.08)", borderTop: "1px solid rgba(212,168,67,.2)" }}>
-                                    <td style={statCol({ fontWeight: 700, color: "var(--gold)", fontSize: "0.55rem", letterSpacing: "1px" })}>TOTAL</td>
-                                    <td style={statCol()} />
-                                    <td style={statCol({ fontWeight: 700, color: "var(--cream)" })}>{drivingPct}</td>
-                                    <td style={statCol({ fontWeight: 700, color: "var(--cream)" })}>{girPct}</td>
-                                    <td style={statCol({ fontWeight: 700, color: "var(--cream)" })}>{totalPenalties || "0"}</td>
-                                  </tr>
-                                </tbody>
-                              </table>
-                            </div>
+                      const statRows = [
+                        {
+                          label: "PUTTS",
+                          cells: holes.map((_, i) => {
+                            const pu = p.stats[startIdx + i]?.putts;
+                            return pu != null ? <span>{pu}</span> : <span style={{ opacity: .3 }}>—</span>;
+                          }),
+                          half: hPutts || "—",
+                          total: allPutts || "—",
+                        },
+                        {
+                          label: "DRIVING",
+                          cells: holes.map((h, i) => driveCell(p.stats[startIdx + i]?.fairway, h.par)),
+                          half: hDriveElig > 0 ? `${hDriveHits}/${hDriveElig}` : "—",
+                          total: drivingElig > 0 ? `${drivingHits}/${drivingElig}` : "—",
+                        },
+                        {
+                          label: "GIR%",
+                          cells: holes.map((h, i) => girCell(halfScores[i], p.stats[startIdx + i]?.putts, h.par)),
+                          half: hGirElig > 0 ? `${Math.round(hGirHits / hGirElig * 100)}%` : "—",
+                          total: girElig > 0 ? `${Math.round(girHits / girElig * 100)}%` : "—",
+                        },
+                        {
+                          label: "PENALTIES",
+                          cells: holes.map((_, i) => {
+                            const count = p.stats[startIdx + i]?.penalties?.length ?? 0;
+                            return count > 0
+                              ? <span style={{ color: "#f87171", fontWeight: 700 }}>{count}</span>
+                              : <span style={{ opacity: .3 }}>—</span>;
+                          }),
+                          half: hPenalties || "—",
+                          total: totalPenalties || "—",
+                        },
+                      ];
+                      return statRows.map((row, ri) => (
+                        <tr key={ri} style={{ background: rowBg }}>
+                          <td style={labelTd}>{row.label}</td>
+                          {row.cells.map((cell, ci) => (
+                            <td key={ci} style={statTd({
+                              background: startIdx + ci === activeHole ? "rgba(212,168,67,.04)" : "transparent",
+                            })}>
+                              {cell}
+                            </td>
+                          ))}
+                          <td style={statTd({ fontWeight: 700, color: "var(--cream)", borderLeft: "2px solid rgba(212,168,67,.25)" })}>
+                            {row.half}
                           </td>
+                          {showTotals && <>
+                            <td style={statTd({ fontWeight: 700, color: "var(--cream)" })}>{row.total}</td>
+                            <td style={statTd({})} />
+                            <td style={statTd({ borderRight: "none" })} />
+                          </>}
                         </tr>
-                      );
+                      ));
                     })()}
                   </React.Fragment>
                 );
@@ -1379,16 +1382,41 @@ export default function LiveScorecard({
         padding: "14px 16px 28px", background: "var(--navy-card)",
         borderTop: "1px solid var(--navy-border)", flexShrink: 0,
       }}>
+        {missingAlert && (
+          <div style={{
+            marginBottom: 10, padding: "10px 14px", borderRadius: 8,
+            background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.3)",
+            maxWidth: 420, margin: "0 auto 10px",
+          }}>
+            <div style={{ fontSize: "0.72rem", color: "#f87171", fontFamily: "var(--font-d)",
+              fontWeight: 700, marginBottom: 4 }}>
+              Missing scores — tap a hole to enter:
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {missingAlert.map(hNum => (
+                <button key={hNum} onClick={() => { setActiveHole(hNum - 1); setMode("entry"); }}
+                  style={{
+                    padding: "3px 10px", borderRadius: 6, border: "1px solid rgba(239,68,68,.4)",
+                    background: activeHole === hNum - 1 ? "rgba(239,68,68,.3)" : "rgba(239,68,68,.12)",
+                    color: "#f87171", fontFamily: "var(--font-d)", fontWeight: 700,
+                    fontSize: "0.72rem", cursor: "pointer",
+                  }}>
+                  {hNum}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <button
           onClick={handleSubmit}
-          disabled={!isComplete || submitLoading}
+          disabled={submitLoading}
           style={{
             width: "100%", maxWidth: 420, display: "flex", margin: "0 auto",
             padding: "14px", borderRadius: 10, border: "none",
             background: isComplete ? "var(--gold)" : "rgba(255,255,255,.06)",
             color: isComplete ? "var(--navy)" : "var(--cream-dim)",
             fontWeight: 700, fontFamily: "var(--font-d)", fontSize: "0.95rem",
-            cursor: isComplete ? "pointer" : "not-allowed",
+            cursor: submitLoading ? "not-allowed" : "pointer",
             alignItems: "center", justifyContent: "center", gap: 8,
           }}
         >
