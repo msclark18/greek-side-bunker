@@ -310,6 +310,7 @@ export default function LiveScorecard({
 
     const { data: updated, error } = await supabase.from("rounds").update({
       hole_scores: scores,
+      hole_stats: holeStats,
       gross,
       net,
       stableford_pts: pts,

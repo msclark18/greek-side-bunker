@@ -653,10 +653,27 @@ export default function Leaderboard({
                       }
                     </td>
                     <td>
-                      {r.scorecard_url
-                        ? <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><FileText size={12} />View</button>
-                        : <span style={{ color: "#4b5563", fontSize: ".76rem" }}>—</span>
-                      }
+                      {(() => {
+                        const hasLive = r.hole_scores?.length > 0;
+                        const hasPhoto = !!r.scorecard_url;
+                        if (!hasLive && !hasPhoto) return <span style={{ color: "#4b5563", fontSize: ".76rem" }}>—</span>;
+                        const roundCourse = courses.find(c => c.id === r.course_id);
+                        const roundPlayer = members.find(m => m.user_id === r.user_id)?.profile?.name;
+                        return (
+                          <div style={{ display: "flex", gap: 4 }}>
+                            {hasLive && (
+                              <button className="sc-btn" onClick={() => setViewCardModal({ round: r, course: roundCourse, playerName: roundPlayer, useHandicap: config.useHandicap })} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                <FileText size={12} />Scorecard
+                              </button>
+                            )}
+                            {hasPhoto && (
+                              <button className="sc-btn" onClick={() => setViewCardModal({ url: r.scorecard_url })} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                <FileText size={12} />Photo
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}</tbody>

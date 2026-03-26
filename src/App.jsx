@@ -15,6 +15,7 @@ import AttestTab from "./tabs/AttestTab.jsx";
 import AdminTab from "./tabs/AdminTab.jsx";
 import HelpModal from "./components/HelpModal.jsx";
 import LiveScorecard from "./components/LiveScorecard.jsx";
+import RoundScorecardViewer from "./components/RoundScorecardViewer.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import "./styles/app.css";
 
@@ -632,15 +633,28 @@ export default function App() {
       {/* Scorecard modal */}
       {viewCardModal && (
         <div className="modal-bg" onClick={() => setViewCardModal(null)}>
-          <div className="modal" style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div className="modal" style={{ maxWidth: 700, padding: 0 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px 12px", borderBottom: "1px solid var(--navy-border)" }}>
               <div className="modal-title" style={{ marginBottom: 0, display: "flex", alignItems: "center", gap: 8 }}><FileText size={17} />Scorecard</div>
               <div style={{ display: "flex", gap: 8 }}>
-                <a href={viewCardModal.url} target="_blank" rel="noreferrer"><button className="btn btn-ghost btn-sm">Full Size ↗</button></a>
+                {viewCardModal.url && <a href={viewCardModal.url} target="_blank" rel="noreferrer"><button className="btn btn-ghost btn-sm">Photo ↗</button></a>}
                 <button className="btn btn-ghost btn-sm" onClick={() => setViewCardModal(null)}>Close</button>
               </div>
             </div>
-            <img src={viewCardModal.url} alt="Scorecard" style={{ maxWidth: "100%", borderRadius: 8, border: "1px solid var(--gold-border)", display: "block", margin: "0 auto" }} />
+            {viewCardModal.round ? (
+              <div style={{ maxHeight: "75vh", overflowY: "auto" }}>
+                <RoundScorecardViewer
+                  round={viewCardModal.round}
+                  course={viewCardModal.course}
+                  playerName={viewCardModal.playerName}
+                  useHandicap={viewCardModal.useHandicap}
+                />
+              </div>
+            ) : (
+              <div style={{ padding: 16 }}>
+                <img src={viewCardModal.url} alt="Scorecard" style={{ maxWidth: "100%", borderRadius: 8, border: "1px solid var(--gold-border)", display: "block", margin: "0 auto" }} />
+              </div>
+            )}
           </div>
         </div>
       )}
