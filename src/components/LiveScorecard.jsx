@@ -984,8 +984,7 @@ export default function LiveScorecard({
                       <td style={td({ textAlign: "left", paddingLeft: 8, color: "var(--cream)",
                         fontFamily: "var(--font-d)", fontSize: "0.6rem", fontWeight: 700,
                         letterSpacing: "0.5px", position: "sticky", left: 0,
-                        background: stickyBg, zIndex: 1, maxWidth: 52,
-                        overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" })}>
+                        background: stickyBg, zIndex: 1 })}>
                         {firstName}
                         {useHcp && <span style={{ color: "rgba(212,168,67,.6)", fontWeight: 400,
                           fontSize: "0.5rem", marginLeft: 3 }}>[{p.hcp < 0 ? `+${Math.abs(p.hcp)}` : (p.hcp ?? 0)}]</span>}
