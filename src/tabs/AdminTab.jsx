@@ -500,6 +500,21 @@ export default function AdminTab({
     setRounds(p => p.map(x => x.id === r.id ? { ...x, attest_status: "rejected" } : x));
   };
 
+  const adminAbandonRound = async (r) => {
+    if (!window.confirm(`Abandon ${r.player_name}'s in-progress round? This cannot be undone.`)) return;
+    if (r.group_id) {
+      const { data: groupRounds } = await supabase.from("rounds").select("id").eq("group_id", r.group_id);
+      const ids = (groupRounds ?? []).map(x => x.id);
+      if (ids.length > 0) {
+        await supabase.from("rounds").delete().in("id", ids);
+        setRounds(p => p.filter(x => !ids.includes(x.id)));
+        return;
+      }
+    }
+    await supabase.from("rounds").delete().eq("id", r.id);
+    setRounds(p => p.filter(x => x.id !== r.id));
+  };
+
   const saveEditRound = async () => {
     if (!editRound) return;
     const gross = Number(editRoundDraft.gross);
@@ -1004,7 +1019,7 @@ setConfirmClear(false);
               <div className="cfg-section-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><Trophy size={13} />Playoffs</div>
               <div className="cfg-row"><div><div className="cfg-label">Enable playoffs</div><div className="cfg-desc">Adds a Playoffs tab to the leaderboard</div></div><Toggle checked={d.playoffEnabled ?? true} onChange={v => set("playoffEnabled", v)} /></div>
               {(d.playoffEnabled ?? true) && <>
-                <div className="cfg-row"><div><div className="cfg-label">Number of qualifiers</div><div className="cfg-desc">Top N players by regular season standings</div></div><select value={d.playoffQualifiers ?? 4} onChange={e => set("playoffQualifiers", Number(e.target.value))} style={{ width: 80 }}>{[2, 4, 8, 16].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
+                <div className="cfg-row"><div><div className="cfg-label">Number of qualifiers</div><div className="cfg-desc">Top N players by regular season standings</div></div><select value={d.playoffQualifiers ?? 4} onChange={e => set("playoffQualifiers", Number(e.target.value))} style={{ width: 80 }}>{Array.from({ length: 15 }, (_, i) => i + 2).map(n => <option key={n} value={n}>{n}</option>)}</select></div>
                 <div className="cfg-row"><div><div className="cfg-label">Seeding based on</div><div className="cfg-desc">How players are ranked to determine bracket seeding</div></div><select value={d.playoffSeedingBy ?? "net"} onChange={e => set("playoffSeedingBy", e.target.value)} style={{ width: 130 }}><option value="net">Regular Season Net</option><option value="gross">Regular Season Gross</option><option value="stableford">Stableford Pts</option></select></div>
                 <div className="cfg-row"><div><div className="cfg-label">Playoff format</div><div className="cfg-desc">How playoff matches are decided</div></div><select value={d.playoffFormat ?? "match"} onChange={e => set("playoffFormat", e.target.value)} style={{ width: 130 }}><option value="match">Match Play</option><option value="stroke">Stroke Play</option><option value="stableford">Stableford</option></select></div>
                 <div className="cfg-row"><div><div className="cfg-label">Playoff course</div><div className="cfg-desc">Course where playoff matches will be played</div></div><select value={d.playoffCourse ?? ""} onChange={e => set("playoffCourse", e.target.value || null)} style={{ width: 160 }}><option value="">Not set</option>{courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
@@ -1963,6 +1978,9 @@ setConfirmClear(false);
                         <button className="btn btn-gold btn-sm" title="Approve" onClick={() => adminApproveRound(r)}><Check size={12} /></button>
                         <button className="btn btn-danger btn-sm" title="Reject" onClick={() => adminRejectRound(r)}><X size={12} /></button>
                       </>)}
+                      {r.round_status === "in_progress" && (
+                        <button className="btn btn-danger btn-sm" title="Abandon round" onClick={() => adminAbandonRound(r)}>Abandon</button>
+                      )}
                       <button className="btn btn-ghost btn-sm" title="Edit" onClick={() => { setEditRound(r); setEditRoundDraft({ gross: String(r.gross), date: r.date }); }}>✎</button>
                       <button className="btn btn-danger btn-sm" title="Delete" onClick={() => setConfirmDeleteRound(r)}>✕</button>
                     </div>

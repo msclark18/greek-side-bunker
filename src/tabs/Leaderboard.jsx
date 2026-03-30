@@ -725,15 +725,25 @@ export default function Leaderboard({
         else if (seedingBy === "stableford") seedList = [...overallLB].slice(0, n).map(p => ({ ...p, seedStat: p.label, seedLabel: "pts" }));
         else seedList = [...overallLB].slice(0, n).map(p => ({ ...p, seedStat: p.label, seedLabel: "avg net" }));
 
-        const numRounds = Math.round(Math.log2(Math.max(n, 2)));
+        const nextPow2 = Math.pow(2, Math.ceil(Math.log2(Math.max(n, 2))));
+        const numRounds = Math.log2(nextPow2);
         const roundLabels = { 1: ["Final"], 2: ["Semifinals", "Final"], 3: ["Quarterfinals", "Semifinals", "Final"], 4: ["Round of 16", "Quarterfinals", "Semifinals", "Final"] }[numRounds] ?? Array.from({ length: numRounds }, (_, i) => `Round ${i + 1}`);
 
         const initMatchups = () => {
-          const seeds = seedList.map((p, i) => ({ name: p.name, seed: i + 1 }));
-          const matches = [];
-          for (let i = 0; i < seeds.length / 2; i++) {
-            matches.push({ p1: seeds[i]?.name ?? null, p2: seeds[seeds.length - 1 - i]?.name ?? null, winner: null });
-          }
+          // Standard bracket seeding: recursive halving gives correct semi groupings
+          const getBracketPairs = (size) => {
+            if (size === 2) return [[1, 2]];
+            const half = getBracketPairs(size / 2);
+            return half.flatMap(([a, b]) => [[a, size + 1 - a], [size + 1 - b, b]]);
+          };
+          const pairs = getBracketPairs(nextPow2);
+          const matches = pairs.map(([s1, s2]) => {
+            const p1 = s1 <= n ? seedList[s1 - 1].name : null;
+            const p2 = s2 <= n ? seedList[s2 - 1].name : null;
+            const isBye = p1 === null || p2 === null;
+            const winner = isBye ? (p1 ?? p2) : null;
+            return { p1, p2, winner, isBye };
+          });
           return [{ round: 1, label: roundLabels[0], matchups: matches }];
         };
 
@@ -809,20 +819,9 @@ export default function Leaderboard({
               </div>
               {seedList.length === 0
                 ? <div className="empty">No rounds submitted yet — standings needed to seed the bracket.</div>
-                : (() => {
-                  const fee = config.entryFee ?? 0;
-                  const paidCount = members.filter(m => m.paid).length;
-                  const fullPool = fee * members.length;
-                  const collectedPool = fee * paidCount;
-                  const cats = config.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
-                  const positionPayout = [cats.find(c => c.id === "champion"), cats.find(c => c.id === "runnerUp"), cats.find(c => c.id === "thirdPlace"), null];
-                  return seedList.map((p, i) => {
+                : seedList.map((p, i) => {
                     const memberRecord = members.find(m => m.user_id === p.id);
                     const isPaid = memberRecord?.paid ?? false;
-                    const cat = positionPayout[i];
-                    const fullPrize = fullPool > 0 && cat?.pct > 0 ? Math.round(fullPool * cat.pct / 100) : null;
-                    const collectedPrize = collectedPool > 0 && cat?.pct > 0 ? Math.round(collectedPool * cat.pct / 100) : null;
-                    const showBoth = collectedPrize !== null && collectedPrize !== fullPrize;
                     return (
                       <div key={p.id} className="qualifier-chip" style={{ borderColor: isPaid ? "rgba(76,175,125,.2)" : "rgba(224,92,92,.15)" }}>
                         <div className="qualifier-seed">#{i + 1}</div>
@@ -830,24 +829,15 @@ export default function Leaderboard({
                           <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                             <span className="qualifier-name" style={{ flex: "unset" }}>{p.name}</span>
                             {config.entryFee > 0 && <span className={`paid-badge ${isPaid ? "paid" : "unpaid"}`}>{isPaid ? "✓ Paid" : "✗ Unpaid"}</span>}
-
                           </div>
                           <div style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginTop: 2 }}>
                             {p.seedStat} {p.seedLabel}
                             {config.useHandicap && <> · Hcp {p.handicap ?? "-"}</>}
                           </div>
                         </div>
-                        {fullPrize && (
-                          <div style={{ textAlign: "right", flexShrink: 0 }}>
-                            <div style={{ fontFamily: "var(--font-d)", fontSize: "1rem", color: "var(--gold)" }}>${fullPrize.toLocaleString()}</div>
-                            {showBoth && <div style={{ fontSize: ".62rem", color: "#6ee7a0" }}>${collectedPrize.toLocaleString()} collected</div>}
-                            <div style={{ fontSize: ".62rem", color: "var(--cream-dim)" }}>{cat.pct}% if winner</div>
-                          </div>
-                        )}
                       </div>
                     );
-                  });
-                })()
+                  })
               }
             </div>
 
@@ -877,30 +867,37 @@ export default function Leaderboard({
                 <div className="bracket-wrap" style={{ position: "relative" }}>
                   <div className="bracket">
                     {displayBracket.map((round, roundIdx) => {
-                      const totalHeight = round.matchups.length * 108;
+                      const visibleMatchups = round.matchups.filter(m => !m.isBye);
+                      if (visibleMatchups.length === 0) return null;
+                      const totalHeight = visibleMatchups.length * 108;
                       return (
                         <div key={roundIdx} className="bk-round-wrap" style={{ paddingLeft: roundIdx === 0 ? 0 : 32 }}>
                           <div className="bk-round-label">{round.label ?? `Round ${round.round}`}</div>
                           <div style={{ position: "relative", display: "flex", flexDirection: "column", justifyContent: "space-around", height: Math.max(totalHeight, 108) }}>
-                            {round.matchups.map((match, matchIdx) => {
+                            {visibleMatchups.map((match) => {
+                              const matchIdx = round.matchups.indexOf(match);
                               const slots = [{ name: match.p1, slot: "p1" }, { name: match.p2, slot: "p2" }];
                               const isLastRound = roundIdx === displayBracket.length - 1;
+                              const isByeMatch = match.isBye;
                               return (
                                 <div key={matchIdx} className="bk-match" style={{ position: "relative" }}>
                                   <div className={`bk-match-inner${match.winner ? " has-winner" : ""}`}>
                                     {slots.map(({ name, slot }, si) => {
+                                      const isByeSlot = isByeMatch && name === null;
                                       const isWinner = match.winner === name;
-                                      const isLoser = match.winner && !isWinner;
-                                      const isEmpty = !name;
+                                      const isLoser = match.winner && !isWinner && !isByeSlot;
+                                      const isEmpty = !name && !isByeSlot;
+                                      const canClick = isAdmin && name && !match.winner && !isByeMatch;
                                       return (
                                         <div key={slot}>
                                           <div
-                                            className={`bk-slot${isWinner ? " s-winner" : ""}${isLoser ? " s-loser" : ""}${isEmpty ? " s-empty" : ""}${isAdmin && name && !match.winner ? " clickable" : ""}`}
-                                            onClick={() => isAdmin && name && !match.winner && setWinner(roundIdx, matchIdx, name)}
+                                            className={`bk-slot${isWinner ? " s-winner" : ""}${isLoser ? " s-loser" : ""}${isEmpty ? " s-empty" : ""}${canClick ? " clickable" : ""}`}
+                                            style={isByeSlot ? { opacity: 0.35, cursor: "default", fontStyle: "italic" } : undefined}
+                                            onClick={() => canClick && setWinner(roundIdx, matchIdx, name)}
                                           >
                                             <span className="bk-seed">{name ? (seedList.findIndex(p => p.name === name) + 1 || "") : ""}</span>
-                                            <span className="bk-name">{name ?? "TBD"}</span>
-                                            {isWinner && <span className="bk-win-icon">✓</span>}
+                                            <span className="bk-name">{isByeSlot ? "BYE" : (name ?? "TBD")}</span>
+                                            {isWinner && !isByeMatch && <span className="bk-win-icon">✓</span>}
                                           </div>
                                           {si === 0 && <div className="bk-slot-divider" />}
                                         </div>
@@ -909,7 +906,7 @@ export default function Leaderboard({
                                   </div>
                                   {!isLastRound && (
                                     <svg style={{ position: "absolute", right: -32, top: "50%", transform: "translateY(-50%)", overflow: "visible", pointerEvents: "none" }} width="32" height="2">
-                                      <line x1="0" y1="1" x2="32" y2="1" stroke="rgba(212,168,67,.25)" strokeWidth="1" strokeDasharray="3,3" />
+                                      <line x1="0" y1="1" x2="32" y2="1" stroke="rgba(212,168,67,.45)" strokeWidth="1.5" />
                                     </svg>
                                   )}
                                 </div>
@@ -986,6 +983,64 @@ export default function Leaderboard({
                 })()}
               </div>
             )}
+          {/* Prize pool card */}
+          {(() => {
+            const fee = config.entryFee ?? 0;
+            if (!fee) return null;
+            const paidCount = members.filter(m => m.paid).length;
+            const fullPool = fee * members.length;
+            const collectedPool = fee * paidCount;
+            const cats = config.payoutCategories ?? DEFAULT_CONFIG.payoutCategories;
+
+            // Derive bracket results — use displayBracket so bye rounds are excluded
+            const finalRound = displayBracket.find(r => r.matchups.filter(m => !m.isBye).length === 1);
+            const finalMatch = finalRound?.matchups.find(m => !m.isBye);
+            const champion = finalMatch?.winner ?? null;
+            const runnerUp = finalMatch && finalMatch.winner
+              ? (finalMatch.winner === finalMatch.p1 ? finalMatch.p2 : finalMatch.p1)
+              : null;
+            const thirdPlace = config.thirdPlaceMatch?.winner ?? null;
+
+            const positions = [
+              { id: "champion", label: "Champion", winner: champion },
+              { id: "runnerUp", label: "Runner-up", winner: runnerUp },
+              { id: "thirdPlace", label: "3rd Place", winner: thirdPlace },
+            ];
+            const rows = positions.map(pos => {
+              const cat = cats.find(c => c.id === pos.id);
+              if (!cat?.pct) return null;
+              const full = Math.round(fullPool * cat.pct / 100);
+              const collected = Math.round(collectedPool * cat.pct / 100);
+              return { label: pos.label, winner: pos.winner, full, collected, pct: cat.pct };
+            }).filter(Boolean);
+            if (!rows.length) return null;
+            return (
+              <div className="card">
+                <div className="card-hdr" style={{ marginBottom: 12 }}><DollarSign size={15} />Prize Pool</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {rows.map((row, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                      <div>
+                        <div style={{ fontSize: ".72rem", color: "var(--cream-dim)", letterSpacing: ".5px", textTransform: "uppercase", fontFamily: "var(--font-d)" }}>{row.label}</div>
+                        {row.winner
+                          ? <div style={{ fontSize: ".92rem", color: "var(--cream)", fontWeight: 600, marginTop: 1 }}>{row.winner}</div>
+                          : <div style={{ fontSize: ".8rem", color: "var(--cream-dim)", fontStyle: "italic", marginTop: 1 }}>TBD</div>}
+                      </div>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <div style={{ fontFamily: "var(--font-d)", fontSize: "1rem", color: row.winner ? "var(--gold)" : "var(--cream-dim)" }}>${row.full.toLocaleString()}</div>
+                        {row.collected !== row.full && <div style={{ fontSize: ".62rem", color: "#6ee7a0" }}>${row.collected.toLocaleString()} collected · {row.pct}%</div>}
+                        {row.collected === row.full && <div style={{ fontSize: ".62rem", color: "var(--cream-dim)" }}>{row.pct}% of pool</div>}
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ borderTop: "1px solid rgba(255,255,255,.06)", marginTop: 2, paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: ".78rem", color: "var(--cream-dim)" }}>
+                    <span>Total pool</span>
+                    <span style={{ color: "var(--cream)" }}>${collectedPool.toLocaleString()} collected of ${fullPool.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           </>
         );
       })()}
