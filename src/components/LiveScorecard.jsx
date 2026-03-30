@@ -196,6 +196,28 @@ export default function LiveScorecard({
       companions.map(c => Array.from({ length: numHoles }, (_, i) => c.round.hole_scores?.[i] ?? null))
     );
   }, [companions.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Realtime: update companion scores when another player saves their round
+  useEffect(() => {
+    if (!companions.length) return;
+    const ids = companions.map(c => c.round.id);
+    const channel = supabase
+      .channel(`companion-scores-${round.id}`)
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "rounds",
+        filter: `id=in.(${ids.join(",")})`,
+      }, payload => {
+        const idx = companions.findIndex(c => c.round.id === payload.new.id);
+        if (idx === -1) return;
+        setCompanionScores(prev => {
+          const next = [...prev];
+          next[idx] = Array.from({ length: numHoles }, (_, i) => payload.new.hole_scores?.[i] ?? null);
+          return next;
+        });
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [companions.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [activePlayerId, setActivePlayerId] = useState(0); // 0=main, 1..n=companion idx+1
   const companionSaveTimeouts = useRef([]);
   const [numPadOpen, setNumPadOpen] = useState(false); // bottom-sheet numpad

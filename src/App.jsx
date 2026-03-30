@@ -318,6 +318,7 @@ export default function App() {
       await supabase.from("league_members").insert({ league_id: league.id, user_id: session.user.id, role: "player" });
       setJoinMsg({ text: "Joined!", ok: true });
       await loadLeagues();
+      selectLeague(league);
     }
     setJoinCode("");
     setTimeout(() => setJoinMsg({ text: "", ok: true }), 4000);
