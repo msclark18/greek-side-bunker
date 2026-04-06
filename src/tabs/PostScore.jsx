@@ -113,7 +113,7 @@ export default function PostScore({
     ? calcStableford(Number(form.score), autoHcp, selectedCourse.par)
     : null;
 
-  const isValidGhin = (ghin) => /^\d{7,8}$/.test(String(ghin ?? ""));
+  const isValidGhin = (ghin) => /^\d{6,8}$/.test(String(ghin ?? ""));
   const missingProfile = config.useHandicap && ((!profile?.handicap && profile?.handicap !== 0) || !isValidGhin(profile?.ghin));
 
   const canSubmit = () => {

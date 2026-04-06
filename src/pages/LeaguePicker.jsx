@@ -75,11 +75,11 @@ export default function LeaguePicker({
                   <label>GHIN #</label>
                   <input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""}
                     onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))}
-                    style={{ borderColor: profileDraft.ghin && !/^\d{7,8}$/.test(String(profileDraft.ghin)) ? "var(--red)" : undefined }} />
-                  {profileDraft.ghin && !/^\d{7,8}$/.test(String(profileDraft.ghin)) && (
+                    style={{ borderColor: profileDraft.ghin && !/^\d{6,8}$/.test(String(profileDraft.ghin)) ? "var(--red)" : undefined }} />
+                  {profileDraft.ghin && !/^\d{6,8}$/.test(String(profileDraft.ghin)) && (
                     <span style={{ fontSize: ".72rem", color: "var(--red)", marginTop: 2 }}>Must be 7–8 digits</span>
                   )}
-                  {profileDraft.ghin && /^\d{7,8}$/.test(String(profileDraft.ghin)) && (
+                  {profileDraft.ghin && /^\d{6,8}$/.test(String(profileDraft.ghin)) && (
                     <span style={{ fontSize: ".72rem", color: "var(--green)", marginTop: 2 }}>✓ Valid format</span>
                   )}
                 </div>

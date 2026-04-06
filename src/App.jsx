@@ -287,7 +287,7 @@ export default function App() {
     }
   };
 
-  const isValidGhin = (ghin) => /^\d{7,8}$/.test(String(ghin ?? ""));
+  const isValidGhin = (ghin) => /^\d{6,8}$/.test(String(ghin ?? ""));
 
   const joinLeague = async () => {
     if (!joinCode.trim()) return;
@@ -515,7 +515,7 @@ export default function App() {
 
   const isProfileIncomplete = config.useHandicap && (
     (!profile?.handicap && profile?.handicap !== 0) ||
-    !/^\d{7,8}$/.test(String(profile?.ghin ?? ""))
+    !/^\d{6,8}$/.test(String(profile?.ghin ?? ""))
   );
 
   // Show gate once per league entry if profile is incomplete
@@ -604,11 +604,11 @@ export default function App() {
                 <input type="text" placeholder="e.g. 1234567"
                   value={profileDraft.ghin ?? profile?.ghin ?? ""}
                   onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))}
-                  style={{ borderColor: profileDraft.ghin && !/^\d{7,8}$/.test(String(profileDraft.ghin)) ? "var(--red)" : undefined }} />
-                {profileDraft.ghin && !/^\d{7,8}$/.test(String(profileDraft.ghin)) && (
+                  style={{ borderColor: profileDraft.ghin && !/^\d{6,8}$/.test(String(profileDraft.ghin)) ? "var(--red)" : undefined }} />
+                {profileDraft.ghin && !/^\d{6,8}$/.test(String(profileDraft.ghin)) && (
                   <span style={{ fontSize: ".72rem", color: "var(--red)", marginTop: 2, display: "inline-flex", alignItems: "center", gap: 4 }}><AlertTriangle size={11} />Must be 7-8 digits</span>
                 )}
-                {profileDraft.ghin && /^\d{7,8}$/.test(String(profileDraft.ghin)) && (
+                {profileDraft.ghin && /^\d{6,8}$/.test(String(profileDraft.ghin)) && (
                   <span style={{ fontSize: ".72rem", color: "var(--green)", marginTop: 2 }}>✓ Valid format</span>
                 )}
               </div>
@@ -618,7 +618,7 @@ export default function App() {
                 className="btn btn-gold"
                 disabled={
                   (!profileDraft.handicap && profileDraft.handicap !== 0) ||
-                  !/^\d{7,8}$/.test(String(profileDraft.ghin ?? ""))
+                  !/^\d{6,8}$/.test(String(profileDraft.ghin ?? ""))
                 }
                 onClick={async () => {
                   await saveProfile({ ...profile, ...profileDraft });
@@ -671,10 +671,10 @@ export default function App() {
                 <div className="fg"><label>Handicap Index</label><input type="number" step=".1" min={0} max={54} placeholder="e.g. 8.4" value={profileDraft.handicap ?? ""} onChange={e => setProfileDraft(d => ({ ...d, handicap: e.target.value }))} /></div>
                 <div className="fg"><label>GHIN #</label><input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""} onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))} /></div>
               </div>
-              {profileDraft.ghin && !/^\d{7,8}$/.test(String(profileDraft.ghin)) && (
+              {profileDraft.ghin && !/^\d{6,8}$/.test(String(profileDraft.ghin)) && (
                 <p style={{ fontSize: ".72rem", color: "var(--red)", display: "flex", alignItems: "center", gap: 4 }}><AlertTriangle size={11} />GHIN must be 7-8 digits</p>
               )}
-              {profileDraft.ghin && /^\d{7,8}$/.test(String(profileDraft.ghin)) && (
+              {profileDraft.ghin && /^\d{6,8}$/.test(String(profileDraft.ghin)) && (
                 <><GhinLink ghin={profileDraft.ghin} /><p className="note" style={{ marginTop: 4 }}>Your GHIN # will be copied to clipboard when you click the link.</p></>
               )}
             </div>
