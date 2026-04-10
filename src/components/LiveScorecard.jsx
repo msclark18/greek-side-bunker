@@ -198,25 +198,26 @@ export default function LiveScorecard({
   }, [companions.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Realtime: update companion scores when another player saves their round
+  // Note: Supabase realtime doesn't support `in` filters, so we subscribe once
+  // per companion using individual `eq` filters.
   useEffect(() => {
     if (!companions.length) return;
-    const ids = companions.map(c => c.round.id);
-    const channel = supabase
-      .channel(`companion-scores-${round.id}`)
-      .on("postgres_changes", {
-        event: "UPDATE", schema: "public", table: "rounds",
-        filter: `id=in.(${ids.join(",")})`,
-      }, payload => {
-        const idx = companions.findIndex(c => c.round.id === payload.new.id);
-        if (idx === -1) return;
-        setCompanionScores(prev => {
-          const next = [...prev];
-          next[idx] = Array.from({ length: numHoles }, (_, i) => payload.new.hole_scores?.[i] ?? null);
-          return next;
-        });
-      })
-      .subscribe();
-    return () => supabase.removeChannel(channel);
+    const channels = companions.map((c, idx) =>
+      supabase
+        .channel(`companion-score-${c.round.id}`)
+        .on("postgres_changes", {
+          event: "UPDATE", schema: "public", table: "rounds",
+          filter: `id=eq.${c.round.id}`,
+        }, payload => {
+          setCompanionScores(prev => {
+            const next = [...prev];
+            next[idx] = Array.from({ length: numHoles }, (_, i) => payload.new.hole_scores?.[i] ?? null);
+            return next;
+          });
+        })
+        .subscribe()
+    );
+    return () => channels.forEach(ch => supabase.removeChannel(ch));
   }, [companions.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [activePlayerId, setActivePlayerId] = useState(0); // 0=main, 1..n=companion idx+1
   const companionSaveTimeouts = useRef([]);
