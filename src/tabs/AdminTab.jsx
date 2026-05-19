@@ -48,6 +48,11 @@ export default function AdminTab({
   const [editRound, setEditRound] = useState(null);
   const [editRoundDraft, setEditRoundDraft] = useState({});
   const [reminderSending, setReminderSending] = useState(false);
+  const [showPostForPlayer, setShowPostForPlayer] = useState(false);
+  const [postForPlayerForm, setPostForPlayerForm] = useState({ playerId: "", courseId: "", gross: "", net: "", date: new Date().toISOString().split("T")[0], attesterId: "" });
+  const [postForPlayerCard, setPostForPlayerCard] = useState(null);
+  const [postForPlayerMsg, setPostForPlayerMsg] = useState({ type: "", text: "" });
+  const [postForPlayerLoading, setPostForPlayerLoading] = useState(false);
 
   // ── Config ──
   const saveConfig = async (newCfg) => {
@@ -519,12 +524,101 @@ export default function AdminTab({
     if (!editRound) return;
     const gross = Number(editRoundDraft.gross);
     if (!gross) return;
-    const net = gross - editRound.course_handicap;
+    const calculatedNet = gross - editRound.course_handicap;
+    const net = editRoundDraft.net !== "" && !isNaN(Number(editRoundDraft.net)) ? Number(editRoundDraft.net) : calculatedNet;
     const pts = config.scoringFormat === "stableford" ? calcStableford(gross, editRound.course_handicap, editRound.par) : null;
     const update = { gross, net, date: editRoundDraft.date, ...(pts !== null ? { stableford_pts: pts } : {}) };
     await supabase.from("rounds").update(update).eq("id", editRound.id);
     setRounds(p => p.map(r => r.id === editRound.id ? { ...r, ...update } : r));
     setEditRound(null);
+  };
+
+  const uploadScorecardForRound = async (round, file) => {
+    if (!file) return;
+    const ext = file.name.split(".").pop();
+    const storagePath = `scorecards/${round.id}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from("scorecards").upload(storagePath, file, { upsert: true });
+    if (uploadError) { console.warn("Admin scorecard upload failed:", uploadError); return; }
+    const { data: urlData } = supabase.storage.from("scorecards").getPublicUrl(storagePath);
+    await supabase.from("rounds").update({ scorecard_url: urlData.publicUrl }).eq("id", round.id);
+    setRounds(p => p.map(r => r.id === round.id ? { ...r, scorecard_url: urlData.publicUrl } : r));
+    setEditRound(r => r ? { ...r, scorecard_url: urlData.publicUrl } : r);
+  };
+
+  const submitRoundForPlayer = async () => {
+    const { playerId, courseId, gross: grossStr, net: netStr, date, attesterId } = postForPlayerForm;
+    const player = members.find(m => m.user_id === playerId);
+    const course = courses.find(c => c.id === Number(courseId));
+    if (!player || !course || !grossStr || !date) return;
+    setPostForPlayerLoading(true);
+    const gross = Number(grossStr);
+    const hcp = calcCourseHcp(player.profile?.handicap ?? 0, course.slope, course.par, course.rating, config);
+    const net = netStr !== "" && !isNaN(Number(netStr)) ? Number(netStr) : gross - hcp;
+    const pts = config.scoringFormat === "stableford" ? calcStableford(gross, hcp, course.par) : null;
+    const attester = config.attestRequired ? members.find(m => m.user_id === attesterId && m.profile) : null;
+
+    const { data: inserted, error } = await supabase.from("rounds").insert({
+      league_id: activeLeague.id,
+      player_id: player.user_id,
+      player_name: player.profile.name,
+      attester_id: attester?.user_id ?? null,
+      attester_name: attester?.profile?.name ?? null,
+      attester_email: attester?.profile?.email ?? null,
+      course_id: course.id,
+      course_name: course.name,
+      gross, net, course_handicap: hcp, par: course.par,
+      stableford_pts: pts,
+      date,
+      scoring_format: config.scoringFormat,
+      attest_status: config.attestRequired ? "pending" : "approved",
+      round_status: "completed",
+    }).select().single();
+
+    if (error || !inserted) {
+      setPostForPlayerMsg({ type: "d", text: "Error saving round." });
+      setPostForPlayerLoading(false);
+      return;
+    }
+
+    if (postForPlayerCard) {
+      const ext = postForPlayerCard.name.split(".").pop();
+      const storagePath = `scorecards/${inserted.id}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("scorecards").upload(storagePath, postForPlayerCard, { upsert: true });
+      if (!uploadError) {
+        const { data: urlData } = supabase.storage.from("scorecards").getPublicUrl(storagePath);
+        const { error: updateError } = await supabase.from("rounds").update({ scorecard_url: urlData.publicUrl }).eq("id", inserted.id);
+        if (!updateError) inserted.scorecard_url = urlData.publicUrl;
+      }
+    }
+
+    if (config.attestRequired && attester) {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
+        await fetch(`${apiUrl}/api/send-attest-email`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            attesterEmail: attester.profile.email,
+            attesterName: attester.profile.name,
+            playerName: player.profile.name,
+            courseName: course.name,
+            gross, net, par: course.par,
+            date,
+            leagueName: activeLeague.name,
+            roundId: inserted.id,
+            appUrl: import.meta.env.VITE_API_URL ?? window.location.origin,
+            ccEmails: [],
+          }),
+        });
+      } catch (e) { console.warn("Attest email non-fatal:", e); }
+    }
+
+    setRounds(p => [inserted, ...p]);
+    setPostForPlayerForm({ playerId: "", courseId: "", gross: "", net: "", date: new Date().toISOString().split("T")[0], attesterId: "" });
+    setPostForPlayerCard(null);
+    setPostForPlayerMsg({ type: "s", text: `Round posted for ${player.profile.name}!` });
+    setTimeout(() => setPostForPlayerMsg({ type: "", text: "" }), 5000);
+    setPostForPlayerLoading(false);
   };
 
   const sendRoundReminders = async () => {
@@ -745,6 +839,17 @@ setConfirmClear(false);
                 <input type="number" value={editRoundDraft.gross}
                   onChange={e => setEditRoundDraft(d => ({ ...d, gross: e.target.value }))} autoFocus />
               </div>
+              {config.useHandicap && (
+                <div className="fg">
+                  <label>Net Score <span style={{ fontWeight: 400, color: "var(--cream-dim)", fontSize: ".75rem" }}>(leave blank to use app calculation)</span></label>
+                  <input
+                    type="number"
+                    value={editRoundDraft.net ?? ""}
+                    placeholder={editRoundDraft.gross ? `App-calculated: ${Number(editRoundDraft.gross) - editRound.course_handicap}` : ""}
+                    onChange={e => setEditRoundDraft(d => ({ ...d, net: e.target.value }))}
+                  />
+                </div>
+              )}
               <div className="fg">
                 <label>Date</label>
                 <input type="date" value={editRoundDraft.date}
@@ -753,9 +858,31 @@ setConfirmClear(false);
               {config.useHandicap && editRoundDraft.gross && (
                 <div style={{ background: "var(--gold-dim)", border: "1px solid var(--gold-border)", borderRadius: 8, padding: "10px 14px", fontSize: ".85rem", color: "var(--cream-dim)" }}>
                   Course Hcp: <strong style={{ color: "var(--cream)" }}>{editRound.course_handicap}</strong>
-                  {" · "}Est. Net: <strong style={{ color: "var(--gold)" }}>{Number(editRoundDraft.gross) - editRound.course_handicap}</strong>
+                  {" · "}App-calculated net: <strong style={{ color: "var(--gold)" }}>{Number(editRoundDraft.gross) - editRound.course_handicap}</strong>
+                  {editRoundDraft.net !== "" && !isNaN(Number(editRoundDraft.net)) && (
+                    <> {" · "}Saving net: <strong style={{ color: "var(--cream)" }}>{editRoundDraft.net}</strong></>
+                  )}
                 </div>
               )}
+              <div className="fg">
+                <label>Scorecard Photo</label>
+                {editRound.scorecard_url ? (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}>
+                    <a href={editRound.scorecard_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">View Photo</a>
+                    <label className="btn btn-ghost btn-sm" style={{ cursor: "pointer" }}>
+                      Replace
+                      <input type="file" accept="image/*" style={{ display: "none" }}
+                        onChange={e => { if (e.target.files[0]) uploadScorecardForRound(editRound, e.target.files[0]); }} />
+                    </label>
+                  </div>
+                ) : (
+                  <label className="btn btn-ghost btn-sm" style={{ cursor: "pointer", marginTop: 4, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    Upload Scorecard
+                    <input type="file" accept="image/*" style={{ display: "none" }}
+                      onChange={e => { if (e.target.files[0]) uploadScorecardForRound(editRound, e.target.files[0]); }} />
+                  </label>
+                )}
+              </div>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn btn-gold" onClick={saveEditRound} disabled={!editRoundDraft.gross}>Save Changes</button>
@@ -1930,8 +2057,110 @@ setConfirmClear(false);
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
             <div className="card-hdr" style={{ marginBottom: 0 }}><ClipboardList size={15} />All Rounds</div>
-            <button className="btn btn-danger" onClick={clearAllRounds}>Clear All</button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowPostForPlayer(v => !v)}>
+                {showPostForPlayer ? "Cancel" : "+ Post Round for Player"}
+              </button>
+              <button className="btn btn-danger" onClick={clearAllRounds}>Clear All</button>
+            </div>
           </div>
+
+          {/* Post Round for Player */}
+          {showPostForPlayer && (
+            <div style={{ marginBottom: 20, padding: "16px 18px", background: "rgba(212,168,67,.05)", border: "1px solid rgba(212,168,67,.2)", borderRadius: 10 }}>
+              <div style={{ fontSize: ".65rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)", marginBottom: 14 }}>Post Round for Player</div>
+              <div className="fgrid">
+                <div className="fg">
+                  <label>Player</label>
+                  <select value={postForPlayerForm.playerId} onChange={e => setPostForPlayerForm(f => ({ ...f, playerId: e.target.value }))}>
+                    <option value="">Select player…</option>
+                    {members.filter(m => m.profile).map(m => (
+                      <option key={m.user_id} value={m.user_id}>{m.profile.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="fg">
+                  <label>Course</label>
+                  <select value={postForPlayerForm.courseId} onChange={e => setPostForPlayerForm(f => ({ ...f, courseId: e.target.value }))}>
+                    <option value="">Select course…</option>
+                    {courses.filter(c => !c.playoff_only).map(c => (
+                      <option key={c.id} value={c.id}>{c.name} · Par {c.par}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="fg">
+                  <label>Gross Score</label>
+                  <input type="number" min={50} max={200} placeholder="e.g. 88"
+                    value={postForPlayerForm.gross}
+                    onChange={e => setPostForPlayerForm(f => ({ ...f, gross: e.target.value }))} />
+                </div>
+                {config.useHandicap && (
+                  <div className="fg">
+                    <label>Net Score <span style={{ fontWeight: 400, color: "var(--cream-dim)", fontSize: ".75rem" }}>(leave blank to auto-calculate)</span></label>
+                    <input type="number" min={0} max={200} placeholder="e.g. 79"
+                      value={postForPlayerForm.net}
+                      onChange={e => setPostForPlayerForm(f => ({ ...f, net: e.target.value }))} />
+                  </div>
+                )}
+                <div className="fg">
+                  <label>Date Played</label>
+                  <input type="date" value={postForPlayerForm.date}
+                    onChange={e => setPostForPlayerForm(f => ({ ...f, date: e.target.value }))}
+                    max={new Date().toISOString().split("T")[0]} />
+                </div>
+                {config.attestRequired && (
+                  <div className="fg">
+                    <label>Attested By</label>
+                    <select value={postForPlayerForm.attesterId} onChange={e => setPostForPlayerForm(f => ({ ...f, attesterId: e.target.value }))}>
+                      <option value="">Select playing partner…</option>
+                      {members.filter(m => m.profile && m.user_id !== postForPlayerForm.playerId).map(m => (
+                        <option key={m.user_id} value={m.user_id}>{m.profile.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              {postForPlayerForm.gross && postForPlayerForm.courseId && postForPlayerForm.playerId && config.useHandicap && (() => {
+                const player = members.find(m => m.user_id === postForPlayerForm.playerId);
+                const course = courses.find(c => c.id === Number(postForPlayerForm.courseId));
+                if (!player || !course) return null;
+                const hcp = calcCourseHcp(player.profile?.handicap ?? 0, course.slope, course.par, course.rating, config);
+                const calcNet = Number(postForPlayerForm.gross) - hcp;
+                return (
+                  <div style={{ marginBottom: 12, padding: "8px 12px", background: "var(--gold-dim)", border: "1px solid var(--gold-border)", borderRadius: 8, fontSize: ".82rem", color: "var(--cream-dim)" }}>
+                    Course Hcp: <strong style={{ color: "var(--cream)" }}>{hcp}</strong>
+                    {" · "}App-calculated net: <strong style={{ color: "var(--gold)" }}>{calcNet}</strong>
+                    {postForPlayerForm.net !== "" && !isNaN(Number(postForPlayerForm.net)) && (
+                      <> · Saving net: <strong style={{ color: "var(--cream)" }}>{postForPlayerForm.net}</strong></>
+                    )}
+                  </div>
+                );
+              })()}
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                <label className="btn btn-ghost btn-sm" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <Camera size={13} />{postForPlayerCard ? postForPlayerCard.name : "Attach Scorecard Photo"}
+                  <input type="file" accept="image/*" style={{ display: "none" }}
+                    onChange={e => setPostForPlayerCard(e.target.files[0] ?? null)} />
+                </label>
+                {postForPlayerCard && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => setPostForPlayerCard(null)}>✕ Remove</button>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>
+                <button
+                  className="btn btn-gold btn-sm"
+                  onClick={submitRoundForPlayer}
+                  disabled={postForPlayerLoading || !postForPlayerForm.playerId || !postForPlayerForm.courseId || !postForPlayerForm.gross || !postForPlayerForm.date}
+                >
+                  {postForPlayerLoading ? "Submitting…" : "Submit Round"}
+                </button>
+                {postForPlayerMsg.text && (
+                  <span className={`alert-${postForPlayerMsg.type}`} style={{ fontSize: ".82rem" }}>{postForPlayerMsg.text}</span>
+                )}
+              </div>
+            </div>
+          )}
+
           {rounds.length === 0 ? <div className="empty">No rounds yet.</div> : (
             <div className="tw"><table>
               <thead><tr>
@@ -1981,7 +2210,7 @@ setConfirmClear(false);
                       {r.round_status === "in_progress" && (
                         <button className="btn btn-danger btn-sm" title="Abandon round" onClick={() => adminAbandonRound(r)}>Abandon</button>
                       )}
-                      <button className="btn btn-ghost btn-sm" title="Edit" onClick={() => { setEditRound(r); setEditRoundDraft({ gross: String(r.gross), date: r.date }); }}>✎</button>
+                      <button className="btn btn-ghost btn-sm" title="Edit" onClick={() => { setEditRound(r); setEditRoundDraft({ gross: String(r.gross), net: "", date: r.date }); }}>✎</button>
                       <button className="btn btn-danger btn-sm" title="Delete" onClick={() => setConfirmDeleteRound(r)}>✕</button>
                     </div>
                   </td>

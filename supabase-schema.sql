@@ -397,11 +397,12 @@ CREATE POLICY "rounds_insert" ON rounds FOR INSERT TO authenticated
       WHERE league_id = ANY(SELECT public.get_my_league_ids())
     )
   );
--- Allow updating in-progress rounds by any league member (group leader entering companion scores)
+-- Allow updating rounds by admins, players updating their own completed rounds, or group leaders entering companion scores
 CREATE POLICY "rounds_update" ON rounds FOR UPDATE TO authenticated
   USING (
     league_id IN (SELECT league_id FROM league_members WHERE user_id = auth.uid() AND role = 'admin')
     OR (player_id = auth.uid() AND attest_status = 'pending')
+    OR (player_id = auth.uid() AND round_status = 'completed')
     OR (league_id IN (SELECT public.get_my_league_ids()) AND round_status = 'in_progress')
   );
 CREATE POLICY "rounds_delete" ON rounds FOR DELETE TO authenticated
