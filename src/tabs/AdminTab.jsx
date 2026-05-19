@@ -668,10 +668,9 @@ export default function AdminTab({
   };
 
   const clearAllRounds = async () => {
-    if (!confirmClear) { setConfirmClear(true); setTimeout(() => setConfirmClear(false), 5000); return; }
-setConfirmClear(false);
     await supabase.from("rounds").delete().eq("league_id", activeLeague.id);
     setRounds([]);
+    setConfirmClear(false);
   };
 
   // ── Export ──
@@ -887,6 +886,25 @@ setConfirmClear(false);
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn btn-gold" onClick={saveEditRound} disabled={!editRoundDraft.gross}>Save Changes</button>
               <button className="btn btn-ghost" onClick={() => setEditRound(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Clear All Rounds Modal */}
+      {confirmClear && (
+        <div className="modal-bg" onClick={() => setConfirmClear(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Clear All Rounds?</div>
+            <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 16, lineHeight: 1.7 }}>
+              This will permanently delete <strong style={{ color: "var(--cream)" }}>every round</strong> in this league — all scores, attestations, and history. This cannot be undone.
+            </p>
+            <div style={{ background: "rgba(224,92,92,.08)", border: "1px solid rgba(224,92,92,.25)", borderRadius: 8, padding: "12px 16px", marginBottom: 20, fontSize: ".85rem", color: "#f09090" }}>
+              <strong>{rounds.length}</strong> round{rounds.length !== 1 ? "s" : ""} will be deleted.
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-danger" onClick={clearAllRounds}>Yes, Delete All</button>
+              <button className="btn btn-ghost" onClick={() => setConfirmClear(false)}>Cancel</button>
             </div>
           </div>
         </div>
@@ -2061,7 +2079,7 @@ setConfirmClear(false);
               <button className="btn btn-ghost btn-sm" onClick={() => setShowPostForPlayer(v => !v)}>
                 {showPostForPlayer ? "Cancel" : "+ Post Round for Player"}
               </button>
-              <button className="btn btn-danger" onClick={clearAllRounds}>Clear All</button>
+              <button className="btn btn-danger" onClick={() => setConfirmClear(true)}>Clear All</button>
             </div>
           </div>
 
