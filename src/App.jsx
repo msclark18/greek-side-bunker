@@ -70,7 +70,7 @@ export default function App() {
   const [liveRound, setLiveRound] = useState(null);
   const [companionRounds, setCompanionRounds] = useState([]);
   useEffect(() => { if (!liveRound) setCompanionRounds([]); }, [liveRound]);
-  const [form, setForm] = useState({ courseId: "", score: "", attesterId: "", date: new Date().toISOString().split("T")[0], teamId: "", tournamentRoundId: "" });
+  const [form, setForm] = useState({ courseId: "", score: "", net: "", attesterId: "", date: new Date().toISOString().split("T")[0], teamId: "", tournamentRoundId: "" });
   const [formMsg, setFormMsg] = useState({ type: "", text: "" });
   const [cardFile, setCardFile] = useState(null);
   const [cardPreview, setCardPreview] = useState(null);
@@ -902,7 +902,7 @@ export default function App() {
           onComplete={(updated) => {
             setCompanionRounds([]);
             setLiveRound(null);
-            setForm(f => ({ ...f, score: "", courseId: "", attesterId: "", teamId: "", tournamentRoundId: "" }));
+            setForm(f => ({ ...f, score: "", net: "", courseId: "", attesterId: "", teamId: "", tournamentRoundId: "" }));
             setFormMsg({
               type: "s",
               text: config.attestRequired

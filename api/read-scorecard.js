@@ -40,7 +40,7 @@ export default async function handler(req, res) {
             },
             {
               type: "text",
-              text: `This is a golf scorecard${playerName ? ` for a round played by ${playerName}` : ''}. ${playerName ? `Find ${playerName}'s total gross score specifically — there may be multiple players on this card.` : 'Extract the total gross score.'} Also extract the date played and the name of the golf course. Respond ONLY with valid JSON like: {"gross": 84, "date": "2025-05-10", "course": "Pebble Beach Golf Links"}. If you cannot find a value clearly, use null for that field. Do not include any other text.`
+              text: `This is a golf scorecard${playerName ? ` for a round played by ${playerName}` : ''}. ${playerName ? `Find ${playerName}'s scores specifically — there may be multiple players on this card.` : 'Extract the scores.'} Extract the total gross score, the net score (gross minus handicap strokes), the date played, and the name of the golf course. Respond ONLY with valid JSON like: {"gross": 84, "net": 79, "date": "2025-05-10", "course": "Pebble Beach Golf Links"}. If you cannot find a value clearly, use null for that field. Do not include any other text.`
             }
           ]
         }]

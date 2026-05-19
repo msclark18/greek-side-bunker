@@ -22,6 +22,8 @@ export default function PostScore({
   const [showHcpModal, setShowHcpModal] = useState(false);
   const [hcpDraft, setHcpDraft] = useState("");
   const [scoringMode, setScoringMode] = useState(null); // null | "total" | "live"
+  const [showAiConfirm, setShowAiConfirm] = useState(false);
+  const [aiConfirmDraft, setAiConfirmDraft] = useState({ gross: "", net: "" });
   const [companionIds, setCompanionIds] = useState([]);
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
   const [playerSearch, setPlayerSearch] = useState("");
@@ -285,9 +287,23 @@ export default function PostScore({
     ? <span className="ab auto">Auto ✓</span>
     : <span className={`ab ${status}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>{status === "approved" ? "✓ Approved" : status === "rejected" ? "✗ Rejected" : <><Clock size={11} />Pending</>}</span>;
 
+  const applyAiResult = (parsed, grossOverride, netOverride) => {
+    const gross = grossOverride ?? (parsed.gross ? String(parsed.gross) : "");
+    const net = netOverride ?? (parsed.net ? String(parsed.net) : "");
+    const updates = { score: gross, net, date: parsed.date || form.date };
+    if (parsed.course) {
+      const match = courses.find(c =>
+        c.name.toLowerCase().includes(parsed.course.toLowerCase()) ||
+        parsed.course.toLowerCase().includes(c.name.toLowerCase())
+      );
+      if (match) updates.courseId = String(match.id);
+    }
+    setForm(f => ({ ...f, ...updates }));
+  };
+
   const readScorecardWithAI = async (file) => {
     if (!file) return;
-    setAiReading(true); setAiResult(null);
+    setAiReading(true); setAiResult(null); setShowAiConfirm(false);
     try {
       const b64 = await new Promise((res, rej) => {
         const r = new FileReader();
@@ -303,8 +319,12 @@ export default function PostScore({
       });
       const parsed = await resp.json();
       setAiResult(parsed);
-      if (parsed.gross) {
-        const updates = { score: String(parsed.gross), date: parsed.date || form.date };
+      if (parsed.gross || parsed.net) {
+        setAiConfirmDraft({ gross: parsed.gross ? String(parsed.gross) : "", net: parsed.net ? String(parsed.net) : "" });
+        setShowAiConfirm(true);
+        // Still apply date + course match immediately for convenience, but not scores
+        const updates = {};
+        if (parsed.date) updates.date = parsed.date;
         if (parsed.course) {
           const match = courses.find(c =>
             c.name.toLowerCase().includes(parsed.course.toLowerCase()) ||
@@ -312,7 +332,7 @@ export default function PostScore({
           );
           if (match) updates.courseId = String(match.id);
         }
-        setForm(f => ({ ...f, ...updates }));
+        if (Object.keys(updates).length) setForm(f => ({ ...f, ...updates }));
       }
     } catch (e) {
       console.warn("AI scorecard read failed:", e);
@@ -334,7 +354,7 @@ export default function PostScore({
     const course = selectedCourse;
     const hcp = autoHcp;
     const gross = Number(form.score);
-    const net = gross - hcp;
+    const net = form.net !== "" && !isNaN(Number(form.net)) ? Number(form.net) : gross - hcp;
     const pts = config.scoringFormat === "stableford" ? calcStableford(gross, hcp, course.par) : null;
     const attester = config.attestRequired ? members.find(m => m.user_id === form.attesterId && m.profile) : null;
 
@@ -355,10 +375,20 @@ export default function PostScore({
 
     if (cardFile) {
       const ext = cardFile.name.split(".").pop();
-      await supabase.storage.from("scorecards").upload(`scorecards/${inserted.id}.${ext}`, cardFile, { upsert: true });
-      const { data: urlData } = supabase.storage.from("scorecards").getPublicUrl(`scorecards/${inserted.id}.${ext}`);
-      await supabase.from("rounds").update({ scorecard_url: urlData.publicUrl }).eq("id", inserted.id);
-      inserted.scorecard_url = urlData.publicUrl;
+      const storagePath = `scorecards/${inserted.id}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("scorecards").upload(storagePath, cardFile, { upsert: true });
+      if (uploadError) {
+        console.warn("Scorecard upload failed:", uploadError);
+        setFormMsg({ type: "w", text: "Round saved, but scorecard photo failed to upload. You can add it from your round history." });
+      } else {
+        const { data: urlData } = supabase.storage.from("scorecards").getPublicUrl(storagePath);
+        const { error: updateError } = await supabase.from("rounds").update({ scorecard_url: urlData.publicUrl }).eq("id", inserted.id);
+        if (updateError) {
+          console.warn("Scorecard URL save failed:", updateError);
+        } else {
+          inserted.scorecard_url = urlData.publicUrl;
+        }
+      }
     }
 
     if (config.attestRequired && attester) {
@@ -387,8 +417,8 @@ export default function PostScore({
     }
 
     setRounds(p => [inserted, ...p.filter(r => r.id !== inserted.id)]);
-    setForm(f => ({ ...f, score: "", courseId: "", attesterId: "", teamId: "", tournamentRoundId: "" }));
-    setCardFile(null); setCardPreview(null); setAiResult(null);
+    setForm(f => ({ ...f, score: "", net: "", courseId: "", attesterId: "", teamId: "", tournamentRoundId: "" }));
+    setCardFile(null); setCardPreview(null); setAiResult(null); setShowAiConfirm(false);
     setFormMsg({
       type: "s",
       text: config.attestRequired
@@ -546,22 +576,76 @@ export default function PostScore({
             <div>
               <div className="sc-thumb">
                 <img src={cardPreview} alt="preview" />
-                <button className="sc-del" onClick={() => { setCardFile(null); setCardPreview(null); setAiResult(null); }}>✕</button>
+                <button className="sc-del" onClick={() => { setCardFile(null); setCardPreview(null); setAiResult(null); setShowAiConfirm(false); }}>✕</button>
               </div>
               {aiReading && (
                 <div className="ai-reading"><span className="spinner" /><span>Reading scorecard with AI…</span></div>
               )}
-              {aiResult && !aiReading && (
-                <div className="ai-reading" style={{
-                  background: aiResult.error ? "rgba(224,92,92,.08)" : "rgba(76,175,125,.08)",
-                  borderColor: aiResult.error ? "rgba(224,92,92,.2)" : "rgba(76,175,125,.2)",
-                  color: aiResult.error ? "#f09090" : "#6ee7a0",
-                }}>
-                  {aiResult.error
-                    ? <><AlertTriangle size={13} /> Couldn't read score — please enter manually.</>
-                    : aiResult.gross
-                      ? `✓ Detected score: ${aiResult.gross}${aiResult.date ? ` · Date: ${aiResult.date}` : ""}${aiResult.course ? ` · Course: ${aiResult.course}` : ""} — fields pre-filled!`
-                      : "Score not detected — please enter manually."}
+              {aiResult && !aiReading && aiResult.error && (
+                <div className="ai-reading" style={{ background: "rgba(224,92,92,.08)", borderColor: "rgba(224,92,92,.2)", color: "#f09090" }}>
+                  <AlertTriangle size={13} /> Couldn't read score — please enter manually.
+                </div>
+              )}
+              {aiResult && !aiReading && !aiResult.error && !aiResult.gross && !aiResult.net && (
+                <div className="ai-reading" style={{ background: "rgba(224,92,92,.08)", borderColor: "rgba(224,92,92,.2)", color: "#f09090" }}>
+                  Score not detected — please enter manually.
+                </div>
+              )}
+              {showAiConfirm && aiResult && !aiResult.error && (
+                <div style={{ marginTop: 10, padding: "14px 16px", background: "rgba(212,168,67,.06)", border: "1px solid rgba(212,168,67,.25)", borderRadius: 10 }}>
+                  <div style={{ fontSize: ".65rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)", marginBottom: 10 }}>AI Read — Verify Your Scores</div>
+                  <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                    <div className="fg" style={{ flex: 1, margin: 0 }}>
+                      <label style={{ fontSize: ".72rem" }}>Gross Score</label>
+                      <input
+                        type="number"
+                        min={50} max={200}
+                        value={aiConfirmDraft.gross}
+                        onChange={e => setAiConfirmDraft(d => ({ ...d, gross: e.target.value }))}
+                        style={{ marginTop: 4 }}
+                      />
+                    </div>
+                    {config.useHandicap && (
+                      <div className="fg" style={{ flex: 1, margin: 0 }}>
+                        <label style={{ fontSize: ".72rem" }}>Net Score</label>
+                        <input
+                          type="number"
+                          min={0} max={200}
+                          value={aiConfirmDraft.net}
+                          onChange={e => setAiConfirmDraft(d => ({ ...d, net: e.target.value }))}
+                          style={{ marginTop: 4 }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {config.useHandicap && autoHcp > 0 && aiConfirmDraft.gross && (
+                    <div style={{ fontSize: ".75rem", color: "var(--cream-dim)", marginBottom: 10 }}>
+                      App-calculated net: <strong style={{ color: "var(--cream)" }}>{Number(aiConfirmDraft.gross) - autoHcp}</strong> (Gross {aiConfirmDraft.gross} − Hcp {autoHcp})
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      className="btn btn-gold btn-sm"
+                      onClick={() => {
+                        applyAiResult(aiResult, aiConfirmDraft.gross, config.useHandicap ? aiConfirmDraft.net : "");
+                        setShowAiConfirm(false);
+                      }}
+                      disabled={!aiConfirmDraft.gross}
+                    >
+                      Confirm Scores
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => { setShowAiConfirm(false); setAiResult(null); }}
+                    >
+                      Skip / Enter Manually
+                    </button>
+                  </div>
+                </div>
+              )}
+              {!showAiConfirm && aiResult && !aiResult.error && (aiResult.gross || aiResult.net) && (
+                <div className="ai-reading" style={{ background: "rgba(76,175,125,.08)", borderColor: "rgba(76,175,125,.2)", color: "#6ee7a0" }}>
+                  ✓ Scores confirmed from scorecard
                 </div>
               )}
             </div>
@@ -676,18 +760,34 @@ export default function PostScore({
             </div>
           )}
 
+          {scoringMode !== "live" && config.useHandicap && (
+            <div className="fg">
+              <label>Net Score <span style={{ fontWeight: 400, color: "var(--cream-dim)", fontSize: ".75rem" }}>(optional — leave blank to use app calculation)</span></label>
+              <input
+                type="number"
+                min={0}
+                max={200}
+                placeholder={autoNet !== null ? `App-calculated: ${autoNet}` : "e.g. 79"}
+                value={form.net}
+                onChange={setF("net")}
+              />
+            </div>
+          )}
+
           <div className="fg">
             <label>Date Played</label>
             <input type="date" value={form.date} onChange={setF("date")} max={new Date().toISOString().split("T")[0]} />
           </div>
         </div>
 
-        {/* Auto-calculated preview */}
+        {/* Score preview */}
         {selectedCourse && form.score && (() => {
           const gross = Number(form.score);
+          const effectiveNet = form.net !== "" && !isNaN(Number(form.net)) ? Number(form.net) : autoNet;
+          const usingCustomNet = form.net !== "" && !isNaN(Number(form.net));
           return (
             <div style={{ marginTop: 12, padding: "12px 16px", background: "var(--gold-dim)", border: "1px solid var(--gold-border)", borderRadius: 8, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-              <span style={{ fontSize: ".6rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)" }}>Auto-Calculated</span>
+              <span style={{ fontSize: ".6rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)" }}>{usingCustomNet ? "Score Preview" : "Auto-Calculated"}</span>
               {config.useHandicap && selectedCourse && (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                   <span style={{ fontSize: ".6rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>
@@ -705,14 +805,16 @@ export default function PostScore({
                 <span style={{ fontSize: ".6rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Gross</span>
                 <span style={{ fontFamily: "var(--font-d)", fontSize: "1.2rem", color: "var(--cream)" }}>{gross}</span>
               </div>
-              {config.useHandicap && autoNet !== null && (
+              {config.useHandicap && effectiveNet !== null && (
                 <>
                   <span style={{ color: "var(--gold-border)", fontSize: "1.2rem" }}>→</span>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                    <span style={{ fontSize: ".6rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Net</span>
+                    <span style={{ fontSize: ".6rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>
+                      Net{usingCustomNet ? <span style={{ color: "var(--gold)", marginLeft: 3 }}>✎</span> : ""}
+                    </span>
                     {selectedCourse
-                      ? <span className={`sb ${pmCls(autoNet, selectedCourse.par)}`} style={{ fontSize: "1.2rem" }}>{autoNet} <span style={{ fontSize: ".72rem", opacity: .7 }}>({toPM(autoNet, selectedCourse.par)})</span></span>
-                      : <span style={{ fontFamily: "var(--font-d)", fontSize: "1.2rem" }}>{autoNet}</span>
+                      ? <span className={`sb ${pmCls(effectiveNet, selectedCourse.par)}`} style={{ fontSize: "1.2rem" }}>{effectiveNet} <span style={{ fontSize: ".72rem", opacity: .7 }}>({toPM(effectiveNet, selectedCourse.par)})</span></span>
+                      : <span style={{ fontFamily: "var(--font-d)", fontSize: "1.2rem" }}>{effectiveNet}</span>
                     }
                   </div>
                 </>
