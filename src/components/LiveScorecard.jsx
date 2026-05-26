@@ -230,6 +230,22 @@ export default function LiveScorecard({
       penalties: round.hole_stats?.[i]?.penalties ?? [], // ["water","ob","bunker",...]
     }))
   );
+
+  // hole_stats is excluded from the initial league data fetch to reduce IO.
+  // If the round was previously scored (resume case), fetch stats lazily on mount.
+  useEffect(() => {
+    if (round.hole_stats != null) return;
+    supabase.from("rounds").select("hole_stats").eq("id", round.id).single()
+      .then(({ data }) => {
+        if (data?.hole_stats) {
+          setHoleStats(prev => prev.map((s, i) => ({
+            putts: data.hole_stats[i]?.putts ?? s.putts,
+            fairway: data.hole_stats[i]?.fairway ?? s.fairway,
+            penalties: data.hole_stats[i]?.penalties ?? s.penalties,
+          })));
+        }
+      });
+  }, [round.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [pendingStats, setPendingStats] = useState({ putts: 2, fairway: null, mishit: false, penalties: [] });
   const [showAttestPicker, setShowAttestPicker] = useState(false);
   const [selectedAttesterId, setSelectedAttesterId] = useState(null);

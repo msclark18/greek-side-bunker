@@ -213,7 +213,7 @@ export default function App() {
     try {
       const [{ data: c, error: ce }, { data: r, error: re }, { data: m, error: me }, { data: s }, { data: pj }] = await Promise.all([
         supabase.from("courses").select("*").eq("league_id", league.id).order("name"),
-        supabase.from("rounds").select("*").eq("league_id", league.id).order("created_at", { ascending: false }),
+        supabase.from("rounds").select("id,league_id,player_id,player_name,attester_id,attester_name,attester_email,course_id,course_name,gross,net,stableford_pts,course_handicap,par,date,scoring_format,attest_status,attest_token,attest_at,attest_note,scorecard_url,hole_scores,round_status,tracking_only,group_id,team_id,tournament_round_id,created_at").eq("league_id", league.id).order("created_at", { ascending: false }),
         supabase.from("league_members").select("*, profile:profiles(*)").eq("league_id", league.id),
         supabase.from("league_settings").select("*").eq("league_id", league.id).single(),
         supabase.from("league_join_requests").select("*, profile:profiles(*)").eq("league_id", league.id).eq("status", "pending"),

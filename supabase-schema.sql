@@ -268,6 +268,15 @@ CREATE INDEX IF NOT EXISTS idx_rounds_course_id ON rounds(course_id);
 CREATE INDEX IF NOT EXISTS idx_courses_league_id ON courses(league_id);
 CREATE INDEX IF NOT EXISTS idx_join_requests_league_id ON league_join_requests(league_id);
 
+-- Additional indexes to reduce full table scans on commonly filtered columns
+CREATE INDEX IF NOT EXISTS idx_rounds_round_status ON rounds(round_status);
+CREATE INDEX IF NOT EXISTS idx_rounds_attest_status ON rounds(attest_status);
+CREATE INDEX IF NOT EXISTS idx_rounds_attest_token ON rounds(attest_token);
+CREATE INDEX IF NOT EXISTS idx_rounds_group_id ON rounds(group_id);
+-- Composite index for the most common query pattern (fetch all rounds for a league, filter by status)
+CREATE INDEX IF NOT EXISTS idx_rounds_league_round_status ON rounds(league_id, round_status);
+CREATE INDEX IF NOT EXISTS idx_rounds_league_attest_status ON rounds(league_id, attest_status);
+
 
 -- ============================================================
 -- KNOWN TRIGGERS TO AVOID
