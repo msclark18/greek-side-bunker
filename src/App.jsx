@@ -234,31 +234,22 @@ export default function App() {
     setDataLoaded(true);
   }, []);
 
-  // ── Realtime rounds subscription ────────────────────────────────────────────
-  // Keeps the leaderboard live as players enter hole-by-hole scores or submit rounds.
-  // Supabase Realtime must be enabled for the rounds table in the Supabase dashboard
-  // (Database → Replication → rounds).
+  // ── Visibility-based refresh ─────────────────────────────────────────────────
+  // Reloads league data when the user returns to the tab after being away.
+  // This replaces the postgres_changes realtime subscription, which continuously
+  // tails the WAL and consumes Disk IO even when nothing is happening.
+  // To fully stop WAL tailing, also disable rounds replication in:
+  // Supabase Dashboard → Database → Replication → toggle off "rounds"
   useEffect(() => {
     if (!activeLeague?.id) return;
-    const channel = supabase
-      .channel(`rounds-${activeLeague.id}`)
-      .on("postgres_changes", {
-        event: "*",
-        schema: "public",
-        table: "rounds",
-        filter: `league_id=eq.${activeLeague.id}`,
-      }, ({ eventType, new: next, old: prev }) => {
-        if (eventType === "INSERT") {
-          setRounds(p => [next, ...p.filter(r => r.id !== next.id)]);
-        } else if (eventType === "UPDATE") {
-          setRounds(p => p.map(r => r.id === next.id ? { ...r, ...next } : r));
-        } else if (eventType === "DELETE") {
-          setRounds(p => p.filter(r => r.id !== prev.id));
-        }
-      })
-      .subscribe();
-    return () => supabase.removeChannel(channel);
-  }, [activeLeague?.id]);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        loadLeagueData(activeLeague);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [activeLeague?.id, activeLeague, loadLeagueData]);
 
   const selectLeague = (league) => {
     setActiveMembership(myMemberships.find(m => m.league_id === league.id));
