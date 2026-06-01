@@ -250,6 +250,9 @@ export default function LiveScorecard({
   const [showAttestPicker, setShowAttestPicker] = useState(false);
   const [selectedAttesterId, setSelectedAttesterId] = useState(null);
   const statsTimeout = useRef(null);
+  // Tracks the latest scores/stats to be flushed in the next combined save
+  const pendingSave = useRef({ scores: null, stats: null });
+  const companionPendingSaves = useRef([]);
 
   // How many strokes does this player get (positive) or give (negative) on a hole?
   const getStrokes = (si) => {
@@ -293,36 +296,57 @@ export default function LiveScorecard({
     })),
   ];
 
-  // Debounced save — fires 800ms after last hole entry
-  const saveScores = useCallback((newScores) => {
+  // Combined debounced save — batches hole_scores + hole_stats into one DB write.
+  // 2500ms debounce reduces write frequency significantly vs the old 800ms split saves.
+  const flushSave = useCallback(() => {
     clearTimeout(saveTimeout.current);
     saveTimeout.current = setTimeout(async () => {
+      const { scores: newScores, stats: newStats } = pendingSave.current;
+      if (!newScores && !newStats) return;
       setSaving(true);
-      const gross = newScores.filter(s => s != null).reduce((a, b) => a + b, 0);
-      await supabase.from("rounds").update({ hole_scores: newScores, gross }).eq("id", round.id);
-      setRounds(p => p.map(r => r.id === round.id ? { ...r, hole_scores: newScores, gross } : r));
+      const update = {};
+      if (newScores) {
+        update.hole_scores = newScores;
+        update.gross = newScores.filter(s => s != null).reduce((a, b) => a + b, 0);
+      }
+      if (newStats) update.hole_stats = newStats;
+      await supabase.from("rounds").update(update).eq("id", round.id);
+      if (newScores) setRounds(p => p.map(r => r.id === round.id ? { ...r, ...update } : r));
+      pendingSave.current = { scores: null, stats: null };
       setSaving(false);
-    }, 800);
+    }, 2500);
   }, [round.id, setRounds]);
+
+  const saveScores = useCallback((newScores) => {
+    pendingSave.current.scores = newScores;
+    flushSave();
+  }, [flushSave]);
+
+  const saveStats = useCallback((newStats) => {
+    pendingSave.current.stats = newStats;
+    flushSave();
+  }, [flushSave]);
 
   const saveCompanionScore = useCallback((idx, newScores) => {
     if (!companionSaveTimeouts.current) companionSaveTimeouts.current = [];
+    if (!companionPendingSaves.current[idx]) companionPendingSaves.current[idx] = {};
+    companionPendingSaves.current[idx].scores = newScores;
     clearTimeout(companionSaveTimeouts.current[idx]);
     companionSaveTimeouts.current[idx] = setTimeout(async () => {
       const cr = companions[idx]?.round;
       if (!cr) return;
-      const gross = newScores.filter(s => s != null).reduce((a, b) => a + b, 0);
-      await supabase.from("rounds").update({ hole_scores: newScores, gross }).eq("id", cr.id);
-      setRounds(p => p.map(r => r.id === cr.id ? { ...r, hole_scores: newScores, gross } : r));
-    }, 800);
+      const pending = companionPendingSaves.current[idx] ?? {};
+      const update = {};
+      if (pending.scores) {
+        update.hole_scores = pending.scores;
+        update.gross = pending.scores.filter(s => s != null).reduce((a, b) => a + b, 0);
+      }
+      if (!update.hole_scores) return;
+      await supabase.from("rounds").update(update).eq("id", cr.id);
+      setRounds(p => p.map(r => r.id === cr.id ? { ...r, ...update } : r));
+      companionPendingSaves.current[idx] = {};
+    }, 2500);
   }, [companions, setRounds]);
-
-  const saveStats = useCallback((newStats) => {
-    clearTimeout(statsTimeout.current);
-    statsTimeout.current = setTimeout(async () => {
-      await supabase.from("rounds").update({ hole_stats: newStats }).eq("id", round.id);
-    }, 800);
-  }, [round.id]);
 
   const enterScore = (holeIdx, score) => {
     if (activePlayerId === 0) {
