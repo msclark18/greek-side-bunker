@@ -467,6 +467,12 @@ export default function PostScore({
               appUrl: notifyApiUrl,
               commissionerEmails: commEmails,
               stablefordPts: pts,
+              groupScores: groupInserts.map(r => ({
+                playerName: r.player_name,
+                gross: r.gross,
+                net: r.net,
+                courseHandicap: r.course_handicap,
+              })),
             }),
           });
         }

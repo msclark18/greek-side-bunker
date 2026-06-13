@@ -29,6 +29,7 @@ export default async function handler(req, res) {
     appUrl,
     commissionerEmails,
     stablefordPts,
+    groupScores,
   } = req.body;
 
   if (!playerName || !commissionerEmails?.length) {
@@ -57,7 +58,9 @@ export default async function handler(req, res) {
     body: JSON.stringify({
       from: process.env.FROM_EMAIL,
       to: commissionerEmails,
-      subject: `⛳ ${playerName} posted a round at ${courseName}`,
+      subject: Array.isArray(groupScores) && groupScores.length > 0
+        ? `⛳ ${playerName} posted scores for a group at ${courseName}`
+        : `⛳ ${playerName} posted a round at ${courseName}`,
       html: `
 <!DOCTYPE html>
 <html>
@@ -80,7 +83,7 @@ export default async function handler(req, res) {
     <div style="background:#161d2e;border:1px solid rgba(212,168,67,0.3);border-radius:12px;padding:28px;margin-bottom:20px;">
       <div style="font-size:.7rem;letter-spacing:2px;text-transform:uppercase;color:#d4a843;font-family:Georgia,serif;margin-bottom:6px;">Score Posted</div>
       <div style="font-size:1.1rem;color:#faf9f6;margin-bottom:20px;">
-        <strong>${safePlayer}</strong> just submitted a round.
+        <strong>${safePlayer}</strong> just submitted ${Array.isArray(groupScores) && groupScores.length > 0 ? `scores for a group of ${groupScores.length + 1}` : "a round"}.
       </div>
 
       <!-- Score details -->
@@ -115,6 +118,37 @@ export default async function handler(req, res) {
           </div>` : ""}
         </div>
       </div>
+
+      ${Array.isArray(groupScores) && groupScores.length > 0 ? `
+      <!-- Group member scores -->
+      <div style="margin-top:16px;margin-bottom:20px;">
+        <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;margin-bottom:10px;">Group Scores — Submitted by ${escapeHtml(playerName)}</div>
+        ${groupScores.map(gs => {
+          const gsNetDisplay = (gs.net != null && par != null)
+            ? (gs.net < par ? `${gs.net} (${gs.net - par})` : gs.net === par ? `${gs.net} (E)` : `${gs.net} (+${gs.net - par})`)
+            : (gs.net ?? "—");
+          return `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;margin-bottom:8px;">
+          <div style="font-size:.9rem;color:#faf9f6;font-weight:700;">${escapeHtml(gs.playerName)}</div>
+          <div style="display:flex;gap:16px;">
+            <div style="text-align:center;">
+              <div style="font-size:.55rem;letter-spacing:1.5px;text-transform:uppercase;color:#c8bfa8;">Gross</div>
+              <div style="font-size:1.1rem;font-family:Georgia,serif;color:#faf9f6;font-weight:700;">${gs.gross ?? "—"}</div>
+            </div>
+            ${gs.net != null ? `
+            <div style="text-align:center;">
+              <div style="font-size:.55rem;letter-spacing:1.5px;text-transform:uppercase;color:#c8bfa8;">Net</div>
+              <div style="font-size:1.1rem;font-family:Georgia,serif;color:#f0c96a;font-weight:700;">${gsNetDisplay}</div>
+            </div>` : ""}
+            ${gs.courseHandicap != null ? `
+            <div style="text-align:center;">
+              <div style="font-size:.55rem;letter-spacing:1.5px;text-transform:uppercase;color:#c8bfa8;">Hcp</div>
+              <div style="font-size:1.1rem;font-family:Georgia,serif;color:#c8bfa8;font-weight:700;">${gs.courseHandicap}</div>
+            </div>` : ""}
+          </div>
+        </div>`;
+        }).join("")}
+      </div>` : ""}
 
       <a href="${appUrl}" style="display:inline-block;padding:13px 28px;background:linear-gradient(135deg,#d4a843,#f0c96a);color:#0a0e1a;text-decoration:none;border-radius:8px;font-family:Georgia,serif;font-size:.85rem;font-weight:700;letter-spacing:1px;">View Leaderboard</a>
     </div>
