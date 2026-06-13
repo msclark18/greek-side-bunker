@@ -49,10 +49,11 @@ export default function App() {
   const [dataLoaded, setDataLoaded] = useState(false);
 
   // ── Deep-link params from email URLs (?league=ID&tab=admin&adminTab=rounds) ──
-  const deepLinkParams = (() => {
+  // Stored in state so they survive across re-renders after history.replaceState wipes the URL
+  const [deepLinkParams] = useState(() => {
     const p = new URLSearchParams(location.search);
     return { league: p.get("league"), tab: p.get("tab"), adminTab: p.get("adminTab") };
-  })();
+  });
 
   // ── UI state ──
   const [tab, setTab] = useState(() => deepLinkParams.tab || sessionStorage.getItem("gsb_tab") || "leaderboard");
