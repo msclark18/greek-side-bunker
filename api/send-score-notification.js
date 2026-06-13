@@ -91,58 +91,45 @@ export default async function handler(req, res) {
         <strong>${safePlayer}</strong> just submitted ${Array.isArray(groupScores) && groupScores.length > 0 ? `scores for a group of ${groupScores.length + 1}` : "a round"}.
       </div>
 
-      <!-- Score details -->
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:16px;margin-bottom:20px;">
-        <div style="margin-bottom:14px;">
+      <!-- Date / Course -->
+      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:14px 16px;margin-bottom:16px;">
+        <div style="margin-bottom:10px;">
           <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Date</div>
           <div style="font-size:1rem;color:#faf9f6;margin-top:2px;">${safeDate}</div>
         </div>
-        <div style="margin-bottom:14px;">
+        <div>
           <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Course</div>
           <div style="font-size:1rem;color:#faf9f6;margin-top:2px;">${safeCourse}</div>
         </div>
-        <div style="display:flex;gap:16px;flex-wrap:wrap;">
-          <div style="text-align:center;background:rgba(212,168,67,0.1);border:1px solid rgba(212,168,67,0.25);border-radius:8px;padding:10px 20px;">
-            <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Gross</div>
-            <div style="font-size:1.8rem;font-family:Georgia,serif;color:#faf9f6;font-weight:700;">${gross ?? "—"}</div>
-          </div>
-          ${net != null ? `
-          <div style="text-align:center;background:rgba(212,168,67,0.1);border:1px solid rgba(212,168,67,0.25);border-radius:8px;padding:10px 20px;">
-            <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Net</div>
-            <div style="font-size:1.8rem;font-family:Georgia,serif;color:#f0c96a;font-weight:700;">${netDisplay}</div>
-          </div>` : ""}
-          ${par != null ? `
-          <div style="text-align:center;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:10px 20px;">
-            <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Par</div>
-            <div style="font-size:1.8rem;font-family:Georgia,serif;color:#c8bfa8;font-weight:700;">${par}</div>
-          </div>` : ""}
-          ${stablefordPts != null ? `
-          <div style="text-align:center;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:8px;padding:10px 20px;">
-            <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;">Points</div>
-            <div style="font-size:1.8rem;font-family:Georgia,serif;color:#c4b5fd;font-weight:700;">${stablefordPts}</div>
-          </div>` : ""}
-        </div>
       </div>
 
-      ${Array.isArray(groupScores) && groupScores.length > 0 ? `
-      <!-- Group member scores -->
-      <div style="margin-top:16px;margin-bottom:20px;">
-        <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;margin-bottom:10px;">Also Submitted by ${escapeHtml(playerName)}</div>
-        ${groupScores.map(gs => {
-          const gsNetDisplay = (gs.net != null && par != null)
-            ? (gs.net < par ? `${gs.net} (${gs.net - par})` : gs.net === par ? `${gs.net} (E)` : `${gs.net} (+${gs.net - par})`)
-            : (gs.net ?? "—");
-          return `
-        <div style="padding:12px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;margin-bottom:8px;">
-          <div style="font-size:.88rem;font-weight:700;color:#faf9f6;margin-bottom:6px;">${escapeHtml(gs.playerName)}</div>
-          <div style="font-size:.84rem;color:#c8bfa8;">
-            Gross&nbsp;<strong style="color:#faf9f6;font-family:Georgia,serif;">${gs.gross ?? "—"}</strong>
-            ${gs.net != null ? `&nbsp;&nbsp;&middot;&nbsp;&nbsp;Net&nbsp;<strong style="color:#f0c96a;font-family:Georgia,serif;">${gsNetDisplay}</strong>` : ""}
-            ${gs.courseHandicap != null ? `&nbsp;&nbsp;&middot;&nbsp;&nbsp;Hcp&nbsp;<strong style="color:#c8bfa8;font-family:Georgia,serif;">${gs.courseHandicap}</strong>` : ""}
+      <!-- Score rows — all players get equal weight -->
+      <div style="margin-bottom:20px;">
+        ${(() => {
+          const allPlayers = [
+            { name: playerName, gross, net, netDisplay, courseHandicap: null, stablefordPts, isSubmitter: true },
+            ...(Array.isArray(groupScores) ? groupScores.map(gs => {
+              const gsNetDisplay = (gs.net != null && par != null)
+                ? (gs.net < par ? `${gs.net} (${gs.net - par})` : gs.net === par ? `${gs.net} (E)` : `${gs.net} (+${gs.net - par})`)
+                : (gs.net ?? "—");
+              return { name: gs.playerName, gross: gs.gross, net: gs.net, netDisplay: gsNetDisplay, courseHandicap: gs.courseHandicap, stablefordPts: null, isSubmitter: false };
+            }) : []),
+          ];
+          return allPlayers.map(p => `
+        <div style="padding:14px 16px;background:rgba(255,255,255,0.04);border:1px solid ${p.isSubmitter ? "rgba(212,168,67,0.3)" : "rgba(255,255,255,0.07)"};border-radius:8px;margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <div style="font-size:.95rem;font-weight:700;color:#faf9f6;">${escapeHtml(p.name)}</div>
+            ${p.isSubmitter && allPlayers.length > 1 ? `<div style="font-size:.6rem;letter-spacing:1.5px;text-transform:uppercase;color:#d4a843;background:rgba(212,168,67,0.12);border:1px solid rgba(212,168,67,0.3);border-radius:4px;padding:2px 7px;">Submitted</div>` : ""}
           </div>
-        </div>`;
-        }).join("")}
-      </div>` : ""}
+          <div style="font-size:.84rem;color:#c8bfa8;">
+            Gross&nbsp;<strong style="color:#faf9f6;font-family:Georgia,serif;">${p.gross ?? "—"}</strong>
+            ${p.net != null ? `&nbsp;&nbsp;&middot;&nbsp;&nbsp;Net&nbsp;<strong style="color:#f0c96a;font-family:Georgia,serif;">${p.netDisplay}</strong>` : ""}
+            ${p.courseHandicap != null ? `&nbsp;&nbsp;&middot;&nbsp;&nbsp;Hcp&nbsp;<strong style="color:#c8bfa8;font-family:Georgia,serif;">${p.courseHandicap}</strong>` : ""}
+            ${p.stablefordPts != null ? `&nbsp;&nbsp;&middot;&nbsp;&nbsp;Pts&nbsp;<strong style="color:#c4b5fd;font-family:Georgia,serif;">${p.stablefordPts}</strong>` : ""}
+          </div>
+        </div>`).join("");
+        })()}
+      </div>
 
       <a href="${deepLink}" style="display:inline-block;padding:13px 28px;background:linear-gradient(135deg,#d4a843,#f0c96a);color:#0a0e1a;text-decoration:none;border-radius:8px;font-family:Georgia,serif;font-size:.85rem;font-weight:700;letter-spacing:1px;">View Submitted Scores</a>
     </div>
