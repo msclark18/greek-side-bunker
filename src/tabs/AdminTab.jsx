@@ -1107,8 +1107,16 @@ export default function AdminTab({
                 </div>
               )}
               <div className="cfg-row">
+                <div><div className="cfg-label">Notify commissioner on score submission</div><div className="cfg-desc">Send an email to all commissioners whenever any player posts a score — applies whether or not attestation is required</div></div>
+                <Toggle checked={d.notifyCommissionerOnSubmit ?? false} onChange={v => set("notifyCommissionerOnSubmit", v)} />
+              </div>
+              <div className="cfg-row">
                 <div><div className="cfg-label">Require scorecard photo</div><div className="cfg-desc">Players must upload a photo with every submission</div></div>
                 <Toggle checked={d.scorecardRequired} onChange={v => set("scorecardRequired", v)} />
+              </div>
+              <div className="cfg-row">
+                <div><div className="cfg-label">Allow group score posting</div><div className="cfg-desc">Players can submit scores for everyone they played with in a single form — submitting player attests the group</div></div>
+                <Toggle checked={d.allowGroupPosting ?? false} onChange={v => set("allowGroupPosting", v)} />
               </div>
             </div>
 
