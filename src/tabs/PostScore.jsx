@@ -452,7 +452,7 @@ export default function PostScore({
     if (config.notifyCommissionerOnSubmit) {
       try {
         const notifyApiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
-        const commEmails = members.filter(m => m.role === "admin" && m.profile?.email).map(m => m.profile.email);
+        const commEmails = members.filter(m => m.role === "admin" && m.profile?.email && m.user_id !== session.user.id).map(m => m.profile.email);
         if (commEmails.length > 0) {
           await fetch(`${notifyApiUrl}/api/send-score-notification`, {
             method: "POST",
@@ -585,7 +585,7 @@ export default function PostScore({
             <button className="btn btn-gold" style={{ flex: 1 }} onClick={() => setScoringMode("live")}>
               <Radio size={15} /> Live Scoring
             </button>
-            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setScoringMode("total")}>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setScoringMode("total"); setGroupMembers([]); }}>
               <AlignJustify size={15} /> Post Total Score
             </button>
           </div>
@@ -891,6 +891,7 @@ export default function PostScore({
 
             {groupMembers.length < 3 && (() => {
               const addedIds = groupMembers.map(gm => gm.userId);
+              const courseId = selectedCourse ? selectedCourse.id : null;
               const available = members.filter(m => m.user_id !== session.user.id && m.profile && !addedIds.includes(m.user_id));
               if (available.length === 0) return null;
               return (
@@ -899,9 +900,16 @@ export default function PostScore({
                   setGroupMembers(p => [...p, { userId: e.target.value, gross: "", net: "" }]);
                 }} style={{ width: "100%", marginTop: groupMembers.length > 0 ? 6 : 0 }}>
                   <option value="">+ Add a playing partner…</option>
-                  {available.map(m => (
-                    <option key={m.user_id} value={m.user_id}>{m.profile.name}</option>
-                  ))}
+                  {available.map(m => {
+                    const roundsFull = courseId != null && rounds.filter(r =>
+                      r.player_id === m.user_id && r.course_id === courseId && r.attest_status !== "rejected"
+                    ).length >= config.roundsPerCourse;
+                    return (
+                      <option key={m.user_id} value={m.user_id} disabled={roundsFull}>
+                        {m.profile.name}{roundsFull ? " (rounds full)" : ""}
+                      </option>
+                    );
+                  })}
                 </select>
               );
             })()}
@@ -973,7 +981,7 @@ export default function PostScore({
             }} disabled={!canSubmit()}>Submit Round</button>
           )}
           {scoringMode && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setScoringMode(null)}>Change</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setScoringMode(null); setGroupMembers([]); }}>Change</button>
           )}
           {formMsg.text && <div className={`alert-${formMsg.type}`}>{formMsg.text}</div>}
         </div>
