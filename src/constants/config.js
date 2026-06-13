@@ -1,5 +1,6 @@
 export const DEFAULT_CONFIG = {
-  scoringFormat: "stroke", roundsPerCourse: 2, attestRequired: true, scorecardRequired: false, ccCommissioner: false,
+  scoringFormat: "stroke", roundsPerCourse: 2, attestRequired: true, scorecardRequired: false, ccCommissioner: false, notifyCommissionerOnSubmit: false,
+  allowGroupPosting: false,
   useHandicap: true, handicapPct: 100, useSlopeRating: true, maxHandicap: null,
   joinMode: "open", maxPlayers: null, hideScores: false, seasonStart: null, seasonEnd: null,
   googleSheetUrl: null,

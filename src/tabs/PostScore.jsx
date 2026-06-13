@@ -29,6 +29,8 @@ export default function PostScore({
   const [playerSearch, setPlayerSearch] = useState("");
   const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
   const [showGroupModal, setShowGroupModal] = useState(false);
+  const [groupMembers, setGroupMembers] = useState([]); // [{ userId, gross: "", net: "" }]
+  const [showGroupConfirm, setShowGroupConfirm] = useState(false);
 
   // When the live round clears (submitted or closed from App level), reset mode
   useEffect(() => { if (!liveRound) { setScoringMode(null); setCompanionIds([]); } }, [liveRound]);
@@ -416,14 +418,72 @@ export default function PostScore({
       } catch (e) { console.warn("Email non-fatal:", e); }
     }
 
+    // Post scores for group members (submitting player attests automatically)
+    const groupInserts = [];
+    for (const gm of groupMembers) {
+      if (!gm.gross) continue;
+      const gmMember = members.find(m => m.user_id === gm.userId);
+      if (!gmMember?.profile) continue;
+      const gmGross = Number(gm.gross);
+      const gmHcp = calcCourseHcp(gmMember.profile.handicap ?? 0, course.slope, course.par, course.rating, config);
+      const gmNet = gm.net !== "" && !isNaN(Number(gm.net)) ? Number(gm.net) : gmGross - gmHcp;
+      const gmPts = config.scoringFormat === "stableford" ? calcStableford(gmGross, gmHcp, course.par) : null;
+      const { data: gmInserted } = await supabase.from("rounds").insert({
+        league_id: activeLeague.id,
+        player_id: gm.userId,
+        player_name: gmMember.profile.name,
+        attester_id: session.user.id,
+        attester_name: profile.name,
+        attester_email: profile.email ?? null,
+        course_id: course.id, course_name: course.name,
+        gross: gmGross, net: gmNet, stableford_pts: gmPts, course_handicap: gmHcp, par: course.par,
+        date: form.date, scoring_format: activeFmt,
+        attest_status: "approved",
+        round_status: "completed",
+        team_id: null,
+        tournament_round_id: form.tournamentRoundId || null,
+      }).select().single();
+      if (gmInserted) groupInserts.push(gmInserted);
+    }
+    if (groupInserts.length > 0) {
+      setRounds(p => [...groupInserts.filter(r => !p.find(x => x.id === r.id)), ...p]);
+    }
+
+    // Notify commissioners on score submission if enabled
+    if (config.notifyCommissionerOnSubmit) {
+      try {
+        const notifyApiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
+        const commEmails = members.filter(m => m.role === "admin" && m.profile?.email).map(m => m.profile.email);
+        if (commEmails.length > 0) {
+          await fetch(`${notifyApiUrl}/api/send-score-notification`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              playerName: profile.name,
+              courseName: course.name,
+              gross, net, par: course.par,
+              date: form.date,
+              leagueName: activeLeague.name,
+              appUrl: notifyApiUrl,
+              commissionerEmails: commEmails,
+              stablefordPts: pts,
+            }),
+          });
+        }
+      } catch (e) { console.warn("Commissioner notify non-fatal:", e); }
+    }
+
     setRounds(p => [inserted, ...p.filter(r => r.id !== inserted.id)]);
     setForm(f => ({ ...f, score: "", net: "", courseId: "", attesterId: "", teamId: "", tournamentRoundId: "" }));
     setCardFile(null); setCardPreview(null); setAiResult(null); setShowAiConfirm(false);
+    setGroupMembers([]);
     setFormMsg({
       type: "s",
       text: config.attestRequired
         ? `Submitted! Attestation sent to ${attester.profile.name}.`
-        : "Round submitted and approved!",
+        : groupInserts.length > 0
+          ? `Round submitted and approved! Posted scores for ${groupInserts.length} playing partner${groupInserts.length > 1 ? "s" : ""}.`
+          : "Round submitted and approved!",
     });
     setTimeout(() => setFormMsg({ type: "", text: "" }), 5000);
   };
@@ -526,7 +586,7 @@ export default function PostScore({
             <button className="btn btn-gold" style={{ flex: 1 }} onClick={() => setScoringMode("live")}>
               <Radio size={15} /> Live Scoring
             </button>
-            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setScoringMode("total")}>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setScoringMode("total"); setGroupMembers([]); }}>
               <AlignJustify size={15} /> Post Total Score
             </button>
           </div>
@@ -741,6 +801,18 @@ export default function PostScore({
             </div>
           )}
 
+          {/* Duplicate warning — score was already posted for this player via group posting */}
+          {scoringMode !== "live" && selectedCourse && (() => {
+            const groupPosted = myActiveOnCourse(selectedCourse.id).find(
+              r => r.attester_id && r.attester_id !== session.user.id && r.attest_status !== "rejected"
+            );
+            return groupPosted ? (
+              <div style={{ padding: "10px 14px", background: "rgba(212,168,67,.08)", border: "1px solid rgba(212,168,67,.3)", borderRadius: 8, fontSize: ".8rem", color: "var(--cream-dim)", lineHeight: 1.5 }}>
+                ⚠️ A score was already submitted for you on <strong style={{ color: "var(--cream)" }}>{selectedCourse.name}</strong> by <strong style={{ color: "var(--cream)" }}>{groupPosted.attester_name ?? "a playing partner"}</strong>. You won't be able to post another round until the current one is rejected.
+              </div>
+            ) : null;
+          })()}
+
           {config.attestRequired && scoringMode !== "live" && (
             <div className="fg">
               <label>Attested By</label>
@@ -779,6 +851,83 @@ export default function PostScore({
             <input type="date" value={form.date} onChange={setF("date")} max={new Date().toISOString().split("T")[0]} />
           </div>
         </div>
+
+        {/* ── Group posting section ── */}
+        {config.allowGroupPosting && scoringMode !== "live" && (
+          <div style={{ marginTop: 16, padding: "14px 16px", background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 10 }}>
+            <div style={{ fontSize: ".65rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--cream-dim)", fontFamily: "var(--font-d)", marginBottom: 6 }}>
+              Playing Group
+              <span style={{ color: "var(--gold)", marginLeft: 8, textTransform: "none", letterSpacing: 0, fontSize: ".75rem", fontFamily: "var(--font-b)", fontWeight: 400 }}>(optional)</span>
+            </div>
+            <p style={{ fontSize: ".78rem", color: "var(--cream-dim)", marginBottom: 12, lineHeight: 1.5, margin: "0 0 12px" }}>
+              Add playing partners to post their scores in one go — you'll attest for the group automatically.
+            </p>
+
+            {groupMembers.map((gm, idx) => {
+              const gmMember = members.find(m => m.user_id === gm.userId);
+              if (!gmMember) return null;
+              const gmHcp = selectedCourse ? calcCourseHcp(gmMember.profile?.handicap ?? 0, selectedCourse.slope, selectedCourse.par, selectedCourse.rating, config) : 0;
+              const gmAutoNet = gm.gross !== "" && !isNaN(Number(gm.gross)) ? Number(gm.gross) - gmHcp : null;
+              return (
+                <div key={gm.userId} style={{ marginBottom: 10, padding: "10px 12px", background: "rgba(255,255,255,.04)", border: "1px solid var(--navy-border)", borderRadius: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div style={{ fontFamily: "var(--font-d)", fontWeight: 700, fontSize: ".88rem", color: "var(--cream)" }}>
+                      {gmMember.profile?.name}
+                      {selectedCourse && <span style={{ marginLeft: 8, fontSize: ".7rem", color: "var(--cream-dim)", fontFamily: "var(--font-b)", fontWeight: 400 }}>Crs Hcp {gmHcp}</span>}
+                    </div>
+                    <button onClick={() => setGroupMembers(p => p.filter((_, i) => i !== idx))}
+                      style={{ background: "none", border: "none", color: "var(--cream-dim)", cursor: "pointer", fontSize: "1.2rem", lineHeight: 1, padding: "0 4px" }}>×</button>
+                  </div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <div className="fg" style={{ flex: 1, margin: 0 }}>
+                      <label style={{ fontSize: ".72rem" }}>Gross Score</label>
+                      <input type="number" min={50} max={200} placeholder="e.g. 90" value={gm.gross}
+                        onChange={e => setGroupMembers(p => p.map((x, i) => i === idx ? { ...x, gross: e.target.value } : x))}
+                        style={{ marginTop: 4 }} />
+                    </div>
+                    {config.useHandicap && (
+                      <div className="fg" style={{ flex: 1, margin: 0 }}>
+                        <label style={{ fontSize: ".72rem" }}>
+                          Net Score <span style={{ color: "var(--cream-dim)", fontWeight: 400, textTransform: "none", letterSpacing: 0, fontSize: ".68rem" }}>(optional)</span>
+                        </label>
+                        <input type="number" min={0} max={200}
+                          placeholder={gmAutoNet !== null ? `App: ${gmAutoNet}` : "e.g. 79"}
+                          value={gm.net}
+                          onChange={e => setGroupMembers(p => p.map((x, i) => i === idx ? { ...x, net: e.target.value } : x))}
+                          style={{ marginTop: 4 }} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {groupMembers.length < 3 && (() => {
+              const addedIds = groupMembers.map(gm => gm.userId);
+              const courseId = selectedCourse ? selectedCourse.id : null;
+              const available = members.filter(m => m.user_id !== session.user.id && m.profile && !addedIds.includes(m.user_id));
+              if (available.length === 0) return null;
+              return (
+                <select value="" onChange={e => {
+                  if (!e.target.value) return;
+                  setGroupMembers(p => [...p, { userId: e.target.value, gross: "", net: "" }]);
+                }} style={{ width: "100%", marginTop: groupMembers.length > 0 ? 6 : 0 }}>
+                  <option value="">+ Add a playing partner…</option>
+                  {available.map(m => {
+                    const roundsFull = courseId != null && rounds.filter(r =>
+                      r.player_id === m.user_id && r.course_id === courseId && r.attest_status !== "rejected"
+                    ).length >= config.roundsPerCourse;
+                    return (
+                      <option key={m.user_id} value={m.user_id} disabled={roundsFull}>
+                        {m.profile.name}{roundsFull ? " (rounds full)" : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              );
+            })()}
+          </div>
+        )}
 
         {/* Score preview */}
         {selectedCourse && form.score && (() => {
@@ -840,12 +989,16 @@ export default function PostScore({
           ) : (
             <button className="btn btn-gold" onClick={() => {
               if (!canSubmit()) return;
-              setHcpDraft("");
-              setShowHcpModal(true);
+              if (groupMembers.some(gm => gm.gross)) {
+                setShowGroupConfirm(true);
+              } else {
+                setHcpDraft("");
+                setShowHcpModal(true);
+              }
             }} disabled={!canSubmit()}>Submit Round</button>
           )}
           {scoringMode && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setScoringMode(null)}>Change</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setScoringMode(null); setGroupMembers([]); }}>Change</button>
           )}
           {formMsg.text && <div className={`alert-${formMsg.type}`}>{formMsg.text}</div>}
         </div>
@@ -1136,6 +1289,61 @@ export default function PostScore({
           </div>
         );
       })()}
+
+      {/* ── Group submission confirmation modal ── */}
+      {showGroupConfirm && selectedCourse && (
+        <div className="modal-bg" onClick={() => setShowGroupConfirm(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
+            <div className="modal-title">Review Group Submission</div>
+            <p style={{ fontSize: ".85rem", color: "var(--cream-dim)", marginBottom: 18, lineHeight: 1.6 }}>
+              Please review all scores before submitting. Group members' rounds are posted as auto-approved with you as the attester.
+            </p>
+
+            {/* Own score */}
+            <div style={{ marginBottom: 10, padding: "12px 14px", background: "rgba(212,168,67,.07)", border: "1px solid rgba(212,168,67,.25)", borderRadius: 8 }}>
+              <div style={{ fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)", marginBottom: 8 }}>Your Round</div>
+              <div style={{ fontWeight: 700, color: "var(--cream)", marginBottom: 4 }}>{profile?.name}</div>
+              <div style={{ fontSize: ".8rem", color: "var(--cream-dim)", marginBottom: 6 }}>{selectedCourse.name} · {form.date}</div>
+              <div style={{ display: "flex", gap: 16 }}>
+                <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Gross</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--cream)" }}>{form.score}</div></div>
+                {config.useHandicap && <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Crs Hcp</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--cream)" }}>{autoHcp}</div></div>}
+                {config.useHandicap && <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Net</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--gold)" }}>{form.net !== "" && !isNaN(Number(form.net)) ? Number(form.net) : autoNet}</div></div>}
+              </div>
+            </div>
+
+            {/* Group member scores */}
+            {groupMembers.filter(gm => gm.gross).map(gm => {
+              const gmMember = members.find(m => m.user_id === gm.userId);
+              if (!gmMember) return null;
+              const gmHcp = calcCourseHcp(gmMember.profile?.handicap ?? 0, selectedCourse.slope, selectedCourse.par, selectedCourse.rating, config);
+              const gmNet = gm.net !== "" && !isNaN(Number(gm.net)) ? Number(gm.net) : Number(gm.gross) - gmHcp;
+              return (
+                <div key={gm.userId} style={{ marginBottom: 10, padding: "12px 14px", background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8 }}>
+                  <div style={{ fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--cream-dim)", fontFamily: "var(--font-d)", marginBottom: 8 }}>Playing Partner</div>
+                  <div style={{ fontWeight: 700, color: "var(--cream)", marginBottom: 4 }}>{gmMember.profile?.name}</div>
+                  <div style={{ fontSize: ".8rem", color: "var(--cream-dim)", marginBottom: 6 }}>Auto-approved · attested by you</div>
+                  <div style={{ display: "flex", gap: 16 }}>
+                    <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Gross</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--cream)" }}>{gm.gross}</div></div>
+                    {config.useHandicap && <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Crs Hcp</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--cream)" }}>{gmHcp}</div></div>}
+                    {config.useHandicap && <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Net</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--gold)" }}>{gmNet}</div></div>}
+                  </div>
+                </div>
+              );
+            })}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+              <button
+                className="btn btn-gold"
+                style={{ flex: 1 }}
+                onClick={() => { setShowGroupConfirm(false); setHcpDraft(""); setShowHcpModal(true); }}
+              >
+                ✓ Looks Good, Submit
+              </button>
+              <button className="btn btn-ghost" onClick={() => setShowGroupConfirm(false)}>Go Back</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showHcpModal && selectedCourse && (
         <div className="modal-bg" onClick={() => setShowHcpModal(false)}>
