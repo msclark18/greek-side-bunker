@@ -453,7 +453,7 @@ export default function PostScore({
     if (config.notifyCommissionerOnSubmit) {
       try {
         const notifyApiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
-        const commEmails = members.filter(m => m.role === "admin" && m.profile?.email && m.user_id !== session.user.id).map(m => m.profile.email);
+        const commEmails = members.filter(m => m.role === "admin" && m.profile?.email).map(m => m.profile.email);
         if (commEmails.length > 0) {
           await fetch(`${notifyApiUrl}/api/send-score-notification`, {
             method: "POST",
