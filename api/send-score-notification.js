@@ -24,6 +24,7 @@ export default async function handler(req, res) {
     gross,
     net,
     par,
+    courseHandicap,
     date,
     leagueName,
     leagueId,
@@ -107,7 +108,7 @@ export default async function handler(req, res) {
       <div style="margin-bottom:20px;">
         ${(() => {
           const allPlayers = [
-            { name: playerName, gross, net, netDisplay, courseHandicap: null, stablefordPts, isSubmitter: true },
+            { name: playerName, gross, net, netDisplay, courseHandicap: courseHandicap ?? null, stablefordPts, isSubmitter: true },
             ...(Array.isArray(groupScores) ? groupScores.map(gs => {
               const gsNetDisplay = (gs.net != null && par != null)
                 ? (gs.net < par ? `${gs.net} (${gs.net - par})` : gs.net === par ? `${gs.net} (E)` : `${gs.net} (+${gs.net - par})`)

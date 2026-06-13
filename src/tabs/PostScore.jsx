@@ -462,6 +462,7 @@ export default function PostScore({
               playerName: profile.name,
               courseName: course.name,
               gross, net, par: course.par,
+              courseHandicap: hcp,
               date: form.date,
               leagueName: activeLeague.name,
               leagueId: activeLeague.id,
