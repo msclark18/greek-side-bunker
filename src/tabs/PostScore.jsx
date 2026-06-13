@@ -464,6 +464,7 @@ export default function PostScore({
               gross, net, par: course.par,
               date: form.date,
               leagueName: activeLeague.name,
+              leagueId: activeLeague.id,
               appUrl: notifyApiUrl,
               commissionerEmails: commEmails,
               stablefordPts: pts,

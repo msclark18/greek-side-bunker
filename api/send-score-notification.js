@@ -26,11 +26,16 @@ export default async function handler(req, res) {
     par,
     date,
     leagueName,
+    leagueId,
     appUrl,
     commissionerEmails,
     stablefordPts,
     groupScores,
   } = req.body;
+
+  const deepLink = leagueId
+    ? `${appUrl}?league=${leagueId}&tab=admin&adminTab=rounds`
+    : appUrl;
 
   if (!playerName || !commissionerEmails?.length) {
     return res.status(400).json({ error: "Missing required fields" });
@@ -139,7 +144,7 @@ export default async function handler(req, res) {
         }).join("")}
       </div>` : ""}
 
-      <a href="${appUrl}" style="display:inline-block;padding:13px 28px;background:linear-gradient(135deg,#d4a843,#f0c96a);color:#0a0e1a;text-decoration:none;border-radius:8px;font-family:Georgia,serif;font-size:.85rem;font-weight:700;letter-spacing:1px;">View Leaderboard</a>
+      <a href="${deepLink}" style="display:inline-block;padding:13px 28px;background:linear-gradient(135deg,#d4a843,#f0c96a);color:#0a0e1a;text-decoration:none;border-radius:8px;font-family:Georgia,serif;font-size:.85rem;font-weight:700;letter-spacing:1px;">View Submitted Scores</a>
     </div>
 
     <!-- Footer -->

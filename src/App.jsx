@@ -48,8 +48,15 @@ export default function App() {
   const [pendingJoins, setPendingJoins] = useState([]);
   const [dataLoaded, setDataLoaded] = useState(false);
 
+  // ── Deep-link params from email URLs (?league=ID&tab=admin&adminTab=rounds) ──
+  const deepLinkParams = (() => {
+    const p = new URLSearchParams(location.search);
+    return { league: p.get("league"), tab: p.get("tab"), adminTab: p.get("adminTab") };
+  })();
+
   // ── UI state ──
-  const [tab, setTab] = useState(() => sessionStorage.getItem("gsb_tab") || "leaderboard");
+  const [tab, setTab] = useState(() => deepLinkParams.tab || sessionStorage.getItem("gsb_tab") || "leaderboard");
+  const [deepLinkAdminTab] = useState(deepLinkParams.adminTab || null);
   const [selCourse, setSelCourse] = useState(null);
   const [viewCardModal, setViewCardModal] = useState(null);
   const [profileModal, setProfileModal] = useState(false);
@@ -154,8 +161,8 @@ export default function App() {
     const mappedLeagues = rawLeagues.map(l => ({ ...l, tournamentMode: tournamentByLeague[l.id] ?? false }));
     setLeagues(mappedLeagues);
 
-    // Restore league from previous session (survives refresh)
-    const savedId = sessionStorage.getItem("gsb_league_id");
+    // Restore league from deep-link param first, then session storage
+    const savedId = deepLinkParams.league || sessionStorage.getItem("gsb_league_id");
     if (savedId && !activeLeagueRef.current) {
       const saved = mappedLeagues.find(l => String(l.id) === savedId);
       if (saved) {
@@ -864,6 +871,7 @@ export default function App() {
             payouts={payouts}
             pendingJoins={pendingJoins} setPendingJoins={setPendingJoins}
             setViewCardModal={setViewCardModal}
+            initialAdminTab={deepLinkAdminTab}
           />
         )}
       </div>

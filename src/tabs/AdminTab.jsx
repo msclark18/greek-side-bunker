@@ -15,8 +15,9 @@ export default function AdminTab({
   payouts,
   pendingJoins, setPendingJoins,
   setViewCardModal,
+  initialAdminTab,
 }) {
-  const [adminTab, setAdminTab] = useState("config");
+  const [adminTab, setAdminTab] = useState(initialAdminTab || "config");
   const [configDraft, setConfigDraft] = useState(null);
   const [addMsg, setAddMsg] = useState("");
   const [newCourse, setNewCourse] = useState({ name: "", par: "", holes: "18", slope: "", rating: "" });
