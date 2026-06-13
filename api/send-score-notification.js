@@ -122,29 +122,18 @@ export default async function handler(req, res) {
       ${Array.isArray(groupScores) && groupScores.length > 0 ? `
       <!-- Group member scores -->
       <div style="margin-top:16px;margin-bottom:20px;">
-        <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;margin-bottom:10px;">Group Scores — Submitted by ${escapeHtml(playerName)}</div>
+        <div style="font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:#c8bfa8;margin-bottom:10px;">Also Submitted by ${escapeHtml(playerName)}</div>
         ${groupScores.map(gs => {
           const gsNetDisplay = (gs.net != null && par != null)
             ? (gs.net < par ? `${gs.net} (${gs.net - par})` : gs.net === par ? `${gs.net} (E)` : `${gs.net} (+${gs.net - par})`)
             : (gs.net ?? "—");
           return `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;margin-bottom:8px;">
-          <div style="font-size:.9rem;color:#faf9f6;font-weight:700;">${escapeHtml(gs.playerName)}</div>
-          <div style="display:flex;gap:16px;">
-            <div style="text-align:center;">
-              <div style="font-size:.55rem;letter-spacing:1.5px;text-transform:uppercase;color:#c8bfa8;">Gross</div>
-              <div style="font-size:1.1rem;font-family:Georgia,serif;color:#faf9f6;font-weight:700;">${gs.gross ?? "—"}</div>
-            </div>
-            ${gs.net != null ? `
-            <div style="text-align:center;">
-              <div style="font-size:.55rem;letter-spacing:1.5px;text-transform:uppercase;color:#c8bfa8;">Net</div>
-              <div style="font-size:1.1rem;font-family:Georgia,serif;color:#f0c96a;font-weight:700;">${gsNetDisplay}</div>
-            </div>` : ""}
-            ${gs.courseHandicap != null ? `
-            <div style="text-align:center;">
-              <div style="font-size:.55rem;letter-spacing:1.5px;text-transform:uppercase;color:#c8bfa8;">Hcp</div>
-              <div style="font-size:1.1rem;font-family:Georgia,serif;color:#c8bfa8;font-weight:700;">${gs.courseHandicap}</div>
-            </div>` : ""}
+        <div style="padding:12px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;margin-bottom:8px;">
+          <div style="font-size:.88rem;font-weight:700;color:#faf9f6;margin-bottom:6px;">${escapeHtml(gs.playerName)}</div>
+          <div style="font-size:.84rem;color:#c8bfa8;">
+            Gross&nbsp;<strong style="color:#faf9f6;font-family:Georgia,serif;">${gs.gross ?? "—"}</strong>
+            ${gs.net != null ? `&nbsp;&nbsp;&middot;&nbsp;&nbsp;Net&nbsp;<strong style="color:#f0c96a;font-family:Georgia,serif;">${gsNetDisplay}</strong>` : ""}
+            ${gs.courseHandicap != null ? `&nbsp;&nbsp;&middot;&nbsp;&nbsp;Hcp&nbsp;<strong style="color:#c8bfa8;font-family:Georgia,serif;">${gs.courseHandicap}</strong>` : ""}
           </div>
         </div>`;
         }).join("")}
