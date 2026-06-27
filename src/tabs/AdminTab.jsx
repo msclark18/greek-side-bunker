@@ -50,7 +50,8 @@ export default function AdminTab({
   const [editRoundDraft, setEditRoundDraft] = useState({});
   const [reminderSending, setReminderSending] = useState(false);
   const [showPostForPlayer, setShowPostForPlayer] = useState(false);
-  const [postForPlayerForm, setPostForPlayerForm] = useState({ playerId: "", courseId: "", gross: "", net: "", date: new Date().toISOString().split("T")[0], attesterId: "" });
+  const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+  const [postForPlayerForm, setPostForPlayerForm] = useState({ playerId: "", courseId: "", gross: "", net: "", date: localToday(), attesterId: "" });
   const [postForPlayerCard, setPostForPlayerCard] = useState(null);
   const [postForPlayerMsg, setPostForPlayerMsg] = useState({ type: "", text: "" });
   const [postForPlayerLoading, setPostForPlayerLoading] = useState(false);
@@ -614,8 +615,34 @@ export default function AdminTab({
       } catch (e) { console.warn("Attest email non-fatal:", e); }
     }
 
+    if (config.notifyCommissionerOnSubmit) {
+      try {
+        const notifyApiUrl = import.meta.env.VITE_API_URL ?? window.location.origin;
+        const commEmails = members.filter(m => m.role === "admin" && m.profile?.email).map(m => m.profile.email);
+        if (commEmails.length > 0) {
+          await fetch(`${notifyApiUrl}/api/send-score-notification`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              playerName: player.profile.name,
+              courseName: course.name,
+              gross, net, par: course.par,
+              courseHandicap: hcp,
+              date,
+              leagueName: activeLeague.name,
+              leagueId: activeLeague.id,
+              appUrl: notifyApiUrl,
+              commissionerEmails: commEmails,
+              stablefordPts: pts,
+              groupScores: [],
+            }),
+          });
+        }
+      } catch (e) { console.warn("Commissioner notify non-fatal:", e); }
+    }
+
     setRounds(p => [inserted, ...p]);
-    setPostForPlayerForm({ playerId: "", courseId: "", gross: "", net: "", date: new Date().toISOString().split("T")[0], attesterId: "" });
+    setPostForPlayerForm({ playerId: "", courseId: "", gross: "", net: "", date: localToday(), attesterId: "" });
     setPostForPlayerCard(null);
     setPostForPlayerMsg({ type: "s", text: `Round posted for ${player.profile.name}!` });
     setTimeout(() => setPostForPlayerMsg({ type: "", text: "" }), 5000);
@@ -2133,7 +2160,7 @@ export default function AdminTab({
                   <label>Date Played</label>
                   <input type="date" value={postForPlayerForm.date}
                     onChange={e => setPostForPlayerForm(f => ({ ...f, date: e.target.value }))}
-                    max={new Date().toISOString().split("T")[0]} />
+                    max={localToday()} />
                 </div>
                 {config.attestRequired && (
                   <div className="fg">

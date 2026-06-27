@@ -856,7 +856,7 @@ export default function PostScore({
 
           <div className="fg">
             <label>Date Played</label>
-            <input type="date" value={form.date} onChange={setF("date")} max={new Date().toISOString().split("T")[0]} />
+            <input type="date" value={form.date} onChange={setF("date")} max={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })()} />
           </div>
         </div>
 
