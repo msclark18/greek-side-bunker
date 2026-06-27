@@ -78,7 +78,7 @@ export default function App() {
   const [liveRound, setLiveRound] = useState(null);
   const [companionRounds, setCompanionRounds] = useState([]);
   useEffect(() => { if (!liveRound) setCompanionRounds([]); }, [liveRound]);
-  const [form, setForm] = useState({ courseId: "", score: "", net: "", attesterId: "", date: new Date().toISOString().split("T")[0], teamId: "", tournamentRoundId: "" });
+  const [form, setForm] = useState({ courseId: "", score: "", net: "", attesterId: "", date: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(), teamId: "", tournamentRoundId: "" });
   const [formMsg, setFormMsg] = useState({ type: "", text: "" });
   const [cardFile, setCardFile] = useState(null);
   const [cardPreview, setCardPreview] = useState(null);
