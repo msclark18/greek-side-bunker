@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { supabase } from "../supabase.js";
-import { DEFAULT_CONFIG, FORMAT_LABELS } from "../constants/config.js";
-import { calcCourseHcp, calcStableford } from "../utils/golf.js";
+import { DEFAULT_CONFIG, DEFAULT_PLAYOFF_SCHEDULE, FORMAT_LABELS } from "../constants/config.js";
+import { calcStableford } from "../utils/golf.js";
 import Toggle from "../components/Toggle.jsx";
-import GhinLink from "../components/GhinLink.jsx";
 import { Settings, Users, Flag, ClipboardList, BarChart2, FileText, Mail, Trophy, DollarSign, AlertTriangle, Check, X, Clock, Camera, Lock, Info } from "lucide-react";
 
 export default function AdminTab({
@@ -25,7 +24,6 @@ export default function AdminTab({
   const [courseSearch, setCourseSearch] = useState({ open: false, query: "", results: [], loading: false, scanLoading: false, error: "", selected: null, selectedTee: null, teeDraft: {}, scanMatches: [] });
   const [holePreviewTee, setHolePreviewTee] = useState(null);
   const scorecardInputRef = useRef(null);
-  const [editMemberHcp, setEditMemberHcp] = useState(null);
   const [emailDraft, setEmailDraft] = useState({ subject: "", message: "" });
   const [emailSending, setEmailSending] = useState(false);
   const editorRef = useRef(null);
@@ -37,12 +35,10 @@ export default function AdminTab({
   const [emailMsg, setEmailMsg] = useState("");
   const [emailSelected, setEmailSelected] = useState(null);
   const [showAddMember, setShowAddMember] = useState(false);
-  const [addMemberDraft, setAddMemberDraft] = useState({ email: "", name: "", handicap: "", ghin: "" });
+  const [addMemberDraft, setAddMemberDraft] = useState({ email: "", name: "" });
   const [addMemberMsg, setAddMemberMsg] = useState({ text: "", ok: true });
   const [addMemberLoading, setAddMemberLoading] = useState(false);
   const [pendingInvites, setPendingInvites] = useState([]);
-  const [handicapChangePending, setHandicapChangePending] = useState(null); // { key, value, label, newConfig }
-  const [retroLoading, setRetroLoading] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmRemoveBylaws, setConfirmRemoveBylaws] = useState(false);
   const [confirmDeleteRound, setConfirmDeleteRound] = useState(null);
@@ -73,53 +69,7 @@ export default function AdminTab({
 
   // ── Handicap setting change (intercept for future-only vs retroactive) ──
   const handleSaveConfig = (newConfig) => {
-    if (!leagueStarted) { saveConfig(newConfig); return; }
-    const hcpChanged =
-      newConfig.handicapPct !== config.handicapPct ||
-      newConfig.useSlopeRating !== config.useSlopeRating ||
-      newConfig.maxHandicap !== config.maxHandicap;
-    if (!hcpChanged) { saveConfig(newConfig); return; }
-    const changed = [];
-    if (newConfig.handicapPct !== config.handicapPct) changed.push(`Handicap % (${config.handicapPct}% → ${newConfig.handicapPct}%)`);
-    if (newConfig.useSlopeRating !== config.useSlopeRating) changed.push(`Slope/rating formula`);
-    if (newConfig.maxHandicap !== config.maxHandicap) changed.push(`Max handicap cap`);
-    setHandicapChangePending({ label: changed.join(", "), newConfig });
-  };
-
-  const applyHandicapChange = async (retroactive) => {
-    const { newConfig } = handicapChangePending;
-    setHandicapChangePending(null);
-    await saveConfig(newConfig);
-    if (!retroactive) return;
-    setRetroLoading(true);
-    const approvedRounds = rounds.filter(r => r.attest_status === "approved" || !config.attestRequired);
-    const memberMap = Object.fromEntries(members.filter(m => m.profile).map(m => [m.user_id, m.profile]));
-    const courseMap = Object.fromEntries(courses.map(c => [String(c.id), c]));
-    const updatedValues = {};
-    const updates = approvedRounds
-      .filter(r => r.course_id && memberMap[r.player_id]?.handicap != null)
-      .map(r => {
-        const course = courseMap[String(r.course_id)];
-        const profile = memberMap[r.player_id];
-        if (!course || !profile) return null;
-        const newCourseHcp = calcCourseHcp(profile.handicap, course.slope, course.par, course.rating, newConfig);
-        const newNet = r.gross - newCourseHcp;
-        const newStableford = newConfig.scoringFormat === "stableford"
-          ? calcStableford(r.gross, newCourseHcp, course.par) : null;
-        const patch = {
-          course_handicap: newCourseHcp,
-          net: newNet,
-          ...(newStableford !== null ? { stableford_pts: newStableford } : {}),
-        };
-        updatedValues[r.id] = patch;
-        return supabase.from("rounds").update(patch).eq("id", r.id);
-      }).filter(Boolean);
-    await Promise.all(updates);
-    // Sync local state so UI reflects changes immediately without a page reload
-    setRounds(prev => prev.map(r => updatedValues[r.id] ? { ...r, ...updatedValues[r.id] } : r));
-    setRetroLoading(false);
-    setAddMsg(`Retroactively updated ${updates.length} rounds.`);
-    setTimeout(() => setAddMsg(""), 4000);
+    saveConfig(newConfig);
   };
 
   // ── Course Search ──
@@ -419,13 +369,6 @@ export default function AdminTab({
     setMembers(p => p.map(m => m.user_id === uid ? { ...m, paid } : m));
   };
 
-  const saveMemberHcp = async () => {
-    if (!editMemberHcp) return;
-    await supabase.from("profiles").update({ handicap: Number(editMemberHcp.handicap), ghin: editMemberHcp.ghin }).eq("id", editMemberHcp.uid);
-    setMembers(p => p.map(m => m.user_id === editMemberHcp.uid ? { ...m, profile: { ...m.profile, handicap: Number(editMemberHcp.handicap), ghin: editMemberHcp.ghin } } : m));
-    setEditMemberHcp(null);
-  };
-
   const addMemberByEmail = async () => {
     const email = addMemberDraft.email.trim().toLowerCase();
     const name = addMemberDraft.name.trim();
@@ -433,15 +376,13 @@ export default function AdminTab({
     setAddMemberLoading(true);
     setAddMemberMsg({ text: "", ok: true });
 
-    const { data: profile } = await supabase.from("profiles").select("id, name, email, handicap, ghin").eq("email", email).maybeSingle();
+    const { data: profile } = await supabase.from("profiles").select("id, name, email").eq("email", email).maybeSingle();
     if (!profile) {
       // No account yet — store an invite row client-side, then fire-and-forget the email API
       const { error: inviteError } = await supabase.from("league_invites").upsert({
         league_id:  activeLeague.id,
         email,
         name,
-        handicap:   addMemberDraft.handicap !== "" ? Number(addMemberDraft.handicap) : null,
-        ghin:       addMemberDraft.ghin.trim() || null,
         invited_by: session?.user?.email ?? null,
         invited_at: new Date().toISOString(),
       }, { onConflict: "league_id,email" });
@@ -457,7 +398,7 @@ export default function AdminTab({
         body: JSON.stringify({ leagueId: activeLeague.id, leagueName: activeLeague.name, email, name, invitedBy: session?.user?.email }),
       }).catch(() => {});
       setAddMemberMsg({ text: `Invite created for ${email}. They'll get a signup email when they join.`, ok: true });
-      setAddMemberDraft({ email: "", name: "", handicap: "", ghin: "" });
+      setAddMemberDraft({ email: "", name: "" });
       setShowAddMember(false);
       const { data: invites } = await supabase.from("league_invites").select("*").eq("league_id", activeLeague.id);
       setPendingInvites(invites ?? []);
@@ -481,8 +422,6 @@ export default function AdminTab({
     // Update profile fields if the commissioner provided overrides
     const updates = {};
     if (name !== profile.name) updates.name = name;
-    if (addMemberDraft.handicap !== "") updates.handicap = Number(addMemberDraft.handicap);
-    if (addMemberDraft.ghin.trim() !== "") updates.ghin = addMemberDraft.ghin.trim();
     if (Object.keys(updates).length > 0) {
       await supabase.from("profiles").update(updates).eq("id", profile.id);
     }
@@ -490,7 +429,7 @@ export default function AdminTab({
     const finalProfile = { ...profile, ...updates };
     setMembers(p => [...p, { user_id: profile.id, role: "player", paid: false, profile: finalProfile }]);
     setAddMemberMsg({ text: `✓ ${finalProfile.name} added to the league!`, ok: true });
-    setAddMemberDraft({ email: "", name: "", handicap: "", ghin: "" });
+    setAddMemberDraft({ email: "", name: "" });
     setShowAddMember(false);
     setAddMemberLoading(false);
     setTimeout(() => setAddMemberMsg({ text: "", ok: true }), 4000);
@@ -526,9 +465,9 @@ export default function AdminTab({
     if (!editRound) return;
     const gross = Number(editRoundDraft.gross);
     if (!gross) return;
-    const calculatedNet = gross - editRound.course_handicap;
-    const net = editRoundDraft.net !== "" && !isNaN(Number(editRoundDraft.net)) ? Number(editRoundDraft.net) : calculatedNet;
-    const pts = config.scoringFormat === "stableford" ? calcStableford(gross, editRound.course_handicap, editRound.par) : null;
+    const net = editRoundDraft.net !== "" && !isNaN(Number(editRoundDraft.net)) ? Number(editRoundDraft.net) : null;
+    if (config.useHandicap && net == null) return;
+    const pts = config.scoringFormat === "stableford" && net != null ? calcStableford(gross, gross - net, editRound.par) : null;
     const update = { gross, net, date: editRoundDraft.date, ...(pts !== null ? { stableford_pts: pts } : {}) };
     await supabase.from("rounds").update(update).eq("id", editRound.id);
     setRounds(p => p.map(r => r.id === editRound.id ? { ...r, ...update } : r));
@@ -554,9 +493,13 @@ export default function AdminTab({
     if (!player || !course || !grossStr || !date) return;
     setPostForPlayerLoading(true);
     const gross = Number(grossStr);
-    const hcp = calcCourseHcp(player.profile?.handicap ?? 0, course.slope, course.par, course.rating, config);
-    const net = netStr !== "" && !isNaN(Number(netStr)) ? Number(netStr) : gross - hcp;
-    const pts = config.scoringFormat === "stableford" ? calcStableford(gross, hcp, course.par) : null;
+    const net = netStr !== "" && !isNaN(Number(netStr)) ? Number(netStr) : null;
+    if (config.useHandicap && net == null) {
+      setPostForPlayerMsg({ type: "w", text: "Net score is required." });
+      setPostForPlayerLoading(false);
+      return;
+    }
+    const pts = config.scoringFormat === "stableford" && net != null ? calcStableford(gross, gross - net, course.par) : null;
     const attester = config.attestRequired ? members.find(m => m.user_id === attesterId && m.profile) : null;
 
     const { data: inserted, error } = await supabase.from("rounds").insert({
@@ -568,7 +511,7 @@ export default function AdminTab({
       attester_email: attester?.profile?.email ?? null,
       course_id: course.id,
       course_name: course.name,
-      gross, net, course_handicap: hcp, par: course.par,
+      gross, net, course_handicap: null, par: course.par,
       stableford_pts: pts,
       date,
       scoring_format: config.scoringFormat,
@@ -703,8 +646,8 @@ export default function AdminTab({
 
   // ── Export ──
   const exportCSV = () => {
-    const headers = ["Player", "Course", "Gross", "Net", "Course Handicap", "Par", "Stableford Pts", "Date", "Status"];
-    const rows = rounds.map(r => [r.player_name, r.course_name, r.gross, r.net, r.course_handicap, r.par, r.stableford_pts ?? "", r.date, r.attest_status]);
+    const headers = ["Player", "Course", "Gross", "Net", "Par", "Stableford Pts", "Date", "Status"];
+    const rows = rounds.map(r => [r.player_name, r.course_name, r.gross, r.net, r.par, r.stableford_pts ?? "", r.date, r.attest_status]);
     const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -868,11 +811,10 @@ export default function AdminTab({
               </div>
               {config.useHandicap && (
                 <div className="fg">
-                  <label>Net Score <span style={{ fontWeight: 400, color: "var(--cream-dim)", fontSize: ".75rem" }}>(leave blank to use app calculation)</span></label>
+                  <label>Net Score</label>
                   <input
                     type="number"
                     value={editRoundDraft.net ?? ""}
-                    placeholder={editRoundDraft.gross ? `App-calculated: ${Number(editRoundDraft.gross) - editRound.course_handicap}` : ""}
                     onChange={e => setEditRoundDraft(d => ({ ...d, net: e.target.value }))}
                   />
                 </div>
@@ -882,15 +824,6 @@ export default function AdminTab({
                 <input type="date" value={editRoundDraft.date}
                   onChange={e => setEditRoundDraft(d => ({ ...d, date: e.target.value }))} />
               </div>
-              {config.useHandicap && editRoundDraft.gross && (
-                <div style={{ background: "var(--gold-dim)", border: "1px solid var(--gold-border)", borderRadius: 8, padding: "10px 14px", fontSize: ".85rem", color: "var(--cream-dim)" }}>
-                  Course Hcp: <strong style={{ color: "var(--cream)" }}>{editRound.course_handicap}</strong>
-                  {" · "}App-calculated net: <strong style={{ color: "var(--gold)" }}>{Number(editRoundDraft.gross) - editRound.course_handicap}</strong>
-                  {editRoundDraft.net !== "" && !isNaN(Number(editRoundDraft.net)) && (
-                    <> {" · "}Saving net: <strong style={{ color: "var(--cream)" }}>{editRoundDraft.net}</strong></>
-                  )}
-                </div>
-              )}
               <div className="fg">
                 <label>Scorecard Photo</label>
                 {editRound.scorecard_url ? (
@@ -912,7 +845,7 @@ export default function AdminTab({
               </div>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <button className="btn btn-gold" onClick={saveEditRound} disabled={!editRoundDraft.gross}>Save Changes</button>
+              <button className="btn btn-gold" onClick={saveEditRound} disabled={!editRoundDraft.gross || (config.useHandicap && (editRoundDraft.net === "" || isNaN(Number(editRoundDraft.net))))}>Save Changes</button>
               <button className="btn btn-ghost" onClick={() => setEditRound(null)}>Cancel</button>
             </div>
           </div>
@@ -954,72 +887,6 @@ export default function AdminTab({
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn btn-danger" onClick={() => { deleteRound(confirmDeleteRound); setConfirmDeleteRound(null); }}>Delete</button>
               <button className="btn btn-ghost" onClick={() => setConfirmDeleteRound(null)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Retroactive recalc loading overlay */}
-      {retroLoading && (
-        <div className="modal-bg">
-          <div className="modal" style={{ textAlign: "center", padding: "32px 24px" }}>
-            <div style={{ fontSize: "2rem", marginBottom: 12 }}>⟳</div>
-            <div style={{ fontWeight: 600, color: "var(--cream)", marginBottom: 8 }}>Updating rounds…</div>
-            <div style={{ fontSize: ".84rem", color: "var(--cream-dim)" }}>Recalculating handicaps for all approved rounds.</div>
-          </div>
-        </div>
-      )}
-
-      {/* Handicap change — future only vs retroactive */}
-      {handicapChangePending && (
-        <div className="modal-bg" onClick={() => setHandicapChangePending(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title" style={{ marginBottom: 8 }}>Apply Handicap Change</div>
-            <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 20, lineHeight: 1.7 }}>
-              You're changing <strong style={{ color: "var(--cream)" }}>{handicapChangePending.label}</strong>. How should this apply?
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
-              <button className="btn btn-ghost" style={{ textAlign: "left", padding: "14px 16px", borderRadius: 10 }}
-                onClick={() => applyHandicapChange(false)}>
-                <div style={{ fontWeight: 600, color: "var(--cream)", marginBottom: 3 }}>Future rounds only</div>
-                <div style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>Already approved rounds keep their current net scores.</div>
-              </button>
-              <button className="btn btn-ghost" style={{ textAlign: "left", padding: "14px 16px", borderRadius: 10, borderColor: "rgba(212,168,67,.35)" }}
-                onClick={() => applyHandicapChange(true)}>
-                <div style={{ fontWeight: 600, color: "var(--gold)", marginBottom: 3 }}>All approved rounds</div>
-                <div style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>Retroactively recalculates net scores and course handicaps for every approved round in the league.</div>
-              </button>
-            </div>
-            <button className="btn btn-ghost btn-sm" onClick={() => setHandicapChangePending(null)}>Cancel</button>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Hcp Modal */}
-      {editMemberHcp && (
-        <div className="modal-bg" onClick={() => setEditMemberHcp(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">Edit Handicap — {editMemberHcp.name}</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 13, marginBottom: 18 }}>
-              <div className="fgrid">
-                <div className="fg"><label>Handicap Index</label><input type="number" step=".1" min={0} max={54} value={editMemberHcp.handicap ?? ""} onChange={e => setEditMemberHcp(d => ({ ...d, handicap: e.target.value }))} /></div>
-                <div className="fg"><label>GHIN #</label><input type="text" value={editMemberHcp.ghin ?? ""} onChange={e => setEditMemberHcp(d => ({ ...d, ghin: e.target.value }))} /></div>
-              </div>
-              {courses.length > 0 && editMemberHcp.handicap && (
-                <div style={{ marginTop: 4 }}>
-                  <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "var(--gold)", fontFamily: "var(--font-d)", textTransform: "uppercase", marginBottom: 8 }}>Course Handicaps Preview</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {courses.map(c => {
-                      const ch = calcCourseHcp(Number(editMemberHcp.handicap), c.slope, c.par, c.rating, config);
-                      return <span key={c.id} className="hcp-badge">{c.name}: <strong>{ch}</strong></span>;
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button className="btn btn-gold" onClick={saveMemberHcp}>Save</button>
-              <button className="btn btn-ghost" onClick={() => setEditMemberHcp(null)}>Cancel</button>
             </div>
           </div>
         </div>
@@ -1149,32 +1016,11 @@ export default function AdminTab({
             </div>
 
             <div className="cfg-section">
-              <div className="cfg-section-title">Handicap & Scoring</div>
+              <div className="cfg-section-title">Scoring</div>
               <div className="cfg-row">
-                <div><div className="cfg-label">Use handicaps (net scoring)</div><div className="cfg-desc">Off = gross scores only</div></div>
+                <div><div className="cfg-label">Collect net scores</div><div className="cfg-desc">Players type gross and net. Off = gross only.</div></div>
                 <Toggle checked={d.useHandicap} onChange={v => set("useHandicap", v)} />
               </div>
-              {d.useHandicap && <>
-                <div className="cfg-row">
-                  <div><div className="cfg-label">Handicap percentage used</div><div className="cfg-desc">e.g. 85 means players use 85% of their handicap index</div></div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input type="number" min={50} max={100} value={d.handicapPct}
-                      onChange={e => set("handicapPct", Number(e.target.value))}
-                      style={{ width: 70 }} />
-                    <span style={{ color: "var(--cream-dim)" }}>%</span>
-                  </div>
-                </div>
-                <div className="cfg-row">
-                  <div><div className="cfg-label">Use USGA slope/rating formula</div><div className="cfg-desc">Off = flat subtract (index used directly)</div></div>
-                  <Toggle checked={d.useSlopeRating} onChange={v => set("useSlopeRating", v)} />
-                </div>
-                <div className="cfg-row">
-                  <div><div className="cfg-label">Max handicap cap</div><div className="cfg-desc">Leave blank for no cap</div></div>
-                  <input type="number" min={0} max={54} placeholder="None" value={d.maxHandicap ?? ""}
-                    onChange={e => set("maxHandicap", e.target.value ? Number(e.target.value) : null)}
-                    style={{ width: 80 }} />
-                </div>
-              </>}
             </div>
 
             <div className="cfg-section">
@@ -1200,11 +1046,72 @@ export default function AdminTab({
               <div className="cfg-section-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><Trophy size={13} />Playoffs</div>
               <div className="cfg-row"><div><div className="cfg-label">Enable playoffs</div><div className="cfg-desc">Adds a Playoffs tab to the leaderboard</div></div><Toggle checked={d.playoffEnabled ?? true} onChange={v => set("playoffEnabled", v)} /></div>
               {(d.playoffEnabled ?? true) && <>
-                <div className="cfg-row"><div><div className="cfg-label">Number of qualifiers</div><div className="cfg-desc">Top N players by regular season standings</div></div><select value={d.playoffQualifiers ?? 4} onChange={e => set("playoffQualifiers", Number(e.target.value))} style={{ width: 80 }}>{Array.from({ length: 15 }, (_, i) => i + 2).map(n => <option key={n} value={n}>{n}</option>)}</select></div>
-                <div className="cfg-row"><div><div className="cfg-label">Seeding based on</div><div className="cfg-desc">How players are ranked to determine bracket seeding</div></div><select value={d.playoffSeedingBy ?? "net"} onChange={e => set("playoffSeedingBy", e.target.value)} style={{ width: 130 }}><option value="net">Regular Season Net</option><option value="gross">Regular Season Gross</option><option value="stableford">Stableford Pts</option></select></div>
+                <div className="cfg-row"><div><div className="cfg-label">Qualification</div><div className="cfg-desc">Courses = play N of the league courses · Top N = regular-season standings</div></div>
+                  <select value={d.playoffQualification ?? "courses"} onChange={e => set("playoffQualification", e.target.value)} style={{ width: 160 }}>
+                    <option value="courses">Course eligibility</option>
+                    <option value="topN">Top N standings</option>
+                  </select>
+                </div>
                 <div className="cfg-row"><div><div className="cfg-label">Playoff format</div><div className="cfg-desc">How playoff matches are decided</div></div><select value={d.playoffFormat ?? "match"} onChange={e => set("playoffFormat", e.target.value)} style={{ width: 130 }}><option value="match">Match Play</option><option value="stroke">Stroke Play</option><option value="stableford">Stableford</option></select></div>
-                <div className="cfg-row"><div><div className="cfg-label">Playoff course</div><div className="cfg-desc">Course where playoff matches will be played</div></div><select value={d.playoffCourse ?? ""} onChange={e => set("playoffCourse", e.target.value || null)} style={{ width: 160 }}><option value="">Not set</option>{courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-                <div className="cfg-row"><div><div className="cfg-label">Playoff date</div><div className="cfg-desc">Scheduled date for playoff matches</div></div><input type="date" value={d.playoffDate ?? ""} onChange={e => set("playoffDate", e.target.value || null)} style={{ width: 160 }} /></div>
+                {(d.playoffQualification ?? "courses") === "courses" ? <>
+                  <div className="cfg-row"><div><div className="cfg-label">Min courses to qualify</div><div className="cfg-desc">Must play this many distinct league courses</div></div>
+                    <select value={d.playoffMinCourses ?? 2} onChange={e => set("playoffMinCourses", Number(e.target.value))} style={{ width: 80 }}>{[1,2,3,4].map(n => <option key={n} value={n}>{n}</option>)}</select>
+                  </div>
+                  <div className="cfg-row"><div><div className="cfg-label">Bye-priority courses</div><div className="cfg-desc">Players who complete this many get Round 1 bye priority</div></div>
+                    <select value={d.playoffByePriorityCourses ?? 4} onChange={e => set("playoffByePriorityCourses", Number(e.target.value))} style={{ width: 80 }}>{[2,3,4].map(n => <option key={n} value={n}>{n}</option>)}</select>
+                  </div>
+                  <div className="cfg-row"><div><div className="cfg-label">No-bye max</div><div className="cfg-desc">Players with this many courses or fewer cannot receive a bye</div></div>
+                    <select value={d.playoffNoByeMaxCourses ?? 2} onChange={e => set("playoffNoByeMaxCourses", Number(e.target.value))} style={{ width: 80 }}>{[1,2,3].map(n => <option key={n} value={n}>{n}</option>)}</select>
+                  </div>
+                  <div className="cfg-row"><div><div className="cfg-label">Round 1 cuts to</div><div className="cfg-desc">Field size after Round 1</div></div>
+                    <select value={d.playoffCutTo ?? 8} onChange={e => set("playoffCutTo", Number(e.target.value))} style={{ width: 80 }}>{[4,8].map(n => <option key={n} value={n}>{n}</option>)}</select>
+                  </div>
+                  <div className="cfg-row"><div><div className="cfg-label">Max field</div><div className="cfg-desc">Largest playoff field before Round 1 byes (8 / 16 / 32)</div></div>
+                    <select value={d.playoffMaxField ?? 16} onChange={e => set("playoffMaxField", Number(e.target.value))} style={{ width: 80 }}>{[8,16,32].map(n => <option key={n} value={n}>{n}</option>)}</select>
+                  </div>
+                  <div className="cfg-row"><div><div className="cfg-label">Seed using best round per course</div><div className="cfg-desc">On = extra rounds at the same course do not lower your seed. Off = average every approved net.</div></div>
+                    <Toggle checked={d.playoffSeedBestPerCourse !== false} onChange={v => set("playoffSeedBestPerCourse", v)} />
+                  </div>
+                  <div className="cfg-row"><div><div className="cfg-label">Third-place match</div><div className="cfg-desc">Semifinal losers play for 3rd. Off by default.</div></div>
+                    <Toggle checked={!!d.playoffThirdPlace} onChange={v => set("playoffThirdPlace", v)} />
+                  </div>
+                  <div style={{ fontSize: ".62rem", letterSpacing: "2px", color: "var(--gold)", fontFamily: "var(--font-d)", textTransform: "uppercase", margin: "8px 0 10px" }}>Round windows</div>
+                  {(d.playoffSchedule?.length ? d.playoffSchedule : DEFAULT_PLAYOFF_SCHEDULE).map((row, idx) => (
+                    <div key={row.id ?? idx} style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                      <div style={{ fontSize: ".78rem", color: "var(--cream)", fontWeight: 600, marginBottom: 8 }}>{row.label ?? `Round ${idx + 1}`}</div>
+                      <div className="fgrid">
+                        <div className="fg"><label>Start</label><input type="date" value={row.start ?? ""} onChange={e => {
+                          const base = d.playoffSchedule?.length ? d.playoffSchedule : DEFAULT_PLAYOFF_SCHEDULE;
+                          set("playoffSchedule", base.map((r, i) => i === idx ? { ...r, start: e.target.value || null } : r));
+                        }} /></div>
+                        <div className="fg"><label>End</label><input type="date" value={row.end ?? ""} onChange={e => {
+                          const base = d.playoffSchedule?.length ? d.playoffSchedule : DEFAULT_PLAYOFF_SCHEDULE;
+                          set("playoffSchedule", base.map((r, i) => i === idx ? { ...r, end: e.target.value || null } : r));
+                        }} /></div>
+                        <div className="fg" style={{ gridColumn: "1/-1" }}>
+                          <label>Course</label>
+                          <select value={row.courseName ?? ""} onChange={e => {
+                            const base = d.playoffSchedule?.length ? d.playoffSchedule : DEFAULT_PLAYOFF_SCHEDULE;
+                            set("playoffSchedule", base.map((r, i) => i === idx ? { ...r, courseName: e.target.value || null } : r));
+                          }}>
+                            <option value="">Not set</option>
+                            {courses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                            {row.courseName && !courses.some(c => c.name === row.courseName) && <option value={row.courseName}>{row.courseName}</option>}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="fg" style={{ marginTop: 4 }}>
+                    <label>Weather buffer note</label>
+                    <input type="text" value={d.playoffWeatherBuffer ?? ""} onChange={e => set("playoffWeatherBuffer", e.target.value || null)} placeholder="Oct. 29–Nov. 8 is reserved strictly as an emergency weather buffer." />
+                  </div>
+                </> : <>
+                  <div className="cfg-row"><div><div className="cfg-label">Number of qualifiers</div><div className="cfg-desc">Top N players by regular season standings</div></div><select value={d.playoffQualifiers ?? 4} onChange={e => set("playoffQualifiers", Number(e.target.value))} style={{ width: 80 }}>{Array.from({ length: 15 }, (_, i) => i + 2).map(n => <option key={n} value={n}>{n}</option>)}</select></div>
+                  <div className="cfg-row"><div><div className="cfg-label">Seeding based on</div><div className="cfg-desc">How players are ranked to determine bracket seeding</div></div><select value={d.playoffSeedingBy ?? "net"} onChange={e => set("playoffSeedingBy", e.target.value)} style={{ width: 130 }}><option value="net">Regular Season Net</option><option value="gross">Regular Season Gross</option><option value="stableford">Stableford Pts</option></select></div>
+                  <div className="cfg-row"><div><div className="cfg-label">Playoff course</div><div className="cfg-desc">Course where playoff matches will be played</div></div><select value={d.playoffCourse ?? ""} onChange={e => set("playoffCourse", e.target.value || null)} style={{ width: 160 }}><option value="">Not set</option>{courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                  <div className="cfg-row"><div><div className="cfg-label">Playoff date</div><div className="cfg-desc">Scheduled date for playoff matches</div></div><input type="date" value={d.playoffDate ?? ""} onChange={e => set("playoffDate", e.target.value || null)} style={{ width: 160 }} /></div>
+                </>}
               </>}
             </div>
 
@@ -1755,16 +1662,6 @@ export default function AdminTab({
                     <input type="text" placeholder="John Smith" value={addMemberDraft.name}
                       onChange={e => setAddMemberDraft(d => ({ ...d, name: e.target.value }))} />
                   </div>
-                  <div className="fg">
-                    <label>Handicap Index</label>
-                    <input type="number" step=".1" min={0} max={54} placeholder="e.g. 8.4" value={addMemberDraft.handicap}
-                      onChange={e => setAddMemberDraft(d => ({ ...d, handicap: e.target.value }))} />
-                  </div>
-                  <div className="fg">
-                    <label>GHIN #</label>
-                    <input type="text" placeholder="e.g. 1234567" value={addMemberDraft.ghin}
-                      onChange={e => setAddMemberDraft(d => ({ ...d, ghin: e.target.value }))} />
-                  </div>
                 </div>
                 {addMemberMsg.text && (
                   <div style={{ marginBottom: 10, fontSize: ".82rem", color: addMemberMsg.ok ? "var(--green)" : "#f09090" }}>{addMemberMsg.text}</div>
@@ -1797,7 +1694,6 @@ export default function AdminTab({
                     <div className="pchip-name">{inv.name}</div>
                     <div className="pchip-meta">
                       {inv.email}
-                      {inv.handicap != null && <> · Hcp {inv.handicap}</>}
                       {" · "}<span style={{ color: "var(--gold-light)" }}>Invite pending</span>
                     </div>
                   </div>
@@ -1832,30 +1728,15 @@ export default function AdminTab({
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <div className="pchip-name">{m.profile?.name ?? "Unknown"}</div>
                   {config.entryFee > 0 && <span className={`paid-badge ${m.paid ? "paid" : "unpaid"}`} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>{m.paid ? <><Check size={10} />Paid</> : <><X size={10} />Unpaid</>}</span>}
-                  {config.useHandicap && ((!m.profile.handicap && m.profile.handicap !== 0) || !/^\d{6,8}$/.test(String(m.profile.ghin ?? ""))) && (
-                    <span style={{ fontSize: ".6rem", padding: "2px 7px", borderRadius: 20, background: "rgba(224,92,92,.12)", border: "1px solid rgba(224,92,92,.3)", color: "#f09090", fontFamily: "var(--font-d)", letterSpacing: "1px", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                      <AlertTriangle size={10} style={{ display: "inline" }} /> Profile Incomplete
-                    </span>
-                  )}
                 </div>
                 <div className="pchip-meta">
-                  {m.profile?.email ?? "-"} · Hcp {m.profile?.handicap ?? "-"}
-                  {m.profile.ghin && <> · <GhinLink ghin={m.profile.ghin} style={{ fontSize: ".68rem" }} /></>}
+                  {m.profile?.email ?? "-"}
                   {" · "}{rounds.filter(r => r.player_id === m.user_id).length} rounds
                 </div>
-                {config.useHandicap && courses.length > 0 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
-                    {courses.map(c => {
-                      const ch = calcCourseHcp(m.profile.handicap ?? 0, c.slope, c.par, c.rating, config);
-                      return <span key={c.id} className="hcp-badge" style={{ fontSize: ".66rem" }}>{c.name}: {ch}</span>;
-                    })}
-                  </div>
-                )}
               </div>
               <div className="pchip-actions">
                 <span className={`lrole ${m.role}`}>{m.role === "admin" ? "Commissioner" : "Player"}</span>
                 {config.entryFee > 0 && <button className={`btn btn-sm ${m.paid ? "btn-danger" : "btn-gold"}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => togglePaid(m.user_id, m.paid)}>{m.paid ? "Mark Unpaid" : <><Check size={12} />Mark Paid</>}</button>}
-                <button className="btn btn-ghost btn-sm" onClick={() => setEditMemberHcp({ uid: m.user_id, name: m.profile?.name, handicap: m.profile?.handicap, ghin: m.profile?.ghin })}>Edit Hcp</button>
                 {m.user_id !== session.user.id && <button className="btn btn-ghost btn-sm" onClick={() => toggleRole(m.user_id, m.role)}>{m.role === "admin" ? "→ Player" : "→ Commissioner"}</button>}
                 {m.user_id !== session.user.id && <button className="btn btn-danger" onClick={() => removeMember(m.user_id)}>Remove</button>}
               </div>
@@ -2150,7 +2031,7 @@ export default function AdminTab({
                 </div>
                 {config.useHandicap && (
                   <div className="fg">
-                    <label>Net Score <span style={{ fontWeight: 400, color: "var(--cream-dim)", fontSize: ".75rem" }}>(leave blank to auto-calculate)</span></label>
+                    <label>Net Score</label>
                     <input type="number" min={0} max={200} placeholder="e.g. 79"
                       value={postForPlayerForm.net}
                       onChange={e => setPostForPlayerForm(f => ({ ...f, net: e.target.value }))} />
@@ -2174,22 +2055,6 @@ export default function AdminTab({
                   </div>
                 )}
               </div>
-              {postForPlayerForm.gross && postForPlayerForm.courseId && postForPlayerForm.playerId && config.useHandicap && (() => {
-                const player = members.find(m => m.user_id === postForPlayerForm.playerId);
-                const course = courses.find(c => c.id === Number(postForPlayerForm.courseId));
-                if (!player || !course) return null;
-                const hcp = calcCourseHcp(player.profile?.handicap ?? 0, course.slope, course.par, course.rating, config);
-                const calcNet = Number(postForPlayerForm.gross) - hcp;
-                return (
-                  <div style={{ marginBottom: 12, padding: "8px 12px", background: "var(--gold-dim)", border: "1px solid var(--gold-border)", borderRadius: 8, fontSize: ".82rem", color: "var(--cream-dim)" }}>
-                    Course Hcp: <strong style={{ color: "var(--cream)" }}>{hcp}</strong>
-                    {" · "}App-calculated net: <strong style={{ color: "var(--gold)" }}>{calcNet}</strong>
-                    {postForPlayerForm.net !== "" && !isNaN(Number(postForPlayerForm.net)) && (
-                      <> · Saving net: <strong style={{ color: "var(--cream)" }}>{postForPlayerForm.net}</strong></>
-                    )}
-                  </div>
-                );
-              })()}
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
                 <label className="btn btn-ghost btn-sm" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
                   <Camera size={13} />{postForPlayerCard ? postForPlayerCard.name : "Attach Scorecard Photo"}
@@ -2204,7 +2069,7 @@ export default function AdminTab({
                 <button
                   className="btn btn-gold btn-sm"
                   onClick={submitRoundForPlayer}
-                  disabled={postForPlayerLoading || !postForPlayerForm.playerId || !postForPlayerForm.courseId || !postForPlayerForm.gross || !postForPlayerForm.date}
+                  disabled={postForPlayerLoading || !postForPlayerForm.playerId || !postForPlayerForm.courseId || !postForPlayerForm.gross || !postForPlayerForm.date || (config.useHandicap && (postForPlayerForm.net === "" || isNaN(Number(postForPlayerForm.net))))}
                 >
                   {postForPlayerLoading ? "Submitting…" : "Submit Round"}
                 </button>
@@ -2219,8 +2084,7 @@ export default function AdminTab({
             <div className="tw"><table>
               <thead><tr>
                 <th>{isTeamMode ? "Team" : "Player"}</th><th>Course</th><th>Gross</th>
-                {config.useHandicap && <th>Crs Hcp</th>}
-                <th>Net</th>
+                {config.useHandicap && <th>Net</th>}
                 {config.scoringFormat === "stableford" && <th>Pts</th>}
                 {config.attestRequired && <th>Attester</th>}
                 <th>Status</th><th>Date</th><th>Card</th><th></th>
@@ -2234,8 +2098,7 @@ export default function AdminTab({
                   </td>
                   <td style={{ fontSize: ".8rem", color: "var(--cream-dim)" }}>{r.course_name}</td>
                   <td>{r.gross}</td>
-                  {config.useHandicap && <td><span className="hcp-badge" style={{ fontSize: ".66rem" }}>{r.course_handicap}</span></td>}
-                  <td>{netEl(r.net, r.par)}</td>
+                  {config.useHandicap && <td>{netEl(r.net, r.par)}</td>}
                   {config.scoringFormat === "stableford" && <td style={{ color: "var(--purple)" }}>{r.stableford_pts ?? "-"}</td>}
                   {config.attestRequired && <td style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>{r.attester_name ?? "—"}</td>}
                   <td>{attestBadge(r.attest_status)}</td>
@@ -2264,7 +2127,7 @@ export default function AdminTab({
                       {r.round_status === "in_progress" && (
                         <button className="btn btn-danger btn-sm" title="Abandon round" onClick={() => adminAbandonRound(r)}>Abandon</button>
                       )}
-                      <button className="btn btn-ghost btn-sm" title="Edit" onClick={() => { setEditRound(r); setEditRoundDraft({ gross: String(r.gross), net: "", date: r.date }); }}>✎</button>
+                      <button className="btn btn-ghost btn-sm" title="Edit" onClick={() => { setEditRound(r); setEditRoundDraft({ gross: String(r.gross), net: r.net != null ? String(r.net) : "", date: r.date }); }}>✎</button>
                       <button className="btn btn-danger btn-sm" title="Delete" onClick={() => setConfirmDeleteRound(r)}>✕</button>
                     </div>
                   </td>
@@ -2546,7 +2409,7 @@ setConfirmRemoveBylaws(false);
             {activeLeague.description && <div>Description: <span style={{ color: "var(--white)" }}>{activeLeague.description}</span></div>}
             <div>Scoring format: <span style={{ color: "var(--purple)" }}>{config.tournamentMode ? "Tournament" : FORMAT_LABELS[config.scoringFormat]}</span></div>
             <div>Members: <span style={{ color: "var(--white)" }}>{members.length}{config.maxPlayers ? ` / ${config.maxPlayers} max` : ""}</span></div>
-            <div>Handicap: <span style={{ color: "var(--white)" }}>{config.useHandicap ? `${config.handicapPct}%${config.useSlopeRating ? " (USGA slope/rating)" : " (flat)"}${config.maxHandicap ? ` · max ${config.maxHandicap}` : ""}` : "Gross only"}</span></div>
+            <div>Scoring: <span style={{ color: "var(--white)" }}>{config.useHandicap ? "Gross + typed net" : "Gross only"}</span></div>
             <div>Attestation: <span style={{ color: "var(--white)" }}>{config.attestRequired ? "Required" : "Off"}</span></div>
             <div>Created: <span style={{ color: "var(--white)" }}>{new Date(activeLeague.created_at).toLocaleDateString()}</span></div>
           </div>

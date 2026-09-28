@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { supabase } from "../supabase.js";
-import { calcCourseHcp, toPM, pmCls, ini } from "../utils/golf.js";
+import { toPM, pmCls, ini } from "../utils/golf.js";
 import { DEFAULT_CONFIG, FORMAT_LABELS } from "../constants/config.js";
 import { resolveCatMap, resolvePayouts } from "../utils/payouts.js";
-import GhinLink from "../components/GhinLink.jsx";
+import { qualificationStatus, qualificationLabel } from "../utils/playoffs.js";
+import PlayoffsPanel from "./PlayoffsPanel.jsx";
 import { Trophy, Star, ClipboardList, FileText, BarChart2, Flag, DollarSign, MapPin, AlertTriangle, Clock, Radio } from "lucide-react";
 
 export default function Leaderboard({
@@ -136,7 +137,6 @@ export default function Leaderboard({
                       <th>Course</th>
                       <th>Date</th>
                       <th>Gross</th>
-                      {config.useHandicap && <th>Crs Hcp</th>}
                       {config.useHandicap && <th>Net</th>}
                       {config.scoringFormat === "stableford" && <th>Pts</th>}
                       {config.attestRequired && <th>Status</th>}
@@ -146,7 +146,7 @@ export default function Leaderboard({
                     {regularCourses.map(c => {
                       const courseRounds = playerRounds.filter(r => r.course_id === c.id);
                       const remaining = config.roundsPerCourse - courseRounds.length;
-                      const extraCols = 2 + (config.useHandicap ? 2 : 0) + (config.scoringFormat === "stableford" ? 1 : 0) + (config.attestRequired ? 1 : 0);
+                      const extraCols = 2 + (config.useHandicap ? 1 : 0) + (config.scoringFormat === "stableford" ? 1 : 0) + (config.attestRequired ? 1 : 0);
                       const incompleteRow = (key) => (
                         <tr key={key} style={{ opacity: 0.45 }}>
                           <td style={{ fontSize: ".82rem", color: "var(--cream)" }}>{c.name}</td>
@@ -162,7 +162,6 @@ export default function Leaderboard({
                             <td style={{ fontSize: ".82rem", color: "var(--cream)" }}>{r.course_name}</td>
                             <td style={{ fontSize: ".76rem", color: "var(--cream-dim)", whiteSpace: "nowrap" }}>{r.date}</td>
                             <td><span style={{ fontFamily: "var(--font-d)" }}>{r.gross}</span></td>
-                            {config.useHandicap && <td><span className="hcp-badge" style={{ fontSize: ".66rem" }}>{r.course_handicap}</span></td>}
                             {config.useHandicap && <td>{netEl(r.net, r.par)}</td>}
                             {config.scoringFormat === "stableford" && <td style={{ color: "var(--purple)", fontFamily: "var(--font-d)" }}>{r.stableford_pts ?? "-"}</td>}
                             {config.attestRequired && <td><span className={`ab ${r.attest_status}`}>{r.attest_status === "approved" ? "✓" : r.attest_status === "rejected" ? "✗" : <Clock size={11} />}</span></td>}
@@ -198,20 +197,6 @@ export default function Leaderboard({
               const diff = playedPar > 0 ? gross - playedPar : null;
               const diffLabel = diff === null ? null : diff === 0 ? "E" : diff > 0 ? `+${diff}` : `${diff}`;
               const diffColor = diff === null ? "var(--cream-dim)" : diff < 0 ? "#3b82f6" : diff === 0 ? "#6ee7a0" : "var(--cream-dim)";
-              // Net: deduct strokes received on holes played so far
-              const cHcp = r.course_handicap ?? 0;
-              const playedStrokes = holeData.reduce((a, h, i) => {
-                if (holeScores[i] == null || !h.stroke_index) return a;
-                let s = 0;
-                if (cHcp > 0) {
-                  if (h.stroke_index <= cHcp) s++;
-                  if (cHcp > 18 && h.stroke_index <= cHcp - 18) s++;
-                } else if (cHcp < 0) {
-                  if (h.stroke_index > 18 - Math.abs(cHcp)) s--;
-                }
-                return a + s;
-              }, 0);
-              const net = config.useHandicap && gross > 0 ? gross - playedStrokes : null;
               return (
                 <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--navy-border)" }}>
                   <div>
@@ -224,18 +209,7 @@ export default function Leaderboard({
                         {diffLabel}
                       </span>
                     )}
-                    {net != null && (() => {
-                      const netDiff = playedPar > 0 ? net - playedPar : null;
-                      const netLabel = netDiff === null ? null : netDiff === 0 ? "E" : netDiff > 0 ? `+${netDiff}` : `${netDiff}`;
-                      const netColor = netDiff === null ? "var(--cream)" : netDiff < 0 ? "#3b82f6" : netDiff === 0 ? "#6ee7a0" : "#ef4444";
-                      return (
-                        <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-d)", color: "var(--cream-dim)" }}>
-                          Net <span style={{ color: "var(--cream)", fontWeight: 700 }}>{net}</span>
-                          {netLabel && <span style={{ color: netColor, fontWeight: 700, marginLeft: 3 }}>{netLabel}</span>}
-                        </span>
-                      );
-                    })()}
-                    {gross > 0 && !diffLabel && net == null && (
+                    {gross > 0 && !diffLabel && (
                       <span style={{ fontSize: "0.8rem", color: "var(--cream)", fontFamily: "var(--font-d)" }}>
                         {gross}
                       </span>
@@ -302,7 +276,6 @@ export default function Leaderboard({
               <div className="tw"><table>
                 <thead><tr>
                   <th>#</th><th>Player</th>
-                  {config.useHandicap && <th>Hcp</th>}
                   <th>Rounds</th>
                   {config.scoresToCount && <th>Counting</th>}
                   <th>{config.scoringFormat === "stableford" ? "Total Pts" : "Avg Net"}</th>
@@ -312,9 +285,7 @@ export default function Leaderboard({
                     {rankEl(i)}
                     <td>
                       <span className="pname">{p.name}</span>
-                      {p.ghin && <GhinLink ghin={p.ghin} style={{ marginLeft: 7, fontSize: ".62rem" }} />}
                     </td>
-                    {config.useHandicap && <td style={{ color: "var(--cream-dim)" }}>{p.handicap}</td>}
                     <td><button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: ".8rem" }} onClick={() => setRoundsModal(p)}>{p.totalRounds}</button></td>
                     {config.scoresToCount && <td style={{ color: "var(--gold-light)", fontSize: ".8rem" }}>{p.countingRounds}</td>}
                     <td><span className="sb" style={{ color: "var(--gold-light)" }}>{p.label}</span></td>
@@ -379,23 +350,17 @@ export default function Leaderboard({
             <div className="tw"><table>
               <thead><tr>
                 <th>#</th><th>Player</th>
-                {config.useHandicap && <th>Crs Hcp</th>}
                 <th>Rounds</th><th>Best Net</th><th>Avg Net</th>
               </tr></thead>
-              <tbody>{courseLB.map((p, i) => {
-                const c = courses.find(c => c.id === selCourse);
-                const ch = config.useHandicap ? calcCourseHcp(p.handicap ?? 0, c?.slope ?? 113, c?.par ?? 72, c?.rating ?? 72, config) : null;
-                return (
+              <tbody>{courseLB.map((p, i) => (
                   <tr key={p.id}>
                     {rankEl(i)}
                     <td><span className="pname">{p.name}</span></td>
-                    {config.useHandicap && <td><span className="hcp-badge">{ch}</span></td>}
                     <td>{p.cr.length >= config.roundsPerCourse ? `✓ ${config.roundsPerCourse}/${config.roundsPerCourse}` : `${p.cr.length}/${config.roundsPerCourse}`}</td>
                     <td>{netEl(p.best, p.par)}</td>
                     <td style={{ color: "var(--cream-dim)" }}>{p.avg}</td>
                   </tr>
-                );
-              })}</tbody>
+              ))}</tbody>
             </table></div>
           )}
         </div>
@@ -565,15 +530,29 @@ export default function Leaderboard({
           <div className="card">
             <div className="card-hdr"><ClipboardList size={15} />Completion Tracker</div>
             <p className="note" style={{ marginBottom: 14 }}>
-              {config.roundsPerCourse} {config.attestRequired ? "approved " : ""}round{config.roundsPerCourse > 1 ? "s" : ""} per course · {courses.length * config.roundsPerCourse} total required.
+              {config.roundsPerCourse} {config.attestRequired ? "approved " : ""}round{config.roundsPerCourse > 1 ? "s" : ""} per course · {regularCourses.length * config.roundsPerCourse} total required.
+              {config.playoffEnabled !== false && config.playoffQualification === "courses" && <> Qualify with {config.playoffMinCourses ?? 2} of {regularCourses.length} courses.</>}
             </p>
-            {completionData.map(p => (
+            {completionData.map(p => {
+              const coursesPlayed = (p.cs ?? []).filter(c => c.played > 0).length;
+              const status = qualificationStatus(coursesPlayed, regularCourses.length, {
+                minCourses: config.playoffMinCourses ?? 2,
+                byePriorityCourses: config.playoffByePriorityCourses ?? 4,
+                noByeMaxCourses: config.playoffNoByeMaxCourses ?? 2,
+              });
+              const showQual = config.playoffEnabled !== false && config.playoffQualification === "courses";
+              const qualColor = status === "byePriority" ? "var(--gold)" : status === "qualified" ? "var(--green)" : status === "qualifiedNoBye" ? "var(--gold-light)" : "var(--cream-dim)";
+              return (
               <div key={p.id} style={{ marginBottom: 18 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <div className="avatar">{p.avatar_url ? <img src={p.avatar_url} alt="" /> : ini(p.name)}</div>
                     <span className="pname">{p.name}</span>
-                    {config.useHandicap && <span className="hcp-badge">Hcp {p.handicap ?? "-"}</span>}
+                    {showQual && (
+                      <span style={{ fontSize: ".62rem", padding: "2px 8px", borderRadius: 20, border: `1px solid ${qualColor}`, color: qualColor, fontFamily: "var(--font-d)", letterSpacing: ".4px", whiteSpace: "nowrap" }}>
+                        {qualificationLabel(status)}
+                      </span>
+                    )}
                   </div>
                   <span style={{ fontSize: ".78rem", color: p.pct === 100 ? "var(--green)" : "var(--cream-dim)" }}>
                     {p.done}/{p.total}{p.pct === 100 ? " ✓" : ""}
@@ -588,7 +567,8 @@ export default function Leaderboard({
                   ))}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         );
       })()}
@@ -655,7 +635,6 @@ export default function Leaderboard({
               <div className="tw"><table>
                 <thead><tr>
                   <th>{isTeamMode ? "Team" : "Player"}</th><th>Course</th><th>Date</th><th>Gross</th>
-                  {config.useHandicap && <th>Course Hcp</th>}
                   {config.useHandicap && <th>Net</th>}
                   {config.scoringFormat === "stableford" && <th>Pts</th>}
                   {config.attestRequired && <th>Attested By</th>}
@@ -672,7 +651,6 @@ export default function Leaderboard({
                     <td style={{ fontSize: ".8rem", color: "var(--cream-dim)" }}>{r.course_name}</td>
                     <td style={{ fontSize: ".76rem", color: "var(--cream-dim)", whiteSpace: "nowrap" }}>{r.date}</td>
                     <td><span style={{ fontFamily: "var(--font-d)" }}>{r.gross}</span></td>
-                    {config.useHandicap && <td><span className="hcp-badge" style={{ fontSize: ".66rem" }}>{r.course_handicap}</span></td>}
                     {config.useHandicap && <td>{netEl(r.net, r.par)}</td>}
                     {config.scoringFormat === "stableford" && <td style={{ color: "var(--purple)", fontFamily: "var(--font-d)" }}>{r.stableford_pts ?? "-"}</td>}
                     {config.attestRequired && <td style={{ fontSize: ".78rem", color: "var(--cream-dim)" }}>{r.attester_name ?? "—"}</td>}
@@ -714,7 +692,13 @@ export default function Leaderboard({
       })()}
 
       {/* ── Playoffs ── */}
-      {leaderTab === "playoffs" && config.playoffEnabled !== false && (() => {
+      {leaderTab === "playoffs" && config.playoffEnabled !== false && config.playoffQualification === "courses" && (
+        <PlayoffsPanel
+          config={config} courses={courses} members={members} scored={scored} rounds={rounds}
+          isAdmin={isAdmin} activeLeague={activeLeague} payouts={payouts} setConfig={setConfig}
+        />
+      )}
+      {leaderTab === "playoffs" && config.playoffEnabled !== false && config.playoffQualification !== "courses" && (() => {
         const n = config.playoffQualifiers ?? 4;
         const seedingBy = config.playoffSeedingBy ?? "net";
         const fmt = config.playoffFormat ?? "match";
@@ -832,7 +816,6 @@ export default function Leaderboard({
                           </div>
                           <div style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginTop: 2 }}>
                             {p.seedStat} {p.seedLabel}
-                            {config.useHandicap && <> · Hcp {p.handicap ?? "-"}</>}
                           </div>
                         </div>
                       </div>

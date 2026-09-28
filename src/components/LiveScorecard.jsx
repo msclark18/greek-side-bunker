@@ -168,6 +168,8 @@ export default function LiveScorecard({
   });
   const [saving, setSaving] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [showNetPrompt, setShowNetPrompt] = useState(false);
+  const [netDraft, setNetDraft] = useState("");
 
   // Round timer — counts up from round.created_at
   const fmtElapsed = (start) => {
@@ -382,22 +384,16 @@ export default function LiveScorecard({
       return;
     }
     setMissingAlert(null);
-    if (config.attestRequired) {
-      // Pre-select first companion if available
-      setSelectedAttesterId(companions[0]?.round.player_id ?? null);
-      setShowAttestPicker(true);
-    } else {
-      doSubmit(null);
-    }
+    setShowNetPrompt(true);
   };
 
   const doSubmit = async (attesterId) => {
     setSubmitLoading(true);
     setShowAttestPicker(false);
     const gross = scores.filter(s => s != null).reduce((a, b) => a + b, 0);
-    const net = gross - courseHandicap;
+    const net = Number(netDraft);
     const pts = config.scoringFormat === "stableford" && course
-      ? calcStableford(gross, courseHandicap, course.par)
+      ? calcStableford(gross, gross - net, course.par)
       : null;
 
     const { data: updated, error } = await supabase.from("rounds").update({
@@ -521,7 +517,6 @@ export default function LiveScorecard({
             const holeScore = pScores[activeHole];
             const stp = playerScoreToPar(pScores);
             const initials = (player.name ?? "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
-            const pStrokes = getStrokesFor(h?.stroke_index, player.courseHandicap);
 
             return (
               <div key={pIdx} style={{
@@ -547,12 +542,6 @@ export default function LiveScorecard({
                       whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {player.name}
                     </span>
-                    {player.courseHandicap > 0 && (
-                      <span style={{ fontSize: "0.75rem", color: "var(--cream-dim)",
-                        fontFamily: "var(--font-d)" }}>
-                        [{player.courseHandicap}]
-                      </span>
-                    )}
                     {player.trackingOnly && (
                       <span style={{ fontSize: "0.6rem", color: "#94a3b8", fontFamily: "var(--font-d)",
                         background: "rgba(148,163,184,.12)", border: "1px solid rgba(148,163,184,.25)",
@@ -603,7 +592,6 @@ export default function LiveScorecard({
                       gap: 2,
                     }}
                   >
-                    {pStrokes !== 0 && <StrokeDots count={pStrokes} dotColor={pStrokes > 0 ? "var(--navy)" : undefined} />}
                     <span>Enter</span><span>Score</span>
                   </button>
                 )}
@@ -675,12 +663,6 @@ export default function LiveScorecard({
                       fontSize: "0.9rem", color: "var(--cream)" }}>
                       {allPlayers[activePlayerId]?.name}
                     </span>
-                    {allPlayers[activePlayerId]?.courseHandicap > 0 && (
-                      <span style={{ fontSize: "0.75rem", color: "var(--cream-dim)",
-                        fontFamily: "var(--font-d)" }}>
-                        [{allPlayers[activePlayerId].courseHandicap}]
-                      </span>
-                    )}
                   </div>
                   {/* Score-to-par preview with pending score */}
                   {(() => {
@@ -888,7 +870,8 @@ export default function LiveScorecard({
 
   // ── Scorecard view mode — horizontal cart-style ───────────────────────────
   const renderScorecardMode = () => {
-    const useHcp = config.useHandicap;
+    const useHcp = false;
+    const extraCols = showTotals ? (useHcp ? 3 : 1) : 0;
 
     const players = [
       { name: profile?.name ?? "Me", scores, hcp: courseHandicap, getS: getStrokes, stats: holeStats },
@@ -923,7 +906,7 @@ export default function LiveScorecard({
     const HalfTable = ({ startIdx, showTotals = false, showDetails = false }) => {
       const holes = holeData.slice(startIdx, startIdx + 9);
       const outLabel = startIdx === 0 ? "OUT" : "IN";
-      const extraCols = showTotals ? 3 : 0; // TOTAL + HDCP + NET
+      const extraCols = showTotals ? (useHcp ? 3 : 1) : 0;
       const teeName = course?.scorecard?.tee_name ?? "Yards";
       // rowSpan for HDCP/NET: holes row + PAR row + (yardage row if expanded) + (SI row if showTotals)
       const hdcpNetRowSpan = 2 + (showDetails ? 1 : 0) + (showTotals ? 1 : 0);
@@ -970,10 +953,12 @@ export default function LiveScorecard({
                   borderLeft: "2px solid rgba(212,168,67,.25)", fontSize: "0.6rem" })}>{outLabel}</th>
                 {showTotals && <>
                   <th style={th({ width: 40, color: "var(--gold)", fontSize: "0.6rem" })}>TOTAL</th>
-                  <th rowSpan={hdcpNetRowSpan} style={th({ width: 44, color: "rgba(212,168,67,.6)", fontSize: "0.6rem",
-                    verticalAlign: "middle" })}>HDCP</th>
-                  <th rowSpan={hdcpNetRowSpan} style={th({ width: 44, color: "rgba(212,168,67,.6)", fontSize: "0.6rem",
-                    borderRight: "none", verticalAlign: "middle" })}>NET</th>
+                  {useHcp && <>
+                    <th rowSpan={hdcpNetRowSpan} style={th({ width: 44, color: "rgba(212,168,67,.6)", fontSize: "0.6rem",
+                      verticalAlign: "middle" })}>HDCP</th>
+                    <th rowSpan={hdcpNetRowSpan} style={th({ width: 44, color: "rgba(212,168,67,.6)", fontSize: "0.6rem",
+                      borderRight: "none", verticalAlign: "middle" })}>NET</th>
+                  </>}
                 </>}
               </tr>
               {/* Yardage row — only when expanded */}
@@ -1147,12 +1132,14 @@ export default function LiveScorecard({
                         <td style={td({ fontWeight: 900, color: "var(--cream)", fontSize: "0.85rem" })}>
                           {fullGross || "—"}
                         </td>
-                        <td style={td({ fontWeight: 700, color: "rgba(212,168,67,.7)", fontSize: "0.75rem" })}>
-                          {useHcp ? (p.hcp < 0 ? `+${Math.abs(p.hcp)}` : (p.hcp ?? 0)) : "—"}
-                        </td>
-                        <td style={td({ fontWeight: 900, color: "var(--gold)", fontSize: "0.85rem", borderRight: "none" })}>
-                          {useHcp && fullGross > 0 ? fullNet : "—"}
-                        </td>
+                        {useHcp && <>
+                          <td style={td({ fontWeight: 700, color: "rgba(212,168,67,.7)", fontSize: "0.75rem" })}>
+                            {p.hcp < 0 ? `+${Math.abs(p.hcp)}` : (p.hcp ?? 0)}
+                          </td>
+                          <td style={td({ fontWeight: 900, color: "var(--gold)", fontSize: "0.85rem", borderRight: "none" })}>
+                            {fullGross > 0 ? fullNet : "—"}
+                          </td>
+                        </>}
                       </>}
                     </tr>
                     {/* Expanded stats rows — aligned with hole columns */}
@@ -1394,7 +1381,6 @@ export default function LiveScorecard({
             </div>
             <div style={{ fontSize: "0.7rem", color: "var(--cream-dim)" }}>
               {profile?.name}
-              {courseHandicap ? ` · Hdcp ${courseHandicap}` : ""}
             </div>
           </div>
           {/* Mode toggle */}
@@ -1437,14 +1423,8 @@ export default function LiveScorecard({
           {[
             { label: "Thru", value: thru || "—" },
             { label: "Gross", value: runningGross || "—" },
-            ...(config.useHandicap && runningGross > 0
-              ? [{ label: "Net", value: runningGross - playedStrokes }]
-              : []),
             ...(playedPar > 0 && runningGross > 0
               ? [{ label: "+/−", value: toPM(runningGross, playedPar), cls: pmCls(runningGross, playedPar) }]
-              : []),
-            ...(config.useHandicap && playedPar > 0 && runningGross > 0
-              ? [{ label: "Net +/−", value: toPM(runningGross - playedStrokes, playedPar), cls: pmCls(runningGross - playedStrokes, playedPar) }]
               : []),
           ].map(({ label, value, cls, mono }) => (
             <div key={label}>
@@ -1520,6 +1500,57 @@ export default function LiveScorecard({
               : `${numHoles - thru} hole${numHoles - thru !== 1 ? "s" : ""} remaining`}
         </button>
       </div>
+
+      {/* Net score prompt */}
+      {showNetPrompt && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1000001, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "flex-end" }}>
+          <div style={{ width: "100%", background: "var(--navy-card)", borderRadius: "18px 18px 0 0", padding: "24px 20px 40px" }}>
+            <div style={{ fontFamily: "var(--font-d)", fontWeight: 900, fontSize: "1rem", color: "var(--cream)", marginBottom: 4 }}>
+              Enter your net score
+            </div>
+            <div style={{ fontSize: "0.78rem", color: "var(--cream-dim)", marginBottom: 16, lineHeight: 1.5 }}>
+              Gross for this round is <strong style={{ color: "var(--cream)" }}>{runningGross}</strong>. Type the net from the round before submitting.
+            </div>
+            <div className="fg" style={{ marginBottom: 18 }}>
+              <label>Net Score</label>
+              <input
+                type="number"
+                min={0}
+                max={200}
+                placeholder="e.g. 79"
+                value={netDraft}
+                onChange={e => setNetDraft(e.target.value)}
+                autoFocus
+                style={{ fontSize: "1.15rem" }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setShowNetPrompt(false)}
+                style={{ flex: 1, padding: "13px", borderRadius: 10, border: "1px solid var(--navy-border)", background: "transparent", color: "var(--cream-dim)", fontFamily: "var(--font-d)", fontWeight: 700, fontSize: "0.88rem", cursor: "pointer" }}
+              >
+                Back
+              </button>
+              <button
+                disabled={netDraft === "" || isNaN(Number(netDraft))}
+                onClick={() => {
+                  if (netDraft === "" || isNaN(Number(netDraft))) return;
+                  setShowNetPrompt(false);
+                  if (config.attestRequired) {
+                    setSelectedAttesterId(companions[0]?.round.player_id ?? null);
+                    setShowAttestPicker(true);
+                  } else {
+                    doSubmit(null);
+                  }
+                }}
+                style={{ flex: 2, padding: "13px", borderRadius: 10, border: "none", background: netDraft !== "" && !isNaN(Number(netDraft)) ? "var(--gold)" : "rgba(255,255,255,.06)", color: netDraft !== "" && !isNaN(Number(netDraft)) ? "var(--navy)" : "var(--cream-dim)", fontFamily: "var(--font-d)", fontWeight: 700, fontSize: "0.88rem", cursor: netDraft !== "" && !isNaN(Number(netDraft)) ? "pointer" : "not-allowed" }}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Attester picker modal */}
       {showAttestPicker && (

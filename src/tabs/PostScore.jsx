@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabase.js";
-import { calcCourseHcp, calcStableford, toPM, pmCls } from "../utils/golf.js";
+import { calcStableford, toPM, pmCls } from "../utils/golf.js";
 import { FORMAT_LABELS } from "../constants/config.js";
 import { Pencil, Camera, BarChart2, FileText, AlertTriangle, Ban, Clock, Radio, AlignJustify } from "lucide-react";
 
@@ -19,8 +19,6 @@ export default function PostScore({
   liveRound, setLiveRound,
   setCompanionRounds,
 }) {
-  const [showHcpModal, setShowHcpModal] = useState(false);
-  const [hcpDraft, setHcpDraft] = useState("");
   const [scoringMode, setScoringMode] = useState(null); // null | "total" | "live"
   const [showAiConfirm, setShowAiConfirm] = useState(false);
   const [aiConfirmDraft, setAiConfirmDraft] = useState({ gross: "", net: "" });
@@ -79,52 +77,17 @@ export default function PostScore({
 
   const selectedCourse = config.tournamentMode ? tournamentCourse : courses.find(c => c.id === Number(form.courseId));
 
-  const autoHcp = (() => {
-    const course = selectedCourse;
-    if (!course || !config.useHandicap) return 0;
-
-    const roundHcpPct = selectedTournamentRound?.handicapPct ?? config.handicapPct ?? 100;
-    const roundHcpMethod = selectedTournamentRound?.scrambleHcpMethod ?? "each";
-
-    // Team-based handicap methods for team formats in tournament mode
-    if (config.tournamentMode && isActiveTeamFormat && myTeam && roundHcpMethod !== "each") {
-      const teamCourseHcps = (myTeam.players ?? []).map(pName => {
-        const m = members.find(mb => mb.profile?.name === pName);
-        return calcCourseHcp(m?.profile?.handicap ?? 0, course.slope, course.par, course.rating, { ...config, handicapPct: 100 });
-      });
-      if (teamCourseHcps.length === 0) return 0;
-      let rawTeamHcp = 0;
-      if (roundHcpMethod === "lowest") {
-        rawTeamHcp = Math.min(...teamCourseHcps);
-      } else if (roundHcpMethod === "average") {
-        rawTeamHcp = teamCourseHcps.reduce((a, b) => a + b, 0) / teamCourseHcps.length;
-      } else if (roundHcpMethod === "combined") {
-        const sorted = [...teamCourseHcps].sort((a, b) => a - b);
-        const weights = sorted.length >= 4 ? [0.20, 0.15, 0.10, 0.05] : [0.35, 0.15];
-        rawTeamHcp = sorted.reduce((sum, h, i) => sum + h * (weights[i] ?? 0), 0);
-      }
-      return Math.round(rawTeamHcp * (roundHcpPct / 100));
-    }
-
-    // Individual / "each" method — use round's pct override if in tournament mode
-    const effectiveCfg = config.tournamentMode && selectedTournamentRound
-      ? { ...config, handicapPct: roundHcpPct }
-      : config;
-    return calcCourseHcp(profile?.handicap ?? 0, course.slope, course.par, course.rating, effectiveCfg);
-  })();
-  const autoNet = form.score ? Number(form.score) - autoHcp : null;
-  const autoPts = (autoNet !== null && config.scoringFormat === "stableford" && selectedCourse)
-    ? calcStableford(Number(form.score), autoHcp, selectedCourse.par)
+  const typedNet = form.net !== "" && !isNaN(Number(form.net)) ? Number(form.net) : null;
+  const autoPts = (form.score && typedNet !== null && config.scoringFormat === "stableford" && selectedCourse)
+    ? calcStableford(Number(form.score), Number(form.score) - typedNet, selectedCourse.par)
     : null;
-
-  const isValidGhin = (ghin) => /^\d{6,8}$/.test(String(ghin ?? ""));
-  const missingProfile = config.useHandicap && ((!profile?.handicap && profile?.handicap !== 0) || !isValidGhin(profile?.ghin));
 
   const canSubmit = () => {
     if (!isOpen || !form.score) return false;
+    if (typedNet === null) return false;
+    if (groupMembers.some(gm => gm.gross && (gm.net === "" || isNaN(Number(gm.net))))) return false;
     if (config.attestRequired && !form.attesterId) return false;
     if (config.scorecardRequired && !cardFile) return false;
-    if (missingProfile) return false;
     const today = new Date();
     const localToday = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
     if (form.date > localToday) return false;
@@ -152,7 +115,7 @@ export default function PostScore({
   };
 
   const canStartLive = () => {
-    if (!isOpen || missingProfile) return false;
+    if (!isOpen) return false;
     // Attestation for live rounds is handled via companions in the group modal — skip check here
     if (!form.date) return false;
     if (config.tournamentMode) return !!form.tournamentRoundId;
@@ -164,7 +127,6 @@ export default function PostScore({
   const startLiveRound = async () => {
     if (!canStartLive()) return;
     const course = selectedCourse;
-    const hcp = autoHcp;
     const groupId = crypto.randomUUID();
     // For live rounds, use first companion as attester if attestation required
     const attesterUserId = form.attesterId || companionIds[0] || null;
@@ -182,7 +144,7 @@ export default function PostScore({
       course_name: course.name,
       gross: 0,
       net: 0,
-      course_handicap: hcp,
+      course_handicap: null,
       par: course.par,
       date: form.date,
       scoring_format: activeFmt,
@@ -205,7 +167,6 @@ export default function PostScore({
       // If companion already posted all rounds for this course, create a tracking-only round
       const cRoundsOnCourse = rounds.filter(r => r.player_id === cId && r.course_id === course.id && r.attest_status !== "rejected").length;
       const trackingOnly = cRoundsOnCourse >= config.roundsPerCourse;
-      const cmHcp = calcCourseHcp(cm.profile.handicap ?? 0, course.slope, course.par, course.rating, config);
       const { data: cr } = await supabase.from("rounds").insert({
         league_id: activeLeague.id,
         player_id: cId,
@@ -217,7 +178,7 @@ export default function PostScore({
         course_name: course.name,
         gross: 0,
         net: 0,
-        course_handicap: cmHcp,
+        course_handicap: null,
         par: course.par,
         date: form.date,
         scoring_format: activeFmt,
@@ -281,9 +242,8 @@ export default function PostScore({
     setLiveRound(round);
   };
 
-  const netEl = (net, par) => config.useHandicap
-    ? <span className={`sb ${pmCls(net, par)}`}>{net} <span style={{ fontSize: ".72rem", opacity: .7 }}>({toPM(net, par)})</span></span>
-    : <span className="sb">{net}</span>;
+  const netEl = (net, par) =>
+    <span className={`sb ${pmCls(net, par)}`}>{net} <span style={{ fontSize: ".72rem", opacity: .7 }}>({toPM(net, par)})</span></span>;
 
   const attestBadge = (status) => !config.attestRequired
     ? <span className="ab auto">Auto ✓</span>
@@ -354,10 +314,9 @@ export default function PostScore({
   const submitRound = async () => {
     if (!canSubmit()) return;
     const course = selectedCourse;
-    const hcp = autoHcp;
     const gross = Number(form.score);
-    const net = form.net !== "" && !isNaN(Number(form.net)) ? Number(form.net) : gross - hcp;
-    const pts = config.scoringFormat === "stableford" ? calcStableford(gross, hcp, course.par) : null;
+    const net = Number(form.net);
+    const pts = config.scoringFormat === "stableford" ? calcStableford(gross, gross - net, course.par) : null;
     const attester = config.attestRequired ? members.find(m => m.user_id === form.attesterId && m.profile) : null;
 
     const { data: inserted, error } = await supabase.from("rounds").insert({
@@ -365,7 +324,7 @@ export default function PostScore({
       attester_id: attester?.user_id ?? null, attester_name: attester?.profile.name ?? null,
       attester_email: attester?.profile.email ?? null,
       course_id: course.id, course_name: course.name,
-      gross, net, stableford_pts: pts, course_handicap: hcp, par: course.par,
+      gross, net, stableford_pts: pts, course_handicap: null, par: course.par,
       date: form.date, scoring_format: activeFmt,
       attest_status: config.attestRequired ? "pending" : "approved",
       round_status: "completed",
@@ -421,13 +380,12 @@ export default function PostScore({
     // Post scores for group members (submitting player attests automatically)
     const groupInserts = [];
     for (const gm of groupMembers) {
-      if (!gm.gross) continue;
+      if (!gm.gross || gm.net === "" || isNaN(Number(gm.net))) continue;
       const gmMember = members.find(m => m.user_id === gm.userId);
       if (!gmMember?.profile) continue;
       const gmGross = Number(gm.gross);
-      const gmHcp = calcCourseHcp(gmMember.profile.handicap ?? 0, course.slope, course.par, course.rating, config);
-      const gmNet = gm.net !== "" && !isNaN(Number(gm.net)) ? Number(gm.net) : gmGross - gmHcp;
-      const gmPts = config.scoringFormat === "stableford" ? calcStableford(gmGross, gmHcp, course.par) : null;
+      const gmNet = Number(gm.net);
+      const gmPts = config.scoringFormat === "stableford" ? calcStableford(gmGross, gmGross - gmNet, course.par) : null;
       const { data: gmInserted } = await supabase.from("rounds").insert({
         league_id: activeLeague.id,
         player_id: gm.userId,
@@ -436,7 +394,7 @@ export default function PostScore({
         attester_name: profile.name,
         attester_email: profile.email ?? null,
         course_id: course.id, course_name: course.name,
-        gross: gmGross, net: gmNet, stableford_pts: gmPts, course_handicap: gmHcp, par: course.par,
+        gross: gmGross, net: gmNet, stableford_pts: gmPts, course_handicap: null, par: course.par,
         date: form.date, scoring_format: activeFmt,
         attest_status: "approved",
         round_status: "completed",
@@ -462,7 +420,7 @@ export default function PostScore({
               playerName: profile.name,
               courseName: course.name,
               gross, net, par: course.par,
-              courseHandicap: hcp,
+              courseHandicap: null,
               date: form.date,
               leagueName: activeLeague.name,
               leagueId: activeLeague.id,
@@ -520,14 +478,6 @@ export default function PostScore({
           <Ban size={14} /> Season is not currently active — score submission is closed.
         </div>
       )}
-
-      {isOpen && missingProfile && (
-        <div className="alert-w" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
-          <AlertTriangle size={14} /> This league requires a handicap index and valid GHIN number (7-8 digits) to post scores. Please update your profile before submitting a round.
-        </div>
-      )}
-
-
 
       {/* ── Abandon confirmation modal ── */}
       {showAbandonConfirm && inProgressRound && (
@@ -673,32 +623,25 @@ export default function PostScore({
                         style={{ marginTop: 4 }}
                       />
                     </div>
-                    {config.useHandicap && (
-                      <div className="fg" style={{ flex: 1, margin: 0 }}>
-                        <label style={{ fontSize: ".72rem" }}>Net Score</label>
-                        <input
-                          type="number"
-                          min={0} max={200}
-                          value={aiConfirmDraft.net}
-                          onChange={e => setAiConfirmDraft(d => ({ ...d, net: e.target.value }))}
-                          style={{ marginTop: 4 }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                  {config.useHandicap && autoHcp > 0 && aiConfirmDraft.gross && (
-                    <div style={{ fontSize: ".75rem", color: "var(--cream-dim)", marginBottom: 10 }}>
-                      App-calculated net: <strong style={{ color: "var(--cream)" }}>{Number(aiConfirmDraft.gross) - autoHcp}</strong> (Gross {aiConfirmDraft.gross} − Hcp {autoHcp})
+                    <div className="fg" style={{ flex: 1, margin: 0 }}>
+                      <label style={{ fontSize: ".72rem" }}>Net Score</label>
+                      <input
+                        type="number"
+                        min={0} max={200}
+                        value={aiConfirmDraft.net}
+                        onChange={e => setAiConfirmDraft(d => ({ ...d, net: e.target.value }))}
+                        style={{ marginTop: 4 }}
+                      />
                     </div>
-                  )}
+                  </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button
                       className="btn btn-gold btn-sm"
                       onClick={() => {
-                        applyAiResult(aiResult, aiConfirmDraft.gross, config.useHandicap ? aiConfirmDraft.net : "");
+                        applyAiResult(aiResult, aiConfirmDraft.gross, aiConfirmDraft.net);
                         setShowAiConfirm(false);
                       }}
-                      disabled={!aiConfirmDraft.gross}
+                      disabled={!aiConfirmDraft.gross || !aiConfirmDraft.net}
                     >
                       Confirm Scores
                     </button>
@@ -840,14 +783,14 @@ export default function PostScore({
             </div>
           )}
 
-          {scoringMode !== "live" && config.useHandicap && (
+          {scoringMode !== "live" && (
             <div className="fg">
-              <label>Net Score <span style={{ fontWeight: 400, color: "var(--cream-dim)", fontSize: ".75rem" }}>(optional — leave blank to use app calculation)</span></label>
+              <label>Net Score</label>
               <input
                 type="number"
                 min={0}
                 max={200}
-                placeholder={autoNet !== null ? `App-calculated: ${autoNet}` : "e.g. 79"}
+                placeholder="e.g. 79"
                 value={form.net}
                 onChange={setF("net")}
               />
@@ -874,14 +817,11 @@ export default function PostScore({
             {groupMembers.map((gm, idx) => {
               const gmMember = members.find(m => m.user_id === gm.userId);
               if (!gmMember) return null;
-              const gmHcp = selectedCourse ? calcCourseHcp(gmMember.profile?.handicap ?? 0, selectedCourse.slope, selectedCourse.par, selectedCourse.rating, config) : 0;
-              const gmAutoNet = gm.gross !== "" && !isNaN(Number(gm.gross)) ? Number(gm.gross) - gmHcp : null;
               return (
                 <div key={gm.userId} style={{ marginBottom: 10, padding: "10px 12px", background: "rgba(255,255,255,.04)", border: "1px solid var(--navy-border)", borderRadius: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                     <div style={{ fontFamily: "var(--font-d)", fontWeight: 700, fontSize: ".88rem", color: "var(--cream)" }}>
                       {gmMember.profile?.name}
-                      {selectedCourse && <span style={{ marginLeft: 8, fontSize: ".7rem", color: "var(--cream-dim)", fontFamily: "var(--font-b)", fontWeight: 400 }}>Crs Hcp {gmHcp}</span>}
                     </div>
                     <button onClick={() => setGroupMembers(p => p.filter((_, i) => i !== idx))}
                       style={{ background: "none", border: "none", color: "var(--cream-dim)", cursor: "pointer", fontSize: "1.2rem", lineHeight: 1, padding: "0 4px" }}>×</button>
@@ -893,18 +833,13 @@ export default function PostScore({
                         onChange={e => setGroupMembers(p => p.map((x, i) => i === idx ? { ...x, gross: e.target.value } : x))}
                         style={{ marginTop: 4 }} />
                     </div>
-                    {config.useHandicap && (
-                      <div className="fg" style={{ flex: 1, margin: 0 }}>
-                        <label style={{ fontSize: ".72rem" }}>
-                          Net Score <span style={{ color: "var(--cream-dim)", fontWeight: 400, textTransform: "none", letterSpacing: 0, fontSize: ".68rem" }}>(optional)</span>
-                        </label>
-                        <input type="number" min={0} max={200}
-                          placeholder={gmAutoNet !== null ? `App: ${gmAutoNet}` : "e.g. 79"}
-                          value={gm.net}
-                          onChange={e => setGroupMembers(p => p.map((x, i) => i === idx ? { ...x, net: e.target.value } : x))}
-                          style={{ marginTop: 4 }} />
-                      </div>
-                    )}
+                    <div className="fg" style={{ flex: 1, margin: 0 }}>
+                      <label style={{ fontSize: ".72rem" }}>Net Score</label>
+                      <input type="number" min={0} max={200} placeholder="e.g. 79"
+                        value={gm.net}
+                        onChange={e => setGroupMembers(p => p.map((x, i) => i === idx ? { ...x, net: e.target.value } : x))}
+                        style={{ marginTop: 4 }} />
+                    </div>
                   </div>
                 </div>
               );
@@ -940,42 +875,19 @@ export default function PostScore({
         {/* Score preview */}
         {selectedCourse && form.score && (() => {
           const gross = Number(form.score);
-          const effectiveNet = form.net !== "" && !isNaN(Number(form.net)) ? Number(form.net) : autoNet;
-          const usingCustomNet = form.net !== "" && !isNaN(Number(form.net));
+          const effectiveNet = typedNet;
           return (
             <div style={{ marginTop: 12, padding: "12px 16px", background: "var(--gold-dim)", border: "1px solid var(--gold-border)", borderRadius: 8, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-              <span style={{ fontSize: ".6rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)" }}>{usingCustomNet ? "Score Preview" : "Auto-Calculated"}</span>
-              {config.useHandicap && selectedCourse && (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                  <span style={{ fontSize: ".6rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>
-                    Course Hcp
-                    {config.tournamentMode && selectedTournamentRound && (
-                      <> · {selectedTournamentRound.handicapPct ?? 100}%
-                        {isActiveTeamFormat && selectedTournamentRound.scrambleHcpMethod && selectedTournamentRound.scrambleHcpMethod !== "each"
-                          ? ` (${selectedTournamentRound.scrambleHcpMethod})` : ""}</>
-                    )}
-                  </span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
-                    <span className="hcp-badge">{autoHcp}</span>
-                    <button
-                      onClick={() => { setHcpDraft(""); setShowHcpModal(true); }}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--gold)", fontSize: ".68rem", fontFamily: "var(--font-b)", padding: 0, opacity: .8 }}
-                      title="Update handicap index"
-                    >Edit</button>
-                  </div>
-                </div>
-              )}
+              <span style={{ fontSize: ".6rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)" }}>Score Preview</span>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <span style={{ fontSize: ".6rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Gross</span>
                 <span style={{ fontFamily: "var(--font-d)", fontSize: "1.2rem", color: "var(--cream)" }}>{gross}</span>
               </div>
-              {config.useHandicap && effectiveNet !== null && (
+              {effectiveNet !== null && (
                 <>
                   <span style={{ color: "var(--gold-border)", fontSize: "1.2rem" }}>→</span>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                    <span style={{ fontSize: ".6rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>
-                      Net{usingCustomNet ? <span style={{ color: "var(--gold)", marginLeft: 3 }}>✎</span> : ""}
-                    </span>
+                    <span style={{ fontSize: ".6rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Net</span>
                     {selectedCourse
                       ? <span className={`sb ${pmCls(effectiveNet, selectedCourse.par)}`} style={{ fontSize: "1.2rem" }}>{effectiveNet} <span style={{ fontSize: ".72rem", opacity: .7 }}>({toPM(effectiveNet, selectedCourse.par)})</span></span>
                       : <span style={{ fontFamily: "var(--font-d)", fontSize: "1.2rem" }}>{effectiveNet}</span>
@@ -1043,7 +955,6 @@ export default function PostScore({
                 fontSize: size > 36 ? "0.8rem" : "0.62rem", color: "var(--gold)",
               }}>{initials}</div>;
         };
-        const myHcp = autoHcp;
         const teeName = selectedCourse.scorecard?.tee_name ?? null;
         const TeeBadge = () => teeName ? (
           <div style={{
@@ -1080,9 +991,8 @@ export default function PostScore({
                 borderBottom: "1px solid var(--navy-border)",
                 fontSize: "0.62rem", color: "var(--cream-dim)", fontFamily: "var(--font-d)",
                 letterSpacing: "1px", textTransform: "uppercase" }}>
-                <div style={{ flex: 1 }}>Player / Index</div>
-                <div style={{ marginRight: 12 }}>Tee</div>
-                <div>Hcp</div>
+                <div style={{ flex: 1 }}>Player</div>
+                <div>Tee</div>
               </div>
             </div>
 
@@ -1104,23 +1014,14 @@ export default function PostScore({
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontFamily: "var(--font-d)", fontWeight: 700, fontSize: "0.95rem",
                           color: "var(--cream)" }}>{profile?.name ?? "You"}</div>
-                        <div style={{ fontSize: "0.7rem", color: "var(--cream-dim)", marginTop: 2 }}>
-                          {profile?.handicap != null ? `Index ${profile.handicap}` : "Scratch"}
-                        </div>
                       </div>
                       <TeeBadge />
-                      <div style={{
-                        width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
-                        background: "var(--gold)", display: "flex", alignItems: "center", justifyContent: "center",
-                        fontFamily: "var(--font-d)", fontWeight: 900, fontSize: "1rem", color: "var(--navy)",
-                      }}>{myHcp}</div>
                     </div>
                   );
                 }
 
                 const member = slot.id ? members.find(m => m.user_id === slot.id) : null;
                 if (member) {
-                  const mHcp = calcCourseHcp(member.profile.handicap ?? 0, selectedCourse.slope, selectedCourse.par, selectedCourse.rating, config);
                   return (
                     <div key={slot.id} style={{ display: "flex", alignItems: "center", gap: 12,
                       padding: "14px 0", borderBottom: "1px solid var(--navy-border)" }}>
@@ -1128,17 +1029,8 @@ export default function PostScore({
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontFamily: "var(--font-d)", fontWeight: 700, fontSize: "0.95rem",
                           color: "var(--cream)" }}>{member.profile.name}</div>
-                        <div style={{ fontSize: "0.7rem", color: "var(--cream-dim)", marginTop: 2 }}>
-                          {member.profile.handicap != null ? `Index ${member.profile.handicap}` : "Scratch"}
-                        </div>
                       </div>
                       <TeeBadge />
-                      <div style={{
-                        width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
-                        background: "rgba(212,168,67,.15)", border: "1.5px solid rgba(212,168,67,.4)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontFamily: "var(--font-d)", fontWeight: 900, fontSize: "1rem", color: "var(--gold)",
-                      }}>{mHcp}</div>
                       <button onClick={() => setCompanionIds(p => p.filter(x => x !== slot.id))}
                         style={{ background: "none", border: "none", color: "var(--cream-dim)",
                           cursor: "pointer", fontSize: "1.3rem", lineHeight: 1, padding: "0 4px",
@@ -1278,8 +1170,7 @@ export default function PostScore({
                               <div style={{ fontFamily: "var(--font-d)", fontWeight: 700,
                                 fontSize: "0.9rem", color: "var(--cream)" }}>{m.profile.name}</div>
                               <div style={{ fontSize: "0.7rem", color: roundsFull ? "#f87171" : "var(--cream-dim)", marginTop: 2 }}>
-                                {roundsFull ? "All rounds used for this course"
-                                  : m.profile.handicap != null ? `Index ${m.profile.handicap}` : "Scratch"}
+                                {roundsFull ? "All rounds used for this course" : "League member"}
                               </div>
                             </div>
                             {selected && <span style={{ color: "var(--gold)", fontSize: "1rem" }}>✓</span>}
@@ -1320,8 +1211,7 @@ export default function PostScore({
               <div style={{ fontSize: ".8rem", color: "var(--cream-dim)", marginBottom: 6 }}>{selectedCourse.name} · {form.date}</div>
               <div style={{ display: "flex", gap: 16 }}>
                 <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Gross</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--cream)" }}>{form.score}</div></div>
-                {config.useHandicap && <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Crs Hcp</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--cream)" }}>{autoHcp}</div></div>}
-                {config.useHandicap && <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Net</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--gold)" }}>{form.net !== "" && !isNaN(Number(form.net)) ? Number(form.net) : autoNet}</div></div>}
+                <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Net</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--gold)" }}>{form.net}</div></div>
               </div>
             </div>
 
@@ -1329,8 +1219,6 @@ export default function PostScore({
             {groupMembers.filter(gm => gm.gross).map(gm => {
               const gmMember = members.find(m => m.user_id === gm.userId);
               if (!gmMember) return null;
-              const gmHcp = calcCourseHcp(gmMember.profile?.handicap ?? 0, selectedCourse.slope, selectedCourse.par, selectedCourse.rating, config);
-              const gmNet = gm.net !== "" && !isNaN(Number(gm.net)) ? Number(gm.net) : Number(gm.gross) - gmHcp;
               return (
                 <div key={gm.userId} style={{ marginBottom: 10, padding: "12px 14px", background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8 }}>
                   <div style={{ fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--cream-dim)", fontFamily: "var(--font-d)", marginBottom: 8 }}>Playing Partner</div>
@@ -1338,8 +1226,7 @@ export default function PostScore({
                   <div style={{ fontSize: ".8rem", color: "var(--cream-dim)", marginBottom: 6 }}>Auto-approved · attested by you</div>
                   <div style={{ display: "flex", gap: 16 }}>
                     <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Gross</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--cream)" }}>{gm.gross}</div></div>
-                    {config.useHandicap && <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Crs Hcp</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--cream)" }}>{gmHcp}</div></div>}
-                    {config.useHandicap && <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Net</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--gold)" }}>{gmNet}</div></div>}
+                    <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Net</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--gold)" }}>{gm.net}</div></div>
                   </div>
                 </div>
               );
@@ -1359,88 +1246,13 @@ export default function PostScore({
         </div>
       )}
 
-      {showHcpModal && selectedCourse && (
-        <div className="modal-bg" onClick={() => setShowHcpModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">Update Handicap Index</div>
-            <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 20, lineHeight: 1.7 }}>
-              Enter your current Handicap Index from GHIN or TheGrint. Your course handicap and suggested net score will update automatically.
-            </p>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
-              {/* Handicap Index — editable */}
-              <div className="fg">
-                <label>Your Handicap Index</label>
-                <input
-                  type="number" step=".1" min={0} max={54}
-                  placeholder="e.g. 8.4"
-                  value={hcpDraft}
-                  onChange={e => setHcpDraft(e.target.value)}
-                  style={{ fontSize: "1.1rem" }}
-                />
-                <span style={{ fontSize: ".72rem", color: "var(--cream-dim)", marginTop: 3 }}>
-                  Your true index — not your course handicap
-                </span>
-              </div>
-
-              {/* Course handicap — read only, recalculates as they type */}
-              {hcpDraft && selectedCourse && (() => {
-                const previewHcp = calcCourseHcp(Number(hcpDraft), selectedCourse.slope, selectedCourse.par, selectedCourse.rating, config);
-                return (
-                  <div style={{ background: "var(--gold-dim)", border: "1px solid var(--gold-border)", borderRadius: 8, padding: "14px 16px" }}>
-                    <div style={{ fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--gold)", fontFamily: "var(--font-d)", marginBottom: 10 }}>Calculated for {selectedCourse.name}</div>
-                    <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                        <span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 4 }}>Course Handicap</span>
-                        <span style={{ fontFamily: "var(--font-d)", fontSize: "1.6rem", color: "var(--white)" }}>{previewHcp}</span>
-                        <span style={{ fontSize: ".68rem", color: "var(--cream-dim)", marginTop: 2 }}>read only</span>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                        <span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 4 }}>Est. Net Score</span>
-                        <span style={{ fontFamily: "var(--font-d)", fontSize: "1.6rem", color: "var(--gold-light)" }}>
-                          {form.score ? Number(form.score) - previewHcp : "—"}
-                        </span>
-                        <span style={{ fontSize: ".68rem", color: "var(--cream-dim)", marginTop: 2 }}>gross {form.score} − {previewHcp}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            {hcpDraft !== "" && (isNaN(Number(hcpDraft)) || Number(hcpDraft) < 0 || Number(hcpDraft) > 54) && (
-              <p style={{ fontSize: ".78rem", color: "#ef4444", marginBottom: 10 }}>
-                Enter a valid handicap index between 0 and 54.
-              </p>
-            )}
-            <div style={{ display: "flex", gap: 10 }}>
-              <button
-                className="btn btn-gold"
-                disabled={!hcpDraft || isNaN(Number(hcpDraft)) || Number(hcpDraft) < 0 || Number(hcpDraft) > 54}
-                onClick={async () => {
-                  // Save updated handicap if it changed
-                  if (String(hcpDraft) !== String(profile?.handicap)) {
-                    await supabase.from("profiles").update({ handicap: Number(hcpDraft) }).eq("id", session.user.id);
-                    setProfile(p => ({ ...p, handicap: Number(hcpDraft) }));
-                  }
-                  setShowHcpModal(false);
-                }}
-              >
-                ✓ Save Handicap
-              </button>
-              <button className="btn btn-ghost" onClick={() => setShowHcpModal(false)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* My Stats */}
       {myRounds.length > 0 && (() => {
         const approved = myRounds.filter(r => r.attest_status !== "rejected");
         if (approved.length === 0) return null;
         const avgGross = (approved.reduce((s, r) => s + r.gross, 0) / approved.length).toFixed(1);
-        const avgNet = config.useHandicap ? (approved.reduce((s, r) => s + r.net, 0) / approved.length).toFixed(1) : null;
-        const bestNet = config.useHandicap ? Math.min(...approved.map(r => r.net)) : null;
+        const avgNet = (approved.reduce((s, r) => s + (r.net ?? 0), 0) / approved.length).toFixed(1);
+        const bestNet = Math.min(...approved.map(r => r.net ?? 999));
         const regularCourses = courses.filter(c => !c.playoff_only);
         return (
           <div className="card">
@@ -1475,7 +1287,7 @@ export default function PostScore({
                     </div>
                   );
                   const cAvgG = (cr.reduce((s, r) => s + r.gross, 0) / cr.length).toFixed(1);
-                  const cAvgN = config.useHandicap ? (cr.reduce((s, r) => s + r.net, 0) / cr.length).toFixed(1) : null;
+                  const cAvgN = (cr.reduce((s, r) => s + (r.net ?? 0), 0) / cr.length).toFixed(1);
                   return (
                     <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8 }}>
                       <span style={{ fontSize: ".85rem", color: "var(--cream)" }}>{c.name}</span>
@@ -1503,8 +1315,7 @@ export default function PostScore({
                 <tr>
                   <th>Course</th>
                   <th>Gross</th>
-                  {config.useHandicap && <th>Crs Hcp</th>}
-                  {config.useHandicap && <th>Net</th>}
+                  <th>Net</th>
                   {config.scoringFormat === "stableford" && <th>Pts</th>}
                   <th>Date</th>
                   {config.attestRequired && <th>Attester</th>}
@@ -1517,8 +1328,7 @@ export default function PostScore({
                   <tr key={r.id}>
                     <td style={{ fontSize: ".84rem", color: "var(--cream-dim)" }}>{r.course_name}</td>
                     <td>{r.gross}</td>
-                    {config.useHandicap && <td><span className="hcp-badge">{r.course_handicap}</span></td>}
-                    {config.useHandicap && <td>{netEl(r.net, r.par)}</td>}
+                    <td>{netEl(r.net, r.par)}</td>
                     {config.scoringFormat === "stableford" && (
                       <td><span style={{ color: "var(--purple)", fontFamily: "var(--font-d)" }}>{r.stableford_pts ?? "-"}</span></td>
                     )}

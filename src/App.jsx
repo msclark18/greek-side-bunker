@@ -1,11 +1,10 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Trophy, Pencil, Clock, Settings, FileText, AlertTriangle } from "lucide-react";
+import { Trophy, Pencil, Clock, Settings, FileText } from "lucide-react";
 import { supabase } from "./supabase.js";
-import { DEFAULT_CONFIG, FORMAT_LABELS } from "./constants/config.js";
-import { calcCourseHcp, isSeasonActive, ini } from "./utils/golf.js";
+import { DEFAULT_CONFIG, FORMAT_LABELS, mergeLeagueConfig } from "./constants/config.js";
+import { isSeasonActive, ini } from "./utils/golf.js";
 import GSBLogo from "./components/GSBLogo.jsx";
-import GhinLink from "./components/GhinLink.jsx";
 import SeasonBar from "./components/SeasonBar.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
 import LeaguePicker from "./pages/LeaguePicker.jsx";
@@ -63,7 +62,6 @@ export default function App() {
   const [profileModal, setProfileModal] = useState(false);
   const [profileDraft, setProfileDraft] = useState({});
   const [playersModal, setPlayersModal] = useState(false);
-  const [showProfileGate, setShowProfileGate] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [dbError, setDbError] = useState(null);
@@ -137,8 +135,6 @@ export default function App() {
       // Apply profile overrides the commissioner set
       const updates = {};
       if (inv.name) updates.name = inv.name;
-      if (inv.handicap != null) updates.handicap = Number(inv.handicap);
-      if (inv.ghin) updates.ghin = inv.ghin;
       if (Object.keys(updates).length > 0) {
         await supabase.from("profiles").update(updates).eq("id", session.user.id);
       }
@@ -232,7 +228,7 @@ export default function App() {
         return;
       }
       setCourses(c ?? []); setRounds(r ?? []); setMembers(m ?? []);
-      const cfg = { ...DEFAULT_CONFIG, ...(s?.config ?? {}) };
+      const cfg = mergeLeagueConfig(s?.config);
       setConfig(cfg); setPayouts(s?.payouts ?? {}); setPendingJoins(pj ?? []);
       setSelCourse((c ?? [])[0]?.id ?? null);
     } catch (e) {
@@ -264,7 +260,6 @@ export default function App() {
     setActiveLeague(league);
     setTab("leaderboard");
     loadLeagueData(league);
-    setShowProfileGate(true);
     sessionStorage.setItem("gsb_league_id", String(league.id));
     history.pushState(null, '', location.origin + location.pathname + '#app');
   };
@@ -286,29 +281,13 @@ export default function App() {
     }
   };
 
-  const isValidGhin = (ghin) => /^\d{6,8}$/.test(String(ghin ?? ""));
-
   const joinLeague = async () => {
     if (!joinCode.trim()) return;
     const { data: league } = await supabase.from("leagues").select("*").eq("invite_code", joinCode.trim().toLowerCase()).single();
     if (!league) { setJoinMsg({ text: "Invalid invite code.", ok: false }); return; }
     if (myMemberships.find(m => m.league_id === league.id)) { setJoinMsg({ text: "Already in this league.", ok: false }); return; }
     const { data: s } = await supabase.from("league_settings").select("config").eq("league_id", league.id).single();
-    const cfg = { ...DEFAULT_CONFIG, ...(s?.config ?? {}) };
-
-    // ── GHIN gate ──
-    if (cfg.useHandicap) {
-      const missingHcp = !profile?.handicap && profile?.handicap !== 0;
-      const missingGhin = !isValidGhin(profile?.ghin);
-      if (missingHcp || missingGhin) {
-        setJoinMsg({
-          text: `This league requires a handicap index${missingGhin ? " and a valid GHIN number (7-8 digits)" : ""}. Please update your profile before joining.`,
-          ok: false,
-          needsProfile: true,
-        });
-        return;
-      }
-    }
+    const cfg = mergeLeagueConfig(s?.config);
 
     if (cfg.joinMode === "approval") {
       await supabase.from("league_join_requests").insert({ league_id: league.id, user_id: session.user.id });
@@ -325,8 +304,8 @@ export default function App() {
 
   // ── Profile ──
   const saveProfile = async (draft) => {
-    await supabase.from("profiles").update({ name: draft.name, handicap: Number(draft.handicap), ghin: draft.ghin }).eq("id", session.user.id);
-    setProfile(p => ({ ...p, ...draft, handicap: Number(draft.handicap) }));
+    await supabase.from("profiles").update({ name: draft.name }).eq("id", session.user.id);
+    setProfile(p => ({ ...p, ...draft }));
     setProfileModal(false);
   };
 
@@ -512,12 +491,6 @@ export default function App() {
         : players.length * regularCourses.length * config.roundsPerCourse);
   const leaguePct = totalRequired ? Math.min(100, Math.round(approvedCount / totalRequired * 100)) : 0;
 
-  const isProfileIncomplete = config.useHandicap && (
-    (!profile?.handicap && profile?.handicap !== 0) ||
-    !/^\d{6,8}$/.test(String(profile?.ghin ?? ""))
-  );
-
-  // Show gate once per league entry if profile is incomplete
   const pendingForMe = rounds.filter(r => r.attester_id === session?.user.id && r.attest_status === "pending");
   const isAdmin = activeMembership?.role === "admin" || activeLeague?.owner_id === session?.user.id;
   const isOpen = isSeasonActive(config);
@@ -583,53 +556,6 @@ export default function App() {
     <>
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 
-      {/* ── Profile Gate Modal — force completion for existing members ── */}
-      {showProfileGate && isProfileIncomplete && dataLoaded && (
-        <div className="modal-bg">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title" style={{ display: "flex", alignItems: "center", gap: 8 }}><AlertTriangle size={18} />Profile Incomplete</div>
-            <p style={{ fontSize: ".9rem", color: "var(--cream-dim)", marginBottom: 18, lineHeight: 1.7 }}>
-              This league requires a <strong style={{ color: "var(--cream)" }}>handicap index</strong> and a valid <strong style={{ color: "var(--cream)" }}>GHIN number</strong> (7-8 digits) to participate. Please update your profile before continuing.
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 13, marginBottom: 18 }}>
-              <div className="fg">
-                <label>Handicap Index</label>
-                <input type="number" step=".1" min={0} max={54} placeholder="e.g. 8.4"
-                  value={profileDraft.handicap ?? profile?.handicap ?? ""}
-                  onChange={e => setProfileDraft(d => ({ ...d, handicap: e.target.value }))} />
-              </div>
-              <div className="fg">
-                <label>GHIN #</label>
-                <input type="text" placeholder="e.g. 1234567"
-                  value={profileDraft.ghin ?? profile?.ghin ?? ""}
-                  onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))}
-                  style={{ borderColor: profileDraft.ghin && !/^\d{6,8}$/.test(String(profileDraft.ghin)) ? "var(--red)" : undefined }} />
-                {profileDraft.ghin && !/^\d{6,8}$/.test(String(profileDraft.ghin)) && (
-                  <span style={{ fontSize: ".72rem", color: "var(--red)", marginTop: 2, display: "inline-flex", alignItems: "center", gap: 4 }}><AlertTriangle size={11} />Must be 7-8 digits</span>
-                )}
-                {profileDraft.ghin && /^\d{6,8}$/.test(String(profileDraft.ghin)) && (
-                  <span style={{ fontSize: ".72rem", color: "var(--green)", marginTop: 2 }}>✓ Valid format</span>
-                )}
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button
-                className="btn btn-gold"
-                disabled={
-                  (!profileDraft.handicap && profileDraft.handicap !== 0) ||
-                  !/^\d{6,8}$/.test(String(profileDraft.ghin ?? ""))
-                }
-                onClick={async () => {
-                  await saveProfile({ ...profile, ...profileDraft });
-                  setShowProfileGate(false);
-                }}
-              >Save & Continue</button>
-              <button className="btn btn-ghost" onClick={() => setShowProfileGate(false)}>Skip for Now</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Scorecard modal */}
       {viewCardModal && (
         <div className="modal-bg" onClick={() => setViewCardModal(null)}>
@@ -666,16 +592,6 @@ export default function App() {
             <div className="modal-title">My Profile</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 13, marginBottom: 18 }}>
               <div className="fg"><label>Display Name</label><input type="text" value={profileDraft.name ?? ""} onChange={e => setProfileDraft(d => ({ ...d, name: e.target.value }))} /></div>
-              <div className="fgrid">
-                <div className="fg"><label>Handicap Index</label><input type="number" step=".1" min={0} max={54} placeholder="e.g. 8.4" value={profileDraft.handicap ?? ""} onChange={e => setProfileDraft(d => ({ ...d, handicap: e.target.value }))} /></div>
-                <div className="fg"><label>GHIN #</label><input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""} onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))} /></div>
-              </div>
-              {profileDraft.ghin && !/^\d{6,8}$/.test(String(profileDraft.ghin)) && (
-                <p style={{ fontSize: ".72rem", color: "var(--red)", display: "flex", alignItems: "center", gap: 4 }}><AlertTriangle size={11} />GHIN must be 7-8 digits</p>
-              )}
-              {profileDraft.ghin && /^\d{6,8}$/.test(String(profileDraft.ghin)) && (
-                <><GhinLink ghin={profileDraft.ghin} /><p className="note" style={{ marginTop: 4 }}>Your GHIN # will be copied to clipboard when you click the link.</p></>
-              )}
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn btn-gold" onClick={() => saveProfile(profileDraft)}>Save</button>
@@ -691,9 +607,7 @@ export default function App() {
           <div className="modal" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>
             <div className="modal-title">League Players</div>
             <div className="player-card-grid">
-              {members.filter(m => m.profile).map(m => {
-                const courseHcps = courses.map(c => ({ ...c, ch: calcCourseHcp(m.profile.handicap ?? 0, c.slope, c.par, c.rating, config) }));
-                return (
+              {members.filter(m => m.profile).map(m => (
                   <div key={m.user_id} className="player-card">
                     <div className="player-card-avatar">{m.profile.avatar_url ? <img src={m.profile.avatar_url} alt="" /> : ini(m.profile.name)}</div>
                     <div className="player-card-name">{m.profile.name}</div>
@@ -701,16 +615,8 @@ export default function App() {
                       <span className={`lrole ${m.role}`} style={{ fontSize: ".58rem" }}>{m.role === "admin" ? "Commissioner" : "Player"}</span>
                     </div>
                     {config.entryFee > 0 && <div style={{ marginBottom: 6 }}><span className={`paid-badge ${m.paid ? "paid" : "unpaid"}`}>{m.paid ? "✓ Paid" : "✗ Unpaid"}</span></div>}
-                    {config.useHandicap && <div style={{ marginBottom: 6 }}><span className="hcp-badge">Hcp {m.profile.handicap ?? "-"}</span></div>}
-                    {m.profile.ghin && <GhinLink ghin={m.profile.ghin} style={{ fontSize: ".68rem", marginBottom: 6, display: "inline-flex" }} />}
-                    {config.useHandicap && courses.length > 0 && (
-                      <div style={{ marginTop: 6 }}>
-                        {courseHcps.map(c => <div key={c.id} style={{ fontSize: ".68rem", color: "var(--cream-dim)", marginTop: 2 }}>{c.name}: <span style={{ color: "var(--white)" }}>{c.ch}</span></div>)}
-                      </div>
-                    )}
                   </div>
-                );
-              })}
+              ))}
             </div>
             <button className="btn btn-ghost" style={{ marginTop: 16, width: "100%" }} onClick={() => setPlayersModal(false)}>Close</button>
           </div>
@@ -733,11 +639,10 @@ export default function App() {
               </button>
             )}
             <button className="btn btn-ghost btn-sm" onClick={() => setPlayersModal(true)}>Players</button>
-            <div className="user-chip" onClick={() => { setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin }); setProfileModal(true); }}>
+            <div className="user-chip" onClick={() => { setProfileDraft({ name: profile?.name }); setProfileModal(true); }}>
               <div className="avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : ini(profile?.name)}</div>
               <div>
                 <div style={{ fontSize: ".88rem", color: "var(--cream)" }}>{profile?.name}</div>
-                {config.useHandicap && <div style={{ fontSize: ".7rem", color: "var(--cream-dim)" }}>Hcp {profile?.handicap ?? "-"}</div>}
               </div>
             </div>
             <div style={{ position: "relative" }}>
@@ -750,7 +655,7 @@ export default function App() {
                 <>
                   <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setShowMenu(false)} />
                   <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", background: "var(--navy-card)", border: "1px solid var(--gold-border)", borderRadius: 10, minWidth: 200, zIndex: 100, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,.6)", padding: "6px 0" }}>
-                    <button className="menu-item" onClick={() => { setShowMenu(false); setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin }); setProfileModal(true); }}>Edit Profile</button>
+                    <button className="menu-item" onClick={() => { setShowMenu(false); setProfileDraft({ name: profile?.name }); setProfileModal(true); }}>Edit Profile</button>
                     <div style={{ borderTop: "1px solid var(--navy-border)", margin: "6px 0" }} />
                     <button className="menu-item" onClick={() => { setShowMenu(false); setShowHelp(true); }}>Guide</button>
                     <div style={{ borderTop: "1px solid var(--navy-border)", margin: "6px 0" }} />
@@ -771,17 +676,6 @@ export default function App() {
           <div className="alert-d" style={{ marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
             <span>{dbError}</span>
             <button className="btn btn-ghost btn-sm" onClick={() => window.location.reload()}>Refresh</button>
-          </div>
-        )}
-
-        {/* Profile incomplete banner */}
-        {isProfileIncomplete && dataLoaded && (
-          <div className="alert-w" style={{ marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><AlertTriangle size={14} />Your profile is missing a handicap index or valid GHIN number — required by this league.</span>
-            <button className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }} onClick={() => {
-              setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin });
-              setProfileModal(true);
-            }}>Update Profile</button>
           </div>
         )}
 

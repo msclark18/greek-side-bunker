@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcCourseHcp, calcStableford, toPM, pmCls, isSeasonActive, ini } from './golf.js'
+import { calcCourseHcp, calcStableford, toPM, pmCls, isSeasonActive, isAfterSeasonEnd, ini } from './golf.js'
 
 const cfg = { useSlopeRating: true, handicapPct: 100, maxHandicap: null }
 const cfgNoSlope = { useSlopeRating: false, handicapPct: 100, maxHandicap: null }
@@ -139,6 +139,17 @@ describe('isSeasonActive', () => {
   it('handles null cfg safely', () => {
     expect(() => isSeasonActive(null)).not.toThrow()
     expect(isSeasonActive(null)).toBe(true)
+  })
+
+  it('counts the season-end calendar day as still open', () => {
+    expect(isSeasonActive({ seasonEnd: '2026-09-30' }, new Date('2026-09-30T12:00:00'))).toBe(true)
+    expect(isSeasonActive({ seasonEnd: '2026-09-30' }, new Date('2026-09-30T23:59:00'))).toBe(true)
+    expect(isSeasonActive({ seasonEnd: '2026-09-30' }, new Date('2026-10-01T00:00:00'))).toBe(false)
+  })
+
+  it('isAfterSeasonEnd is true only after the end of that local day', () => {
+    expect(isAfterSeasonEnd({ seasonEnd: '2026-09-30' }, new Date('2026-09-30T18:00:00'))).toBe(false)
+    expect(isAfterSeasonEnd({ seasonEnd: '2026-09-30' }, new Date('2026-10-01T00:00:01'))).toBe(true)
   })
 })
 

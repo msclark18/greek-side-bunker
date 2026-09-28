@@ -28,12 +28,22 @@ export const pmCls = (v, p) => {
   return d < 0 ? "under" : d > 0 ? "over" : "even";
 };
 
-export const isSeasonActive = (cfg) => {
+const seasonEndDate = (end) => {
+  if (!end) return null;
+  return new Date(String(end).includes("T") ? end : `${end}T23:59:59`);
+};
+
+export const isSeasonActive = (cfg, now = new Date()) => {
   if (!cfg?.seasonStart && !cfg?.seasonEnd) return true;
-  const now = new Date();
   if (cfg.seasonStart && new Date(cfg.seasonStart) > now) return false;
-  if (cfg.seasonEnd && new Date(cfg.seasonEnd) < now) return false;
+  const end = seasonEndDate(cfg.seasonEnd);
+  if (end && end < now) return false;
   return true;
+};
+
+export const isAfterSeasonEnd = (cfg, now = new Date()) => {
+  const end = seasonEndDate(cfg?.seasonEnd);
+  return !!(end && now > end);
 };
 
 export const ini = (n = "") => {

@@ -57,12 +57,6 @@ export default function AttestTab({ pendingForMe, config, setRounds, setViewCard
                 <div className="attest-score-label">Gross</div>
                 <div className="attest-score-val">{r.gross}</div>
               </div>
-              {config.useHandicap && (
-                <div className="attest-score-block">
-                  <div className="attest-score-label">Course Hcp</div>
-                  <div className="attest-score-val" style={{ fontSize: "1.1rem", color: "#9ab8f0" }}>{r.course_handicap}</div>
-                </div>
-              )}
               <div className="attest-score-block">
                 <div className="attest-score-label">Net</div>
                 <div className="attest-score-val">{netEl(r.net, r.par)}</div>

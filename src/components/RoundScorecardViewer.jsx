@@ -14,30 +14,6 @@ function ScoreCell({ score, par, size = 22 }) {
   return <span style={{ ...base, border: "2px solid #ef4444", color: "#ef4444", background: "rgba(239,68,68,.15)" }}>{score}</span>;
 }
 
-function StrokeDots({ count }) {
-  if (!count) return null;
-  const giving = count < 0;
-  return (
-    <span style={{ display: "inline-flex", gap: 2 }}>
-      {Array.from({ length: Math.abs(count) }).map((_, i) => (
-        <span key={i} style={{ width: 5, height: 5, borderRadius: "50%", background: giving ? "#ef4444" : "var(--gold)", display: "inline-block", flexShrink: 0, opacity: giving ? 0.8 : 1 }} />
-      ))}
-    </span>
-  );
-}
-
-function getStrokesFor(si, hcp) {
-  if (!si || !hcp) return 0;
-  if (hcp > 0) {
-    let s = 0;
-    if (si <= hcp) s++;
-    if (hcp > 18 && si <= hcp - 18) s++;
-    return s;
-  }
-  return si > 18 - Math.abs(hcp) ? -1 : 0;
-}
-
-// ── Main viewer ───────────────────────────────────────────────────────────────
 export default function RoundScorecardViewer({ round, course, playerName, useHandicap }) {
   const [showDetails, setShowDetails] = useState(false);
   const [showStats, setShowStats] = useState(false);
@@ -45,11 +21,8 @@ export default function RoundScorecardViewer({ round, course, playerName, useHan
   const holeData = course?.scorecard?.holes ?? [];
   const scores   = round.hole_scores ?? [];
   const stats    = round.hole_stats  ?? [];
-  const hcp      = round.course_handicap ?? 0;
   const gross    = round.gross ?? scores.reduce((a, s) => a + (s ?? 0), 0);
-  // For live rounds round.net is 0/null (not yet computed) — always derive from holes played
-  const playedStrokes = holeData.reduce((a, h, i) => a + (scores[i] != null ? getStrokesFor(h.stroke_index, hcp) : 0), 0);
-  const net = (round.round_status !== "in_progress" && round.net != null) ? round.net : gross - playedStrokes;
+  const net      = round.net;
   const hasStats = stats.some(s => s?.putts != null || s?.fairway || s?.penalties?.length > 0);
 
   const th = (extra = {}) => ({
@@ -111,7 +84,7 @@ export default function RoundScorecardViewer({ round, course, playerName, useHan
           <thead>
             {/* Section label */}
             <tr style={{ background: "rgba(212,168,67,.14)" }}>
-              <th colSpan={showTotals ? 14 : 11} style={{ padding: "6px 10px", textAlign: "left", fontFamily: "var(--font-d)", fontWeight: 900, fontSize: "0.65rem", letterSpacing: "2px", color: "var(--gold)", textTransform: "uppercase", position: "sticky", left: 0, background: "rgba(212,168,67,.14)" }}>
+              <th colSpan={showTotals ? 13 : 11} style={{ padding: "6px 10px", textAlign: "left", fontFamily: "var(--font-d)", fontWeight: 900, fontSize: "0.65rem", letterSpacing: "2px", color: "var(--gold)", textTransform: "uppercase", position: "sticky", left: 0, background: "rgba(212,168,67,.14)" }}>
                 {startIdx === 0 ? "▸ Front 9" : "▸ Back 9"}
               </th>
             </tr>
@@ -126,7 +99,6 @@ export default function RoundScorecardViewer({ round, course, playerName, useHan
               <th style={th({ width: 36, color: "var(--gold)", borderLeft: "2px solid rgba(212,168,67,.25)", fontSize: "0.6rem" })}>{outLabel}</th>
               {showTotals && <>
                 <th style={th({ width: 40, color: "var(--gold)", fontSize: "0.6rem" })}>TOTAL</th>
-                <th rowSpan={hdcpRowSpan} style={th({ width: 44, color: "rgba(212,168,67,.6)", fontSize: "0.6rem", verticalAlign: "middle" })}>HDCP</th>
                 <th rowSpan={hdcpRowSpan} style={th({ width: 44, color: "rgba(212,168,67,.6)", fontSize: "0.6rem", borderRight: "none", verticalAlign: "middle" })}>NET</th>
               </>}
             </tr>
@@ -171,31 +143,19 @@ export default function RoundScorecardViewer({ round, course, playerName, useHan
             <tr style={{ background: "rgba(255,255,255,.025)", borderTop: "1px solid rgba(212,168,67,.2)" }}>
               <td style={td({ textAlign: "left", paddingLeft: 8, color: "var(--cream)", fontFamily: "var(--font-d)", fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.5px", position: "sticky", left: 0, background: "rgba(18,22,40,1)", zIndex: 1, whiteSpace: "nowrap", width: 1 })}>
                 {(playerName ?? "Player").trim().split(/\s+/)[0].toUpperCase()}
-                {useHandicap && <span style={{ color: "rgba(212,168,67,.6)", fontWeight: 400, fontSize: "0.5rem", marginLeft: 3 }}>[{hcp < 0 ? `+${Math.abs(hcp)}` : hcp}]</span>}
               </td>
-              {halfScores.map((s, i) => {
-                const strokes = useHandicap ? getStrokesFor(holes[i]?.stroke_index, hcp) : 0;
-                return (
+              {halfScores.map((s, i) => (
                   <td key={i} style={td({})}>
-                    {strokes !== 0 && (
-                      <div style={{ display: "flex", justifyContent: "center", marginBottom: 2 }}>
-                        <StrokeDots count={strokes} />
-                      </div>
-                    )}
                     <div style={{ display: "flex", justifyContent: "center" }}>
                       <ScoreCell score={s} par={holes[i]?.par} size={22} />
                     </div>
                   </td>
-                );
-              })}
+              ))}
               <td style={td({ fontWeight: 700, color: "var(--cream)", fontSize: "0.8rem", borderLeft: "2px solid rgba(212,168,67,.25)" })}>{halfGross || "—"}</td>
               {showTotals && <>
                 <td style={td({ fontWeight: 900, color: "var(--cream)", fontSize: "0.85rem" })}>{gross || "—"}</td>
-                <td style={td({ fontWeight: 700, color: "rgba(212,168,67,.7)", fontSize: "0.75rem" })}>
-                  {useHandicap ? (hcp < 0 ? `+${Math.abs(hcp)}` : hcp) : "—"}
-                </td>
                 <td style={td({ fontWeight: 900, color: "var(--gold)", fontSize: "0.85rem", borderRight: "none" })}>
-                  {useHandicap && gross > 0 ? net : "—"}
+                  {useHandicap && net != null ? net : "—"}
                 </td>
               </>}
             </tr>
@@ -210,7 +170,7 @@ export default function RoundScorecardViewer({ round, course, playerName, useHan
                   <td style={statTd({ fontWeight: 700, color: "var(--cream)", borderLeft: "2px solid rgba(212,168,67,.25)" })}>{row.half}</td>
                   {showTotals && <>
                     <td style={statTd({ fontWeight: 700, color: "var(--cream)" })}>{row.total}</td>
-                    <td style={statTd({})} /><td style={statTd({ borderRight: "none" })} />
+                    <td style={statTd({ borderRight: "none" })} />
                   </>}
                 </tr>
               );
@@ -248,7 +208,7 @@ export default function RoundScorecardViewer({ round, course, playerName, useHan
             {gross || "—"}
             {diffLabel && <span style={{ fontSize: "0.7rem", color: diff < 0 ? "#3b82f6" : diff === 0 ? "var(--cream-dim)" : "#ef4444", marginLeft: 6, fontWeight: 700 }}>{diffLabel}</span>}
           </div>
-          {useHandicap && gross > 0 && (() => {
+          {useHandicap && net != null && (() => {
             const netDiff = playedPar > 0 ? net - playedPar : null;
             const netLabel = netDiff === null ? null : netDiff === 0 ? "E" : netDiff > 0 ? `+${netDiff}` : `${netDiff}`;
             return (

@@ -7,7 +7,7 @@ export default function HelpModal({ onClose }) {
       title: "Getting Started",
       steps: [
         { heading: "Create your account", body: "Sign up with Google or your email address. Your profile is created automatically." },
-        { heading: "Set up your profile", body: "Tap your name in the top right → Edit Profile. Add your Display Name, Handicap Index (from GHIN or TheGrint), and your 7-8 digit GHIN number. This is required to join leagues that use handicaps." },
+        { heading: "Set up your profile", body: "Tap your name in the top right → Edit Profile. Add a Display Name so other members can recognize you." },
         { heading: "Join a league", body: "Enter the invite code given to you by your commissioner and tap Join. If the league requires approval, your request will be sent to the commissioner." },
       ]
     },
@@ -16,9 +16,9 @@ export default function HelpModal({ onClose }) {
       title: "Posting a Score",
       steps: [
         { heading: "Go to Post Score", body: "Tap the Post Score tab at the top of the screen." },
-        { heading: "Fill in your round", body: "Select the course, enter your gross score, choose the date, and select your playing partner (attester)." },
+        { heading: "Fill in your round", body: "Select the course, enter your gross score and net score, choose the date, and select your playing partner (attester)." },
         { heading: "Upload your scorecard", body: "Take a photo of your scorecard. The app will use AI to automatically read your gross score, course, and date — filling in the fields for you." },
-        { heading: "Enter your Handicap Index", body: "Type in your current Handicap Index — this is your true index from GHIN or TheGrint, not your course handicap. The app calculates course handicap automatically. You must enter this before submitting." },
+        { heading: "Enter gross and net", body: "Type your gross score and net score from the round. Net is required — the app no longer calculates it from a handicap index." },
         { heading: "Attestation email", body: "Your playing partner receives an email to approve or reject your round. They can also attest from the Attest tab inside the app." },
       ]
     },
@@ -27,9 +27,8 @@ export default function HelpModal({ onClose }) {
       title: "Live Scoring",
       steps: [
         { heading: "Start a live round", body: "From the Post Score tab, tap Start Live Round. Select your course and add any playing partners in your group. Live scoring tracks everyone hole by hole in real time." },
-        { heading: "Enter scores", body: "Tap the Enter Score button to open the numpad for the current hole. Tap any hole dot at the bottom to jump directly to that hole. The app blocks submission if any holes are missing a score." },
-        { heading: "Handicap dots", body: "Navy dots on the Enter Score button show which holes you receive strokes on. Red dots mean you give a stroke (plus handicap). The scorecard shows gross scores with NET automatically calculated." },
-        { heading: "Scorecard columns", body: "The live scorecard shows OUT, IN, TOTAL, HDCP, and NET columns. Tap ▼ MORE to expand yardage and stroke index (HDCP) rows for the course." },
+        { heading: "Enter scores", body: "Tap the Enter Score button to open the numpad for the current hole. Tap any hole dot at the bottom to jump directly to that hole. The app blocks submission if any holes are missing a score. When you finish, enter your net score for the round." },
+        { heading: "Scorecard columns", body: "The live scorecard shows OUT, IN, and TOTAL. Tap a player's name to expand hole-by-hole stats." },
         { heading: "Player stats", body: "Tap a player's name on the scorecard to expand their hole-by-hole stats: Putts, Driving accuracy, GIR%, and Penalties — tracked alongside their scores." },
         { heading: "Finish the round", body: "Once all holes have scores, submit the round. It posts directly to the leaderboard and goes through the normal attestation flow." },
       ]
@@ -47,9 +46,8 @@ export default function HelpModal({ onClose }) {
       title: "Leaderboard",
       steps: [
         { heading: "Overall standings", body: "Players are ranked by net average (stroke play) or total points (Stableford). Only approved rounds count." },
-        { heading: "Net & Gross", body: "Use the Net / Gross toggle on the leaderboard to switch between handicap-adjusted and raw scores." },
+        { heading: "Net & Gross", body: "Use the Net / Gross tabs on the leaderboard to switch between net and raw scores." },
         { heading: "Team formats", body: "Scramble and Best Ball leagues show team standings instead of individuals. Your commissioner assigns teams — your score counts toward your team's average." },
-        { heading: "Tournament mode", body: "Some leagues run a playoff tournament. The leaderboard shows per-round brackets alongside the overall standings. Each round has its own Net / Gross toggle." },
         { heading: "Payouts", body: "If your commissioner has set up payouts, the Payouts tab shows who wins each category and how much — based on the entry fee and payout percentages they configured." },
         { heading: "Score visibility", body: "If your commissioner has enabled 'Hide scores until submitted', you won't see other players' scores until you post your own round." },
         { heading: "Counting rounds", body: "Your commissioner may set a limit on how many rounds count — e.g. best 5 of 8. Your best rounds are used automatically." },
@@ -57,13 +55,11 @@ export default function HelpModal({ onClose }) {
     },
     {
       icon: <Trophy size={18} />,
-      title: "Handicaps",
+      title: "Playoffs",
       steps: [
-        { heading: "What to enter", body: "Enter your Handicap Index from GHIN or TheGrint — not your course handicap. The app calculates course handicap automatically using the USGA formula: Index × (Slope ÷ 113) + (Course Rating − Par)." },
-        { heading: "Plus handicaps", body: "If you're a plus handicapper (e.g. +2), enter it as a negative number (-2). The app displays it correctly as +2 and gives strokes on the easiest holes, shown as red dots on the scorecard." },
-        { heading: "Scratch players", body: "A handicap of 0 shows as 0 on the scorecard. Net score equals gross score — no strokes given or received." },
-        { heading: "Keep it current", body: "You enter your Handicap Index each time you post a score. Update it if it has changed since your last round." },
-        { heading: "Frozen at submission", body: "Your handicap is locked in at the time you submit. If you update it later, past rounds are not affected." },
+        { heading: "Qualify with 2 courses", body: "Play at least 2 of the league courses before the season cutoff to make the playoff field. Completing all 4 courses earns priority for a first-round bye. Players with only 2 courses qualify but cannot receive a bye." },
+        { heading: "Seeding", body: "Eligible players are seeded by net average. Your commissioner can count only the best round at each course so extra rounds at the same course do not lower a seed. The Playoffs tab shows a projected bracket until the season ends, then the commissioner locks the field." },
+        { heading: "Match play", body: "Each playoff round is 18-hole match play at a designated course during a 7-day window. Use GHIN/course handicaps on the day of the match. The commissioner records the winner (or a forfeit) in the app." },
       ]
     },
     {

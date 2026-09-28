@@ -1,7 +1,6 @@
 import { useState } from "react";
 import GSBLogo from "../components/GSBLogo.jsx";
 import HelpModal from "../components/HelpModal.jsx";
-import GhinLink from "../components/GhinLink.jsx";
 import { FORMAT_LABELS } from "../constants/config.js";
 import { ini } from "../utils/golf.js";
 
@@ -66,25 +65,6 @@ export default function LeaguePicker({
                 <label>Display Name</label>
                 <input type="text" value={profileDraft.name ?? ""} onChange={e => setProfileDraft(d => ({ ...d, name: e.target.value }))} />
               </div>
-              <div className="fgrid">
-                <div className="fg">
-                  <label>Handicap Index</label>
-                  <input type="number" step=".1" min={0} max={54} placeholder="e.g. 8.4" value={profileDraft.handicap ?? ""} onChange={e => setProfileDraft(d => ({ ...d, handicap: e.target.value }))} />
-                </div>
-                <div className="fg">
-                  <label>GHIN #</label>
-                  <input type="text" placeholder="e.g. 1234567" value={profileDraft.ghin ?? ""}
-                    onChange={e => setProfileDraft(d => ({ ...d, ghin: e.target.value }))}
-                    style={{ borderColor: profileDraft.ghin && !/^\d{6,8}$/.test(String(profileDraft.ghin)) ? "var(--red)" : undefined }} />
-                  {profileDraft.ghin && !/^\d{6,8}$/.test(String(profileDraft.ghin)) && (
-                    <span style={{ fontSize: ".72rem", color: "var(--red)", marginTop: 2 }}>Must be 7–8 digits</span>
-                  )}
-                  {profileDraft.ghin && /^\d{6,8}$/.test(String(profileDraft.ghin)) && (
-                    <span style={{ fontSize: ".72rem", color: "var(--green)", marginTop: 2 }}>✓ Valid format</span>
-                  )}
-                </div>
-              </div>
-              {profileDraft.ghin && <GhinLink ghin={profileDraft.ghin} />}
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn btn-gold" onClick={handleSaveProfile}>Save</button>
@@ -107,15 +87,10 @@ export default function LeaguePicker({
             </div>
             <div className="lp-profile-info">
               <div style={{ fontSize: ".88rem", color: "var(--cream)", lineHeight: 1.2 }}>{profile?.name}</div>
-              {profile?.handicap != null && (
-                <div style={{ fontSize: ".7rem", color: "var(--cream-dim)" }}>
-                  Hcp {profile.handicap}{profile.ghin && <> · GHIN {profile.ghin}</>}
-                </div>
-              )}
             </div>
             <div className="lp-actions">
               <button className="btn btn-ghost btn-sm" onClick={() => {
-                setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin });
+                setProfileDraft({ name: profile?.name });
                 setProfileModal(true);
               }}>Edit Profile</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowHelp(true)}>Guide</button>
@@ -211,7 +186,7 @@ export default function LeaguePicker({
                     </p>
                     {joinMsg.needsProfile && (
                       <button className="btn btn-gold btn-sm" style={{ marginTop: 8 }} onClick={() => {
-                        setProfileDraft({ name: profile?.name, handicap: profile?.handicap, ghin: profile?.ghin });
+                        setProfileDraft({ name: profile?.name });
                         setProfileModal(true);
                       }}>Update Profile</button>
                     )}
