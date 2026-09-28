@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Trophy, Flag } from "lucide-react";
 import { FORMAT_LABELS, DEFAULT_PLAYOFF_SCHEDULE } from "../constants/config.js";
 import { isAfterSeasonEnd } from "../utils/golf.js";
@@ -26,6 +27,7 @@ export default function PlayoffsPanel({
   const schedule = (config.playoffSchedule?.length ? config.playoffSchedule : DEFAULT_PLAYOFF_SCHEDULE);
   const locked = !!config.playoffLocked;
   const seasonOver = isAfterSeasonEnd(config);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const minCourses = config.playoffMinCourses ?? 2;
   const byePriorityCourses = config.playoffByePriorityCourses ?? 4;
@@ -115,6 +117,7 @@ export default function PlayoffsPanel({
   };
 
   const displayBracket = fillLaterRounds(liveBracket);
+  const treeHeight = Math.max(displayBracket[0]?.matchups?.length ?? 1, 1) * 120;
   const hasMatchWinner = (config.playoffBracket ?? []).some(r => (r.matchups ?? []).some(m => m.winner && !m.isBye));
 
   const saveBracket = async (newBracket, extra = {}) => {
@@ -127,9 +130,14 @@ export default function PlayoffsPanel({
     await saveBracket(initFourRounds(projectedRound1), { playoffLocked: true });
   };
 
-  const unlockOrReset = async () => {
-    if (hasMatchWinner) return;
+  const resetBracket = async () => {
     await saveBracket([], { playoffLocked: false, thirdPlaceMatch: null });
+    setConfirmReset(false);
+  };
+
+  const requestReset = () => {
+    if (hasMatchWinner) setConfirmReset(true);
+    else resetBracket();
   };
 
   const setWinner = (roundIdx, matchIdx, winner, forfeitOf) => {
@@ -171,7 +179,7 @@ export default function PlayoffsPanel({
           </div>
         </div>
         <p className="note" style={{ marginBottom: 12 }}>
-          Qualify with {minCourses} of {regularCourses.length} courses by {cutoffLabel}. Completing all {byePriorityCourses} earns Round 1 bye priority. Players with only {noByeMaxCourses} courses qualify but cannot receive a bye. Round 1 cuts the field to {cutTo}.
+          Qualify with {minCourses} of {regularCourses.length} courses by {cutoffLabel}. Completing all {byePriorityCourses} reserves seeds 1–{byePriorityCourses} and Round 1 bye priority. Players who miss a course are seeded no higher than {byePriorityCourses + 1} unless those top spots still need filling. Players with only {noByeMaxCourses} courses qualify but cannot receive a bye. Round 1 cuts the field to {cutTo}.
         </p>
         {pendingBeforeCutoff.length > 0 && (
           <div className="alert-w" style={{ marginBottom: 12, fontSize: ".78rem" }}>
@@ -213,8 +221,8 @@ export default function PlayoffsPanel({
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {isAdmin && locked && !hasMatchWinner && (
-                <button className="btn btn-danger btn-sm" onClick={unlockOrReset}>Unlock / Rebuild</button>
+              {isAdmin && (locked || savedBracket.length > 0) && (
+                <button className="btn btn-danger btn-sm" onClick={requestReset}>Reset</button>
               )}
               {isAdmin && !locked && (
                 <button className="btn btn-gold btn-sm" onClick={lockField}>{seasonOver ? "Lock Bracket" : "Lock now"}</button>
@@ -232,70 +240,74 @@ export default function PlayoffsPanel({
             <p className="note" style={{ marginBottom: 16 }}>{config.playoffWeatherBuffer}</p>
           )}
 
-          <div className="bracket-wrap" style={{ position: "relative" }}>
+          <div className="bracket-wrap">
             <div className="bracket">
               {displayBracket.map((round, roundIdx) => {
-                const visibleMatchups = (round.matchups ?? []).filter(m => !m.isBye);
+                const matchups = round.matchups ?? [];
                 const sched = schedule[roundIdx];
                 const course = sched ? matchCourseByName(courses, sched.courseName) : null;
                 const windowLabel = sched ? fmtWindow(sched.start, sched.end) : null;
+                const isLastRound = roundIdx === displayBracket.length - 1;
                 return (
-                  <div key={roundIdx} className="bk-round-wrap" style={{ paddingLeft: roundIdx === 0 ? 0 : 32 }}>
-                    <div className="bk-round-label">{round.label ?? `Round ${round.round}`}</div>
-                    {(course || windowLabel || sched?.courseName) && (
-                      <div style={{ fontSize: ".68rem", color: "var(--gold-light)", marginBottom: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {course && <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Flag size={11} />{course.name}</span>}
-                        {!course && sched?.courseName && <span>{sched.courseName}</span>}
-                        {windowLabel && <span>{windowLabel}</span>}
-                      </div>
-                    )}
-                    {visibleMatchups.length === 0 ? (
-                      <div style={{ fontSize: ".78rem", color: "#4b5563", fontStyle: "italic", padding: "12px 0" }}>
-                        {roundIdx === 0 ? "Need two qualified players to build Round 1." : "Awaiting previous round…"}
+                  <div key={roundIdx} className={`bk-round-wrap${isLastRound ? " is-final" : ""}`}>
+                    <div className="bk-round-head">
+                      <div className="bk-round-label">{round.label ?? `Round ${round.round}`}</div>
+                      {(course || windowLabel || sched?.courseName) && (
+                        <div className="bk-round-meta">
+                          {course && <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Flag size={11} />{course.name}</span>}
+                          {!course && sched?.courseName && <span>{sched.courseName}</span>}
+                          {windowLabel && <span>{windowLabel}</span>}
+                        </div>
+                      )}
+                    </div>
+                    {matchups.length === 0 ? (
+                      <div className="bk-col" style={{ minHeight: treeHeight }}>
+                        <div className="bk-awaiting">
+                          {roundIdx === 0 ? "Need two qualified players to build Round 1." : "Awaiting previous round…"}
+                        </div>
                       </div>
                     ) : (
-                      <div style={{ position: "relative", display: "flex", flexDirection: "column", justifyContent: "space-around", minHeight: visibleMatchups.length * 108 }}>
-                        {visibleMatchups.map((match) => {
-                          const matchIdx = round.matchups.indexOf(match);
+                      <div className="bk-col" style={{ minHeight: treeHeight }}>
+                        {matchups.map((match, matchIdx) => {
                           const slots = [{ name: match.p1, slot: "p1" }, { name: match.p2, slot: "p2" }];
-                          const isLastRound = roundIdx === displayBracket.length - 1;
+                          const isByeMatch = !!match.isBye;
                           return (
-                            <div key={matchIdx} className="bk-match" style={{ position: "relative" }}>
-                              <div className={`bk-match-inner${match.winner ? " has-winner" : ""}`}>
-                                {slots.map(({ name, slot }, si) => {
-                                  const isWinner = match.winner === name;
-                                  const isLoser = match.winner && !isWinner && name;
-                                  const isEmpty = !name;
-                                  const canClick = isAdmin && name && !match.winner;
-                                  return (
-                                    <div key={slot}>
-                                      <div
-                                        className={`bk-slot${isWinner ? " s-winner" : ""}${isLoser ? " s-loser" : ""}${isEmpty ? " s-empty" : ""}${canClick ? " clickable" : ""}`}
-                                        onClick={() => canClick && setWinner(roundIdx, matchIdx, name)}
-                                      >
-                                        <span className="bk-seed">{name ? (seedByName[name] || "") : ""}</span>
-                                        <span className="bk-name">{name ?? "TBD"}</span>
-                                        {isWinner && <span className="bk-win-icon">{match.forfeit && match.forfeit !== name ? "F" : "✓"}</span>}
+                            <div key={matchIdx} className={`bk-match-cell${isByeMatch ? " is-bye" : ""}`}>
+                              <div className="bk-match">
+                                <div className={`bk-match-inner${match.winner ? " has-winner" : ""}${isByeMatch ? " is-bye" : ""}`}>
+                                  {slots.map(({ name, slot }, si) => {
+                                    const isByeSlot = isByeMatch && !name;
+                                    const isWinner = !isByeSlot && match.winner === name;
+                                    const isLoser = match.winner && !isWinner && !!name;
+                                    const isEmpty = !name && !isByeSlot;
+                                    const canClick = isAdmin && name && !match.winner && !isByeMatch;
+                                    return (
+                                      <div key={slot}>
+                                        <div
+                                          className={`bk-slot${isWinner ? " s-winner" : ""}${isLoser ? " s-loser" : ""}${isEmpty ? " s-empty" : ""}${isByeSlot ? " s-bye" : ""}${canClick ? " clickable" : ""}`}
+                                          onClick={() => canClick && setWinner(roundIdx, matchIdx, name)}
+                                        >
+                                          <span className="bk-seed">{name ? (seedByName[name] || "") : ""}</span>
+                                          <span className="bk-name">{isByeSlot ? "BYE" : (name ?? "TBD")}</span>
+                                          {isWinner && <span className="bk-win-icon">{isByeMatch ? "BYE" : (match.forfeit && match.forfeit !== name ? "F" : "✓")}</span>}
+                                        </div>
+                                        {si === 0 && <div className="bk-slot-divider" />}
                                       </div>
-                                      {si === 0 && <div className="bk-slot-divider" />}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              {isAdmin && match.p1 && match.p2 && !match.winner && (
-                                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                                  <button className="btn btn-ghost btn-sm" style={{ fontSize: ".62rem" }} onClick={() => setWinner(roundIdx, matchIdx, match.p2, match.p1)}>Forfeit {match.p1.split(" ")[0]}</button>
-                                  <button className="btn btn-ghost btn-sm" style={{ fontSize: ".62rem" }} onClick={() => setWinner(roundIdx, matchIdx, match.p1, match.p2)}>Forfeit {match.p2.split(" ")[0]}</button>
+                                    );
+                                  })}
                                 </div>
-                              )}
-                              {match.forfeit && match.winner && (
-                                <div style={{ fontSize: ".62rem", color: "var(--cream-dim)", marginTop: 4 }}>{match.forfeit} forfeited</div>
-                              )}
-                              {!isLastRound && (
-                                <svg style={{ position: "absolute", right: -32, top: "50%", transform: "translateY(-50%)", overflow: "visible", pointerEvents: "none" }} width="32" height="2">
-                                  <line x1="0" y1="1" x2="32" y2="1" stroke="rgba(212,168,67,.45)" strokeWidth="1.5" />
-                                </svg>
-                              )}
+                                <div className="bk-match-actions">
+                                  {isAdmin && !isByeMatch && match.p1 && match.p2 && !match.winner && (
+                                    <>
+                                      <button className="btn btn-ghost btn-sm" style={{ fontSize: ".62rem" }} onClick={() => setWinner(roundIdx, matchIdx, match.p2, match.p1)}>Forfeit {match.p1.split(" ")[0]}</button>
+                                      <button className="btn btn-ghost btn-sm" style={{ fontSize: ".62rem" }} onClick={() => setWinner(roundIdx, matchIdx, match.p1, match.p2)}>Forfeit {match.p2.split(" ")[0]}</button>
+                                    </>
+                                  )}
+                                </div>
+                                {match.forfeit && match.winner && (
+                                  <div className="bk-forfeit-note">{match.forfeit} forfeited</div>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
@@ -309,11 +321,16 @@ export default function PlayoffsPanel({
                 const champ = displayBracket[displayBracket.length - 1]?.matchups?.[0]?.winner;
                 if (!champ) return null;
                 return (
-                  <div className="bk-champion">
-                    <div className="bk-champ-card">
-                      <span className="bk-champ-trophy"><Trophy size={32} /></span>
-                      <div className="bk-champ-label">Champion</div>
-                      <div className="bk-champ-name">{champ}</div>
+                  <div className="bk-round-wrap bk-champion-col">
+                    <div className="bk-round-head" />
+                    <div className="bk-col" style={{ minHeight: treeHeight }}>
+                      <div className="bk-champion">
+                        <div className="bk-champ-card">
+                          <span className="bk-champ-trophy"><Trophy size={32} /></span>
+                          <div className="bk-champ-label">Champion</div>
+                          <div className="bk-champ-name">{champ}</div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
@@ -367,6 +384,21 @@ export default function PlayoffsPanel({
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {confirmReset && (
+        <div className="modal-bg" onClick={() => setConfirmReset(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Reset Bracket?</div>
+            <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 16, lineHeight: 1.7 }}>
+              This clears all match winners and forfeits, then unlocks the field so the projected bracket can rebuild from current scores.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-danger" onClick={resetBracket}>Yes, Reset</button>
+              <button className="btn btn-ghost" onClick={() => setConfirmReset(false)}>Cancel</button>
+            </div>
+          </div>
         </div>
       )}
     </>

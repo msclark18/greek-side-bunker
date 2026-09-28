@@ -1057,7 +1057,7 @@ export default function AdminTab({
                   <div className="cfg-row"><div><div className="cfg-label">Min courses to qualify</div><div className="cfg-desc">Must play this many distinct league courses</div></div>
                     <select value={d.playoffMinCourses ?? 2} onChange={e => set("playoffMinCourses", Number(e.target.value))} style={{ width: 80 }}>{[1,2,3,4].map(n => <option key={n} value={n}>{n}</option>)}</select>
                   </div>
-                  <div className="cfg-row"><div><div className="cfg-label">Bye-priority courses</div><div className="cfg-desc">Players who complete this many get Round 1 bye priority</div></div>
+                  <div className="cfg-row"><div><div className="cfg-label">Bye-priority courses</div><div className="cfg-desc">Completing this many courses reserves seeds 1–N and Round 1 bye priority. 3-course players fill leftover top seeds. Everyone else is seeded N+1 or lower.</div></div>
                     <select value={d.playoffByePriorityCourses ?? 4} onChange={e => set("playoffByePriorityCourses", Number(e.target.value))} style={{ width: 80 }}>{[2,3,4].map(n => <option key={n} value={n}>{n}</option>)}</select>
                   </div>
                   <div className="cfg-row"><div><div className="cfg-label">No-bye max</div><div className="cfg-desc">Players with this many courses or fewer cannot receive a bye</div></div>

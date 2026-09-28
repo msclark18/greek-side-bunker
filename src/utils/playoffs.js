@@ -70,9 +70,10 @@ export const qualificationLabel = (status) => QUAL_LABELS[status] ?? status;
 
 /**
  * Build a course-eligibility playoff field.
- * Round 1 cuts to `cutTo` (default 8). Byes go to 4/4 then 3/4 in seed order;
- * a player with only `noByeMaxCourses` courses never gets a Round 1 bye unless
- * the remaining field would be odd.
+ * Round 1 cuts to `cutTo` (default 8). Seeds 1–`byePriorityCourses` are reserved
+ * for players who completed that many courses, then 3-course players if needed.
+ * Byes go to 4/4 then 3/4 in seed order; a player with only `noByeMaxCourses`
+ * courses never gets a Round 1 bye unless the remaining field would be odd.
  */
 export const buildCoursePlayoff = ({
   players = [],
@@ -96,11 +97,21 @@ export const buildCoursePlayoff = ({
     return { ...p, coursesPlayed, totalCourses, netAvg, status };
   });
 
-  const eligible = annotated
-    .filter(p => p.coursesPlayed >= minCourses && p.netAvg != null)
-    .sort((a, b) => a.netAvg - b.netAvg || String(a.name ?? "").localeCompare(String(b.name ?? "")));
+  const byNet = (a, b) => a.netAvg - b.netAvg || String(a.name ?? "").localeCompare(String(b.name ?? ""));
+  const eligible = annotated.filter(p => p.coursesPlayed >= minCourses && p.netAvg != null);
 
-  const field = eligible.slice(0, maxField).map((p, i) => ({ ...p, seed: i + 1 }));
+  // Seeds 1–N (N = bye-priority course count, default 4) are reserved for
+  // 4-course players, then 3-course players if those slots are not full.
+  // Everyone else is seeded no higher than N+1, then by net.
+  const reservedCount = byePriorityCourses;
+  const fourPlus = eligible.filter(p => p.coursesPlayed >= byePriorityCourses).sort(byNet);
+  const threeOfFourEligible = eligible
+    .filter(p => p.coursesPlayed > noByeMaxCourses && p.coursesPlayed < byePriorityCourses)
+    .sort(byNet);
+  const reserved = [...fourPlus, ...threeOfFourEligible].slice(0, reservedCount);
+  const reservedIds = new Set(reserved.map(p => p.id));
+  const rest = eligible.filter(p => !reservedIds.has(p.id)).sort(byNet);
+  const field = [...reserved, ...rest].slice(0, maxField).map((p, i) => ({ ...p, seed: i + 1 }));
   const ineligible = annotated
     .filter(p => !field.some(f => f.id === p.id))
     .sort((a, b) => (b.coursesPlayed - a.coursesPlayed) || String(a.name ?? "").localeCompare(String(b.name ?? "")));

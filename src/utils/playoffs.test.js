@@ -121,12 +121,26 @@ const emailField = () => {
 }
 
 describe('buildCoursePlayoff — email 14-player field', () => {
-  it('seeds 14 eligible players by net', () => {
+  it('seeds 14 eligible players, last by net among the rest', () => {
     const field = emailField()
     expect(field.fieldSize).toBe(14)
     expect(field.seeds[0].name).toBe('Anthony Limantzakis')
     expect(field.seeds[1].name).toBe('Zach Howlett')
     expect(field.seeds[13].name).toBe('Pete Saltas')
+  })
+
+  it('keeps 4-course players in seeds 1–4; 3-course is no higher than 5', () => {
+    const field = emailField()
+    expect(field.seeds.slice(0, 4).map(p => p.name)).toEqual([
+      'Anthony Limantzakis',
+      'Zach Howlett',
+      'Chris Tsoutsounakis',
+      'Alexander Priskos',
+    ])
+    expect(field.seeds.slice(0, 4).every(p => p.coursesPlayed === 4)).toBe(true)
+    const ross = field.seeds.find(p => p.name === 'Ross Roudopoulos')
+    expect(ross.seed).toBe(5)
+    expect(ross.coursesPlayed).toBe(3)
   })
 
   it('gives Round 1 byes to seeds 1 and 2 when they are 4/4', () => {
@@ -139,8 +153,8 @@ describe('buildCoursePlayoff — email 14-player field', () => {
     const field = emailField()
     const playIn = field.round1Matchups.filter(m => !m.isBye)
     expect(playIn).toHaveLength(6)
-    expect(playIn.find(m => m.seed1 === 3 || m.seed2 === 3)).toMatchObject({ p1: 'Ross Roudopoulos', p2: 'Pete Saltas', seed1: 3, seed2: 14 })
-    expect(playIn.find(m => m.seed1 === 4 || m.seed2 === 4)).toMatchObject({ p1: 'Chris Tsoutsounakis', p2: 'Tyson LaSpina', seed1: 4, seed2: 13 })
+    expect(playIn.find(m => m.seed1 === 3 || m.seed2 === 3)).toMatchObject({ p1: 'Chris Tsoutsounakis', p2: 'Pete Saltas', seed1: 3, seed2: 14 })
+    expect(playIn.find(m => m.seed1 === 4 || m.seed2 === 4)).toMatchObject({ p1: 'Alexander Priskos', p2: 'Tyson LaSpina', seed1: 4, seed2: 13 })
     expect(playIn.find(m => m.seed1 === 8 || m.seed2 === 8)).toMatchObject({ p1: 'Mason Clark', p2: 'Nico Priskos', seed1: 8, seed2: 9 })
   })
 
@@ -148,6 +162,13 @@ describe('buildCoursePlayoff — email 14-player field', () => {
     const field = emailField()
     expect(field.bracketSize).toBe(16)
     expect(field.byeRecipients).toHaveLength(2)
+  })
+
+  it('keeps byes in Round 1 so the tree stays a power of two', () => {
+    const field = emailField()
+    expect(field.round1Matchups).toHaveLength(8)
+    expect(field.round1Matchups.filter(m => m.isBye)).toHaveLength(2)
+    expect(field.round1Matchups[0]).toMatchObject({ isBye: true, seed1: 1, p2: null, winner: 'Anthony Limantzakis' })
   })
 
   it('does not qualify a 1-course player', () => {
@@ -166,7 +187,7 @@ describe('buildCoursePlayoff — email 14-player field', () => {
 })
 
 describe('buildCoursePlayoff — 2-course top seed cannot get a bye', () => {
-  it('gives byes to the next 4/4 players, and seed 1 plays', () => {
+  it('gives byes to 4/4 players and keeps the 2-course ace at seed 5', () => {
     const roster = [
       { id: '1', name: 'Two Course Ace', courses: 2, net: 68 },
       { id: '2', name: 'Full A', courses: 4, net: 70 },
@@ -188,13 +209,37 @@ describe('buildCoursePlayoff — 2-course top seed cannot get a bye', () => {
       roundsByPlayer: Object.fromEntries(roster.map(p => [p.id, roundsFor(p.id, p.courses, p.net)])),
       regularCourses: COURSES,
     })
+    expect(result.seeds.slice(0, 4).map(p => p.name)).toEqual(['Full A', 'Full B', 'Full C', 'Three A'])
     expect(result.byeRecipients).toEqual(['Full A', 'Full B'])
-    expect(result.seeds[0].hasBye).toBe(false)
-    const playIn = result.round1Matchups.filter(m => !m.isBye)
-    const seed1Match = playIn.find(m => m.seed1 === 1 || m.seed2 === 1)
-    expect(seed1Match.p1).toBe('Two Course Ace')
-    expect(seed1Match.seed1).toBe(1)
-    expect(seed1Match.seed2).toBe(14)
+    const ace = result.seeds.find(p => p.name === 'Two Course Ace')
+    expect(ace.seed).toBe(5)
+    expect(ace.hasBye).toBe(false)
+  })
+})
+
+describe('buildCoursePlayoff — leftover top seeds fill with 3-course', () => {
+  it('puts 3-course players in seeds 3–4 when only two players finished all courses', () => {
+    const roster = [
+      { id: '1', name: 'Full A', courses: 4, net: 74 },
+      { id: '2', name: 'Full B', courses: 4, net: 75 },
+      { id: '3', name: 'Hot Three', courses: 3, net: 68 },
+      { id: '4', name: 'Warm Three', courses: 3, net: 69 },
+      { id: '5', name: 'Two Ace', courses: 2, net: 60 },
+      { id: '6', name: 'Two B', courses: 2, net: 76 },
+      { id: '7', name: 'Two C', courses: 2, net: 77 },
+      { id: '8', name: 'Two D', courses: 2, net: 78 },
+      { id: '9', name: 'Two E', courses: 2, net: 79 },
+      { id: '10', name: 'Two F', courses: 2, net: 80 },
+      { id: '11', name: 'Two G', courses: 2, net: 81 },
+      { id: '12', name: 'Two H', courses: 2, net: 82 },
+    ]
+    const result = buildCoursePlayoff({
+      players: roster.map(({ id, name }) => ({ id, name })),
+      roundsByPlayer: Object.fromEntries(roster.map(p => [p.id, roundsFor(p.id, p.courses, p.net)])),
+      regularCourses: COURSES,
+    })
+    expect(result.seeds.slice(0, 4).map(p => p.name)).toEqual(['Full A', 'Full B', 'Hot Three', 'Warm Three'])
+    expect(result.seeds.find(p => p.name === 'Two Ace').seed).toBe(5)
   })
 })
 
