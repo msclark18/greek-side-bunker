@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcCourseHcp, calcStableford, toPM, pmCls, isSeasonActive, isAfterSeasonEnd, ini } from './golf.js'
+import { calcCourseHcp, calcStableford, toPM, pmCls, isSeasonActive, isAfterSeasonEnd, ini, dedupeExactRounds, findDuplicateRound, findExistingRoundOnDayCourse } from './golf.js'
 
 const cfg = { useSlopeRating: true, handicapPct: 100, maxHandicap: null }
 const cfgNoSlope = { useSlopeRating: false, handicapPct: 100, maxHandicap: null }
@@ -180,5 +180,63 @@ describe('ini', () => {
 
   it('uppercases initials', () => {
     expect(ini('mason clark')).toBe('MC')
+  })
+})
+
+describe('dedupeExactRounds', () => {
+  const base = { player_id: 'p1', date: '2026-09-01', course_id: 1, gross: 80, net: 72 }
+
+  it('keeps the first of two identical player/date/course/gross/net rounds', () => {
+    const a = { ...base, id: 'a' }
+    const b = { ...base, id: 'b' }
+    expect(dedupeExactRounds([a, b]).map(r => r.id)).toEqual(['a'])
+  })
+
+  it('keeps both when the course differs', () => {
+    const a = { ...base, id: 'a', course_id: 1 }
+    const b = { ...base, id: 'b', course_id: 2 }
+    expect(dedupeExactRounds([a, b])).toHaveLength(2)
+  })
+
+  it('keeps both when the date differs', () => {
+    const a = { ...base, id: 'a', date: '2026-09-01' }
+    const b = { ...base, id: 'b', date: '2026-09-02' }
+    expect(dedupeExactRounds([a, b])).toHaveLength(2)
+  })
+
+  it('treats datetime timestamps as the same calendar day', () => {
+    const a = { ...base, id: 'a', date: '2026-09-01T08:00:00' }
+    const b = { ...base, id: 'b', date: '2026-09-01T16:00:00' }
+    expect(dedupeExactRounds([a, b]).map(r => r.id)).toEqual(['a'])
+  })
+})
+
+describe('findDuplicateRound', () => {
+  const existing = { id: 'a', player_id: 'p1', date: '2026-09-01', course_id: 1, gross: 80, net: 72, round_status: 'completed' }
+
+  it('finds a matching completed round', () => {
+    expect(findDuplicateRound([existing], { player_id: 'p1', date: '2026-09-01', course_id: 1, gross: 80, net: 72 })?.id).toBe('a')
+  })
+
+  it('ignores the round being updated', () => {
+    expect(findDuplicateRound([existing], { player_id: 'p1', date: '2026-09-01', course_id: 1, gross: 80, net: 72 }, { ignoreId: 'a' })).toBe(null)
+  })
+
+  it('ignores in-progress and rejected rounds', () => {
+    expect(findDuplicateRound([{ ...existing, round_status: 'in_progress' }], { player_id: 'p1', date: '2026-09-01', course_id: 1, gross: 80, net: 72 })).toBe(null)
+    expect(findDuplicateRound([{ ...existing, attest_status: 'rejected' }], { player_id: 'p1', date: '2026-09-01', course_id: 1, gross: 80, net: 72 })).toBe(null)
+  })
+})
+
+describe('findExistingRoundOnDayCourse', () => {
+  const existing = { id: 'a', player_id: 'p1', date: '2026-09-01', course_id: 1, gross: 80, net: 72, round_status: 'completed' }
+
+  it('matches the same player, day, and course even if scores differ', () => {
+    expect(findExistingRoundOnDayCourse([existing], { player_id: 'p1', date: '2026-09-01', course_id: 1, gross: 90, net: 80 })?.id).toBe('a')
+  })
+
+  it('does not match a different course or day', () => {
+    expect(findExistingRoundOnDayCourse([existing], { player_id: 'p1', date: '2026-09-01', course_id: 2 })).toBe(null)
+    expect(findExistingRoundOnDayCourse([existing], { player_id: 'p1', date: '2026-09-02', course_id: 1 })).toBe(null)
   })
 })

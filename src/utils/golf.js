@@ -50,3 +50,46 @@ export const ini = (n = "") => {
   if (!n || typeof n !== "string") return "?";
   return n.split(" ").map(w => w[0]).filter(Boolean).join("").toUpperCase().slice(0, 2) || "?";
 };
+
+/** Same player, calendar day, course, gross, and net. */
+export const exactRoundKey = (r) => {
+  const day = String(r.date ?? "").slice(0, 10);
+  return `${r.player_id}|${day}|${r.course_id ?? ""}|${Number(r.gross)}|${Number(r.net)}`;
+};
+
+/** Same player, calendar day, course, gross, and net — keep the first. */
+export const dedupeExactRounds = (rounds = []) => {
+  const seen = new Set();
+  return (rounds ?? []).filter(r => {
+    const key = exactRoundKey(r);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+export const findDuplicateRound = (rounds = [], candidate, { ignoreId } = {}) => {
+  if (candidate == null || candidate.gross == null || candidate.net == null || !candidate.date) return null;
+  const key = exactRoundKey(candidate);
+  return (rounds ?? []).find(r => {
+    if (ignoreId && r.id === ignoreId) return false;
+    if (r.round_status === "in_progress") return false;
+    if (r.attest_status === "rejected") return false;
+    return exactRoundKey(r) === key;
+  }) ?? null;
+};
+
+/** Completed round already on the books for this player / day / course. */
+export const findExistingRoundOnDayCourse = (rounds = [], candidate, { ignoreId } = {}) => {
+  if (!candidate?.player_id || !candidate?.date || candidate.course_id == null) return null;
+  const day = String(candidate.date).slice(0, 10);
+  const course = String(candidate.course_id);
+  return (rounds ?? []).find(r => {
+    if (ignoreId && r.id === ignoreId) return false;
+    if (r.round_status === "in_progress") return false;
+    if (r.attest_status === "rejected") return false;
+    return String(r.player_id) === String(candidate.player_id)
+      && String(r.date ?? "").slice(0, 10) === day
+      && String(r.course_id ?? "") === course;
+  }) ?? null;
+};

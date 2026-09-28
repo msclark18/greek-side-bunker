@@ -268,6 +268,45 @@ describe('buildCoursePlayoff — best per course seeding', () => {
   })
 })
 
+describe('buildCoursePlayoff — net-average ties', () => {
+  it('ranks more courses completed ahead when averages match', () => {
+    const four = (net) => [1, 2, 3, 4].map(c => ({ course_id: c, net }))
+    const players = [
+      { id: 'full1', name: 'Full A' },
+      { id: 'full2', name: 'Full B' },
+      { id: 'full3', name: 'Full C' },
+      { id: 'full4', name: 'Full D' },
+      { id: 'a', name: 'Aaa Two' },
+      { id: 'b', name: 'Zzz Three' },
+    ]
+    const roundsByPlayer = {
+      full1: four(60),
+      full2: four(61),
+      full3: four(62),
+      full4: four(63),
+      a: [{ course_id: 1, net: 70 }, { course_id: 2, net: 70 }],
+      b: [{ course_id: 1, net: 70 }, { course_id: 2, net: 70 }, { course_id: 3, net: 70 }],
+    }
+    const result = buildCoursePlayoff({ players, roundsByPlayer, regularCourses: COURSES })
+    const two = result.seeds.find(p => p.name === 'Aaa Two')
+    const three = result.seeds.find(p => p.name === 'Zzz Three')
+    expect(three.seed).toBeLessThan(two.seed)
+  })
+
+  it('ranks the better single net ahead when averages and courses match', () => {
+    const players = [
+      { id: 'a', name: 'Aaa Steady' },
+      { id: 'b', name: 'Zzz Peak' },
+    ]
+    const roundsByPlayer = {
+      a: [{ course_id: 1, net: 72 }, { course_id: 2, net: 72 }],
+      b: [{ course_id: 1, net: 70 }, { course_id: 2, net: 74 }],
+    }
+    const result = buildCoursePlayoff({ players, roundsByPlayer, regularCourses: COURSES })
+    expect(result.seeds[0].name).toBe('Zzz Peak')
+  })
+})
+
 describe('pairAdjacentWinners', () => {
   it('feeds quarterfinals from adjacent Round 1 slots, not a re-seed of remaining seeds', () => {
     const field = emailField()

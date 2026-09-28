@@ -58,7 +58,7 @@ export default function HelpModal({ onClose }) {
       title: "Playoffs",
       steps: [
         { heading: "Qualify with 2 courses", body: "Play at least 2 of the league courses before the season cutoff to make the playoff field. Completing all 4 courses earns priority for a first-round bye. Players with only 2 courses qualify but cannot receive a bye." },
-        { heading: "Seeding", body: "Seeds 1–4 are reserved for players who completed all 4 courses. If fewer than 4 players finished every course, 3-course players can fill those leftover top-4 spots. Anyone else is seeded no higher than 5, then by net average. Your commissioner can count only the best round at each course so extra rounds at the same course do not lower a seed. The Playoffs tab shows a projected bracket until the season ends, then the commissioner locks the field." },
+        { heading: "Seeding", body: "Seeds 1–4 are reserved for players who completed all 4 courses. If fewer than 4 players finished every course, 3-course players can fill those leftover top-4 spots. Anyone else is seeded no higher than 5, then by net average. Ties break by more courses completed, then best single net. Your commissioner can count only the best round at each course so extra rounds at the same course do not lower a seed. The Playoffs tab shows a projected bracket until the season ends, then the commissioner locks the field." },
         { heading: "Match play", body: "Each playoff round is 18-hole match play at a designated course during a 7-day window. Use GHIN/course handicaps on the day of the match. The commissioner records the winner (or a forfeit) in the app." },
       ]
     },

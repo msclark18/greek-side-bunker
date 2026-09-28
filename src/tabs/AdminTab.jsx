@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { supabase } from "../supabase.js";
 import { DEFAULT_CONFIG, DEFAULT_PLAYOFF_SCHEDULE, FORMAT_LABELS } from "../constants/config.js";
-import { calcStableford } from "../utils/golf.js";
+import { calcStableford, findDuplicateRound, findExistingRoundOnDayCourse } from "../utils/golf.js";
 import Toggle from "../components/Toggle.jsx";
 import { Settings, Users, Flag, ClipboardList, BarChart2, FileText, Mail, Trophy, DollarSign, AlertTriangle, Check, X, Clock, Camera, Lock, Info } from "lucide-react";
 
@@ -501,6 +501,13 @@ export default function AdminTab({
     }
     const pts = config.scoringFormat === "stableford" && net != null ? calcStableford(gross, gross - net, course.par) : null;
     const attester = config.attestRequired ? members.find(m => m.user_id === attesterId && m.profile) : null;
+
+    if (findExistingRoundOnDayCourse(rounds, { player_id: player.user_id, date, course_id: course.id })
+      || findDuplicateRound(rounds, { player_id: player.user_id, date, course_id: course.id, gross, net })) {
+      setPostForPlayerMsg({ type: "w", text: `${player.profile.name} already posted a round at ${course.name} on ${date}. It was not saved again.` });
+      setPostForPlayerLoading(false);
+      return;
+    }
 
     const { data: inserted, error } = await supabase.from("rounds").insert({
       league_id: activeLeague.id,

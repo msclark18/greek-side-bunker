@@ -93,11 +93,17 @@ export const buildCoursePlayoff = ({
     const pr = roundsByPlayer[p.id] ?? roundsByPlayer[String(p.id)] ?? [];
     const coursesPlayed = distinctCoursesPlayed(pr, courseIds);
     const netAvg = seedBestPerCourse ? bestNetPerCourseAverage(pr, courseIds) : netAverage(pr);
+    const nets = pr.map(r => Number(r.net)).filter(n => !Number.isNaN(n));
+    const bestNet = nets.length ? Math.min(...nets) : null;
     const status = qualificationStatus(coursesPlayed, totalCourses, { minCourses, byePriorityCourses, noByeMaxCourses });
-    return { ...p, coursesPlayed, totalCourses, netAvg, status };
+    return { ...p, coursesPlayed, totalCourses, netAvg, bestNet, status };
   });
 
-  const byNet = (a, b) => a.netAvg - b.netAvg || String(a.name ?? "").localeCompare(String(b.name ?? ""));
+  const byNet = (a, b) =>
+    a.netAvg - b.netAvg
+    || b.coursesPlayed - a.coursesPlayed
+    || (a.bestNet ?? 999) - (b.bestNet ?? 999)
+    || String(a.name ?? "").localeCompare(String(b.name ?? ""));
   const eligible = annotated.filter(p => p.coursesPlayed >= minCourses && p.netAvg != null);
 
   // Seeds 1–N (N = bye-priority course count, default 4) are reserved for

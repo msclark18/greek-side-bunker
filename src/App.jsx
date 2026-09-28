@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Trophy, Pencil, Clock, Settings, FileText } from "lucide-react";
 import { supabase } from "./supabase.js";
 import { DEFAULT_CONFIG, FORMAT_LABELS, mergeLeagueConfig } from "./constants/config.js";
-import { isSeasonActive, ini } from "./utils/golf.js";
+import { isSeasonActive, ini, dedupeExactRounds } from "./utils/golf.js";
 import GSBLogo from "./components/GSBLogo.jsx";
 import SeasonBar from "./components/SeasonBar.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
@@ -311,7 +311,9 @@ export default function App() {
 
   // ── Leaderboard computations ──
   const players = members.filter(m => m.profile).map(m => ({ ...m.profile, role: m.role }));
-  const scored = rounds.filter(r => r.round_status === "completed" && (!config.attestRequired || r.attest_status === "approved"));
+  const scored = dedupeExactRounds(
+    rounds.filter(r => r.round_status === "completed" && (!config.attestRequired || r.attest_status === "approved"))
+  );
   const myHasSubmitted = scored.some(r => r.player_id === session?.user.id);
   const visible = (config.hideScores && !myHasSubmitted) ? scored.filter(r => r.player_id === session?.user.id) : scored;
 
@@ -793,6 +795,7 @@ export default function App() {
           activeLeague={activeLeague}
           setRounds={setRounds}
           companions={companionRounds}
+          rounds={rounds}
           onComplete={(updated) => {
             setCompanionRounds([]);
             setLiveRound(null);

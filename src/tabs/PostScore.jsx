@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabase.js";
-import { calcStableford, toPM, pmCls } from "../utils/golf.js";
+import { calcStableford, toPM, pmCls, findDuplicateRound, findExistingRoundOnDayCourse } from "../utils/golf.js";
 import { FORMAT_LABELS } from "../constants/config.js";
 import { Pencil, Camera, BarChart2, FileText, AlertTriangle, Ban, Clock, Radio, AlignJustify } from "lucide-react";
 
@@ -29,6 +29,7 @@ export default function PostScore({
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [groupMembers, setGroupMembers] = useState([]); // [{ userId, gross: "", net: "" }]
   const [showGroupConfirm, setShowGroupConfirm] = useState(false);
+  const [duplicateBlock, setDuplicateBlock] = useState(null);
 
   // When the live round clears (submitted or closed from App level), reset mode
   useEffect(() => { if (!liveRound) { setScoringMode(null); setCompanionIds([]); } }, [liveRound]);
@@ -319,6 +320,13 @@ export default function PostScore({
     const pts = config.scoringFormat === "stableford" ? calcStableford(gross, gross - net, course.par) : null;
     const attester = config.attestRequired ? members.find(m => m.user_id === form.attesterId && m.profile) : null;
 
+    if (findDuplicateRound(rounds, { player_id: session.user.id, date: form.date, course_id: course.id, gross, net })) {
+      setDuplicateBlock({
+        text: `This exact score is already posted for ${form.date} at ${course.name} (gross ${gross}, net ${net}). It was not saved again.`,
+      });
+      return;
+    }
+
     const { data: inserted, error } = await supabase.from("rounds").insert({
       league_id: activeLeague.id, player_id: session.user.id, player_name: profile.name,
       attester_id: attester?.user_id ?? null, attester_name: attester?.profile.name ?? null,
@@ -379,12 +387,19 @@ export default function PostScore({
 
     // Post scores for group members (submitting player attests automatically)
     const groupInserts = [];
+    const skippedAlreadyPosted = [];
     for (const gm of groupMembers) {
       if (!gm.gross || gm.net === "" || isNaN(Number(gm.net))) continue;
       const gmMember = members.find(m => m.user_id === gm.userId);
       if (!gmMember?.profile) continue;
       const gmGross = Number(gm.gross);
       const gmNet = Number(gm.net);
+      const already = findExistingRoundOnDayCourse(rounds, { player_id: gm.userId, date: form.date, course_id: course.id })
+        || findDuplicateRound(rounds, { player_id: gm.userId, date: form.date, course_id: course.id, gross: gmGross, net: gmNet });
+      if (already) {
+        skippedAlreadyPosted.push(gmMember.profile.name);
+        continue;
+      }
       const gmPts = config.scoringFormat === "stableford" ? calcStableford(gmGross, gmGross - gmNet, course.par) : null;
       const { data: gmInserted } = await supabase.from("rounds").insert({
         league_id: activeLeague.id,
@@ -443,13 +458,16 @@ export default function PostScore({
     setForm(f => ({ ...f, score: "", net: "", courseId: "", attesterId: "", teamId: "", tournamentRoundId: "" }));
     setCardFile(null); setCardPreview(null); setAiResult(null); setShowAiConfirm(false);
     setGroupMembers([]);
+    const skipNote = skippedAlreadyPosted.length
+      ? ` ${skippedAlreadyPosted.join(", ")} already posted ${skippedAlreadyPosted.length === 1 ? "their own score" : "their own scores"} — skipped.`
+      : "";
     setFormMsg({
-      type: "s",
-      text: config.attestRequired
+      type: skippedAlreadyPosted.length && groupInserts.length === 0 ? "w" : "s",
+      text: (config.attestRequired
         ? `Submitted! Attestation sent to ${attester.profile.name}.`
         : groupInserts.length > 0
           ? `Round submitted and approved! Posted scores for ${groupInserts.length} playing partner${groupInserts.length > 1 ? "s" : ""}.`
-          : "Round submitted and approved!",
+          : "Round submitted and approved!") + skipNote,
     });
     setTimeout(() => setFormMsg({ type: "", text: "" }), 5000);
   };
@@ -1219,12 +1237,15 @@ export default function PostScore({
             {groupMembers.filter(gm => gm.gross).map(gm => {
               const gmMember = members.find(m => m.user_id === gm.userId);
               if (!gmMember) return null;
+              const already = findExistingRoundOnDayCourse(rounds, { player_id: gm.userId, date: form.date, course_id: selectedCourse.id });
               return (
-                <div key={gm.userId} style={{ marginBottom: 10, padding: "12px 14px", background: "rgba(255,255,255,.03)", border: "1px solid var(--navy-border)", borderRadius: 8 }}>
-                  <div style={{ fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase", color: "var(--cream-dim)", fontFamily: "var(--font-d)", marginBottom: 8 }}>Playing Partner</div>
+                <div key={gm.userId} style={{ marginBottom: 10, padding: "12px 14px", background: already ? "rgba(224,92,92,.08)" : "rgba(255,255,255,.03)", border: `1px solid ${already ? "rgba(224,92,92,.3)" : "var(--navy-border)"}`, borderRadius: 8 }}>
+                  <div style={{ fontSize: ".62rem", letterSpacing: "2px", textTransform: "uppercase", color: already ? "#f09090" : "var(--cream-dim)", fontFamily: "var(--font-d)", marginBottom: 8 }}>{already ? "Already posted" : "Playing Partner"}</div>
                   <div style={{ fontWeight: 700, color: "var(--cream)", marginBottom: 4 }}>{gmMember.profile?.name}</div>
-                  <div style={{ fontSize: ".8rem", color: "var(--cream-dim)", marginBottom: 6 }}>Auto-approved · attested by you</div>
-                  <div style={{ display: "flex", gap: 16 }}>
+                  {already
+                    ? <div style={{ fontSize: ".8rem", color: "#f09090", marginBottom: 6 }}>They already posted this day at this course. Their score will not be submitted again.</div>
+                    : <div style={{ fontSize: ".8rem", color: "var(--cream-dim)", marginBottom: 6 }}>Auto-approved · attested by you</div>}
+                  <div style={{ display: "flex", gap: 16, opacity: already ? .45 : 1 }}>
                     <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Gross</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--cream)" }}>{gm.gross}</div></div>
                     <div><span style={{ fontSize: ".62rem", color: "var(--cream-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Net</span><div style={{ fontFamily: "var(--font-d)", fontSize: "1.3rem", color: "var(--gold)" }}>{gm.net}</div></div>
                   </div>
@@ -1357,6 +1378,18 @@ export default function PostScore({
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {duplicateBlock && (
+        <div className="modal-bg" onClick={() => setDuplicateBlock(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Duplicate Score</div>
+            <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 16, lineHeight: 1.7 }}>
+              {duplicateBlock.text}
+            </p>
+            <button className="btn btn-gold" onClick={() => setDuplicateBlock(null)}>OK</button>
           </div>
         </div>
       )}

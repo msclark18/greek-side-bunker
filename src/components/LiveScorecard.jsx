@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { supabase } from "../supabase.js";
-import { calcStableford, toPM, pmCls } from "../utils/golf.js";
+import { calcStableford, toPM, pmCls, findDuplicateRound } from "../utils/golf.js";
 import { X, Edit2, LayoutGrid, CheckCircle, ChevronLeft, ChevronRight,
   ChevronUp, ChevronDown, ChevronsLeft, ChevronsRight,
   Waves, AlertTriangle, Mountain, ArrowDownToLine, Flag } from "lucide-react";
@@ -144,7 +144,7 @@ function TeeTarget({ value, onChange }) {
 export default function LiveScorecard({
   round, course, courseHandicap, config, profile,
   members, activeLeague, setRounds, onComplete, onClose,
-  companions = [],
+  companions = [], rounds = [],
 }) {
   const numHoles = course?.holes ?? 18;
   // Per-hole par fallback when course has no hole-by-hole scorecard data
@@ -170,6 +170,7 @@ export default function LiveScorecard({
   const [submitLoading, setSubmitLoading] = useState(false);
   const [showNetPrompt, setShowNetPrompt] = useState(false);
   const [netDraft, setNetDraft] = useState("");
+  const [duplicateBlock, setDuplicateBlock] = useState(null);
 
   // Round timer — counts up from round.created_at
   const fmtElapsed = (start) => {
@@ -392,6 +393,18 @@ export default function LiveScorecard({
     setShowAttestPicker(false);
     const gross = scores.filter(s => s != null).reduce((a, b) => a + b, 0);
     const net = Number(netDraft);
+    if (findDuplicateRound(rounds, {
+      player_id: round.player_id,
+      date: round.date,
+      course_id: round.course_id,
+      gross,
+      net,
+    }, { ignoreId: round.id })) {
+      setShowNetPrompt(false);
+      setSubmitLoading(false);
+      setDuplicateBlock(`This exact score is already posted (same day, course, gross ${gross}, net ${net}). It was not saved again.`);
+      return;
+    }
     const pts = config.scoringFormat === "stableford" && course
       ? calcStableford(gross, gross - net, course.par)
       : null;
@@ -1600,6 +1613,18 @@ export default function LiveScorecard({
                 Submit Round
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {duplicateBlock && (
+        <div className="modal-bg" onClick={() => setDuplicateBlock(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Duplicate Score</div>
+            <p style={{ fontSize: ".88rem", color: "var(--cream-dim)", marginBottom: 16, lineHeight: 1.7 }}>
+              {duplicateBlock}
+            </p>
+            <button className="btn btn-gold" onClick={() => setDuplicateBlock(null)}>OK</button>
           </div>
         </div>
       )}
