@@ -117,7 +117,7 @@ export default function PlayoffsPanel({
   };
 
   const displayBracket = fillLaterRounds(liveBracket);
-  const treeHeight = Math.max(displayBracket[0]?.matchups?.length ?? 1, 1) * 120;
+  const treeHeight = Math.max(displayBracket[0]?.matchups?.length ?? 1, 1) * 136;
   const hasMatchWinner = (config.playoffBracket ?? []).some(r => (r.matchups ?? []).some(m => m.winner && !m.isBye));
 
   const saveBracket = async (newBracket, extra = {}) => {
@@ -232,7 +232,7 @@ export default function PlayoffsPanel({
 
           {isAdmin && displayBracket.length > 0 && (
             <div className="alert-w" style={{ marginBottom: 18, fontSize: ".78rem" }}>
-              Click a player's name to advance them. Use Forfeit if they cannot play in the window.
+              Click a player's name to advance them. Use Forfeit on their row if they cannot play in the window.
             </div>
           )}
 
@@ -281,6 +281,8 @@ export default function PlayoffsPanel({
                                     const isLoser = match.winner && !isWinner && !!name;
                                     const isEmpty = !name && !isByeSlot;
                                     const canClick = isAdmin && name && !match.winner && !isByeMatch;
+                                    const canForfeit = canClick && match.p1 && match.p2;
+                                    const opponent = slot === "p1" ? match.p2 : match.p1;
                                     return (
                                       <div key={slot}>
                                         <div
@@ -289,20 +291,23 @@ export default function PlayoffsPanel({
                                         >
                                           <span className="bk-seed">{name ? (seedByName[name] || "") : ""}</span>
                                           <span className="bk-name">{isByeSlot ? "BYE" : (name ?? "TBD")}</span>
+                                          {canForfeit && (
+                                            <button
+                                              type="button"
+                                              className="bk-forfeit-btn"
+                                              title={`Forfeit ${name}`}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setWinner(roundIdx, matchIdx, opponent, name);
+                                              }}
+                                            >Forfeit</button>
+                                          )}
                                           {isWinner && <span className="bk-win-icon">{isByeMatch ? "BYE" : (match.forfeit && match.forfeit !== name ? "F" : "✓")}</span>}
                                         </div>
                                         {si === 0 && <div className="bk-slot-divider" />}
                                       </div>
                                     );
                                   })}
-                                </div>
-                                <div className="bk-match-actions">
-                                  {isAdmin && !isByeMatch && match.p1 && match.p2 && !match.winner && (
-                                    <>
-                                      <button className="btn btn-ghost btn-sm" style={{ fontSize: ".62rem" }} onClick={() => setWinner(roundIdx, matchIdx, match.p2, match.p1)}>Forfeit {match.p1.split(" ")[0]}</button>
-                                      <button className="btn btn-ghost btn-sm" style={{ fontSize: ".62rem" }} onClick={() => setWinner(roundIdx, matchIdx, match.p1, match.p2)}>Forfeit {match.p2.split(" ")[0]}</button>
-                                    </>
-                                  )}
                                 </div>
                                 {match.forfeit && match.winner && (
                                   <div className="bk-forfeit-note">{match.forfeit} forfeited</div>
